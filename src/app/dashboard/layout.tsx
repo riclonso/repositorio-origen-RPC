@@ -1,35 +1,44 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cerrarSesionAction } from "./actions";
+import { NavLateral } from "./nav-lateral";
 
 export const metadata: Metadata = {
-  title: "Dashboard administrador — Intranet SEREMI de Salud Biobío",
+  title: "Dashboard administrador - Intranet SEREMI de Salud Biobío",
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between bg-gob-tertiary px-6 py-4">
-        <p className="text-sm font-medium tracking-wide text-white">Gobierno de Chile</p>
+      {/* Cerrar sesión es una acción secundaria: rellenarla (antes bg-orange-600, además fuera
+          de la paleta gob-*) la volvía el elemento más llamativo de la pantalla, compitiendo con
+          la acción primaria de cada página. */}
+      <header className="flex items-center justify-between gap-4 bg-gob-tertiary px-4 py-3 md:px-6">
+        <div>
+          <p className="text-sm font-semibold tracking-wide text-white">Intranet SEREMI de Salud</p>
+          <p className="text-xs text-gob-accent">Región del Biobío</p>
+        </div>
 
         <form action={cerrarSesionAction}>
           <button
             type="submit"
-            className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-gray-100 transition-colors hover:bg-orange-700"
+            className="rounded-md border border-white/40 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/10 active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             Cerrar sesión
           </button>
         </form>
       </header>
 
-      <div className="flex flex-1">
-        <aside className="w-64 shrink-0 border-r border-gob-accent bg-white">
-          <nav className="flex flex-col p-4">
-            <span className="rounded-md px-3 py-2 text-sm font-medium text-gob-gray-a">Encabezado</span>
-          </nav>
+      {/* Bajo md el shell se apila: la navegación pasa a una barra horizontal sobre el contenido.
+          Con la barra lateral fija, en 375px se comía más de la mitad del ancho y la vista de
+          tarjetas de la tabla nunca llegaba a verse. Se prefiere una barra a un menú lateral
+          desplegable: dos secciones no justifican el foco atrapado ni el JavaScript de un cajón. */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="shrink-0 border-b border-gob-accent bg-white md:w-52 md:border-b-0 md:border-r">
+          <NavLateral />
         </aside>
 
-        <main className="flex-1 bg-gob-neutral p-8">{children}</main>
+        <main className="min-w-0 flex-1 bg-gob-neutral p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

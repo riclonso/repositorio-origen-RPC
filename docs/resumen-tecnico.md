@@ -14,10 +14,11 @@
 | Arquitectura backend    | Onion simplificada + modular por dominio (ver [docs/arquitectura.md](arquitectura.md)) |
 | Autenticación           | jose (JWT, HS256, 8h) + bcrypt (12 rondas), vía Route Handler `POST /api/auth/login` |
 | Base de datos           | PostgreSQL + Prisma ORM (`@prisma/adapter-pg`) |
-| Logs                    | Winston, JSON, a `logs/errores.txt` |
+| Logs                    | Winston, JSON, una instancia por archivo. `logs/errores.txt` (errores del sistema) y `logs/auditoria.txt` (operaciones sobre usuarios) implementados; `logs/accesos.txt` (login exitoso y fallido, RF-07) pendiente. `logs/` está en `.gitignore`: contienen RUT e IP. Rotación a cargo del sistema operativo |
 | Estado cliente          | Zustand (solo Client Components; sin stores creados aún) |
 | Validación              | Zod |
 | Estilos                 | Tailwind v4 (CSS-first, `@theme inline`), paleta oficial gob.cl (`gob-*`) |
+| Iconos                  | `@phosphor-icons/react`, familia única del proyecto, centralizada en `shared/components/iconos.tsx` con tamaño y peso estandarizados |
 | Cookies                 | cookies-next (`httpOnly`, `secure`, `sameSite`) |
 | Calidad React           | react-doctor (`npx react-doctor@latest`, ver `.agents/skills/react-doctor/`) |
 
@@ -53,7 +54,7 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | Módulo               | Estado | Detalle |
 |------------------------|--------|---------|
 | `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
-| `modules/usuarios/`    | Stub | Casos de uso lanzan `Error("...: no implementado")` a propósito. Ver [docs/requerimientos.md](requerimientos.md#en-progreso--stub-sin-implementar). |
+| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
 | Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
 
 ## Herramientas de calidad y agentes
@@ -67,3 +68,16 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   devDependency). El agente `desarrollador` lo corre antes y después de implementar cambios en React.
 * **Verificación previa a aprobar código:** `npx tsc --noEmit`, `npm run lint`, `npm run build` —
   obligatorias para el agente `revisor` antes de emitir veredicto.
+
+
+## Notas de despliegue
+
+* **Migración `20260909120000_habilitar_unaccent`.** Ejecuta `CREATE EXTENSION IF NOT EXISTS unaccent`
+  para que la búsqueda de usuarios ignore tildes. El rol de base de datos debe tener permiso para crear
+  la extensión: es *trusted* desde PostgreSQL 13, pero varios PostgreSQL gestionados lo restringen, y
+  sin ese permiso `prisma migrate deploy` falla.
+* **`ADMIN_SEED_PASSWORD` ahora se valida.** Desde RF-06, `scripts/seed-admin.ts` exige el mismo mínimo
+  que el mantenedor: 8 caracteres o más, con al menos una minúscula, una mayúscula y un dígito. Una
+  contraseña que no cumpla hace fallar `npm run db:seed` con un mensaje explícito. El login **no**
+  valida complejidad (`login.schema.ts` conserva `min(1)`), así que las contraseñas anteriores siguen
+  sirviendo para iniciar sesión.

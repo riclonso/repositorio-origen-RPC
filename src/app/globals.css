@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -20,17 +21,22 @@
   --color-gob-gray-a: #4a4a4a;
   --color-gob-gray-b: #8a8a8a;
   --color-gob-black: #111111;
+  /* Rojo institucional oscurecido (~7.7:1 sobre blanco) para texto de error y acciones
+     destructivas: gob-secondary (#fe6565) queda en ~3.0:1 y no alcanza el minimo AA. */
+  --color-gob-danger: #a01f1f;
+  /* Hover del azul institucional. Sin esto el hover saltaba de #006fb3 a gob-tertiary
+     (#0a132d, casi negro), un cambio demasiado brusco para una accion primaria. */
+  --color-gob-primary-oscuro: #005b91;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Tema bloqueado en claro a proposito. Las superficies del panel (blanco, gob-neutral) y la
+   paleta gob-* estan definidas para fondo claro; invertir solo --background/--foreground dejaba
+   la pagina a medio invertir en dispositivos con modo oscuro. Si algun dia se quiere modo oscuro
+   real, hay que definir el juego completo de tokens, no solo estos dos. */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist se carga en app/layout.tsx con next/font; antes esta regla la pisaba con Arial y la
+     fuente descargada no llegaba a usarse nunca. */
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 }

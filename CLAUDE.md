@@ -112,13 +112,31 @@ crear el módulo; dentro de `modules/usuarios/` van en español (`Usuario`, `Usu
 siguen la regla general del proyecto (camelCase en español, ver más abajo). No trasladar la
 convención en inglés de `auth/` a módulos nuevos sin que se pida explícitamente.
 
-### `modules/usuarios/` es un stub
+### `modules/usuarios/` (mantenedor de usuarios, RF-06)
 
-Ningún archivo bajo `modules/usuarios/` está implementado: `CrearUsuario`, `ObtenerUsuario` y
-`PrismaUsuarioRepository` lanzan `Error("...: no implementado")` a propósito, y
-`app/dashboard/usuarios/page.tsx` / `app/api/usuarios/route.ts` son placeholders. Es el andamiaje para
-cuando se construya la administración de usuarios — implementar ahí en vez de crear una estructura
-paralela.
+Módulo implementado. Cubre listar (con búsqueda y paginación en servidor), crear, editar, activar o
+desactivar, y restablecer contraseña. Fuera de alcance por decisión explícita: borrado físico (la baja
+lógica con `activo=false` preserva la trazabilidad) y edición de `rut` / `username` (el RUT es la
+credencial de acceso; cambiarlo es cambiar la identidad de la persona en silencio).
+
+Puntos que hay que respetar al tocarlo:
+
+* **Guard en cada Route Handler, no en el proxy.** `src/proxy.ts` tiene `matcher: "/dashboard/:path*"`
+  y **no cubre `/api/**`**. Los cuatro endpoints de `app/api/usuarios/` empiezan llamando a
+  `exigirAdmin()` (`app/api/usuarios/_lib/http.ts`), que devuelve 401 sin sesión y 403 si el rol no es
+  ADMIN. Cualquier endpoint nuevo bajo `/api/` debe hacer lo mismo: sin ese guard queda abierto.
+* **Reglas anti-autobloqueo en `application/`, nunca solo en la UI.** Un ADMIN no puede desactivarse ni
+  degradarse a sí mismo, ni desactivar o degradar al último ADMIN activo. Si vivieran en el cliente se
+  saltarían llamando la API a mano. Restablecer la propia contraseña sí está permitido.
+* **Unicidad en dos capas.** `buscarConflicto()` hace una sola consulta con `OR` sobre `rut`, `email` y
+  `username` (nunca tres consultas), y además `PrismaUsuarioRepository` captura el `P2002` de Prisma y
+  lo traduce a `UsuarioDuplicadoError`, cerrando la ventana de carrera. Los mensajes de duplicado no
+  exponen ningún dato del usuario en conflicto.
+* **El listado va por `prisma.$queryRaw`**, a diferencia del resto del repositorio, porque Prisma
+  Client no soporta `unaccent()`. El término del usuario va parametrizado por la plantilla etiquetada
+  de Prisma y los comodines LIKE se escapan: nunca concatenar el término en el SQL.
+* **`contrasenaHash` no sale nunca.** El tipo `Usuario` de `domain/entities/` no lo declara, así que el
+  compilador impide filtrarlo; el mapper del repositorio lo descarta explícitamente.
 
 ### Autenticación (flujo de referencia)
 
@@ -154,13 +172,82 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
 Notar: el login es por **RUT**, no por email, aunque email/rut/username son todos únicos en el modelo
 `Usuario` (`prisma/schema.prisma`).
 
-### Logging de errores
+### Logging
+
+El sistema mantiene **dos logs separados**, ambos en formato JSON, bajo `logs/` (carpeta no
+versionada). No mezclar sus responsabilidades: un intento de login fallido es un evento de acceso,
+no un error del sistema.
+
+#### 1. Log de accesos — `logs/accesos.txt`
+
+Registra **todo intento de inicio de sesión, exitoso y fallido**. Es el rastro de auditoría de quién
+entra al sistema, no un log de errores. Se escribe desde `app/api/auth/login/route.ts` (y desde
+cualquier otro punto de autenticación que se agregue).
+
+Cada entrada debe incluir:
+
+| Campo      | Descripción |
+|------------|-------------|
+| `timestamp` | Fecha y hora del intento (lo agrega Winston) |
+| `evento`    | `"login_exitoso"` o `"login_fallido"` |
+| `rut`       | RUT ingresado, normalizado |
+| `usuarioId` | Id del usuario, solo en login exitoso |
+| `motivo`    | Solo en fallidos: `"credenciales_invalidas"`, `"usuario_inactivo"`, `"rut_invalido"` |
+| `ip`        | IP de origen de la petición |
+
+**Nunca registrar la contraseña**, ni en texto plano ni hasheada, ni el token de sesión.
+
+En los fallidos, el `motivo` es para uso interno del log: la respuesta HTTP debe seguir devolviendo
+el mensaje genérico `MENSAJE_ERROR_GENERICO` para no permitir enumerar RUTs válidos (mismo criterio
+que el hash de relleno en `LoginUser.ts`).
+
+#### 2. Log de errores del sistema — `logs/errores.txt`
 
 `src/infrastructure/logging/logger.ts` usa Winston (nivel `error`, formato JSON) y escribe en
 `logs/errores.txt`. Ya está conectado en `app/api/auth/login/route.ts` y `app/dashboard/actions.ts` —
 cualquier error atrapable en un caso de uso, Route Handler o Server Action debe loguearse ahí antes de
 devolver un mensaje genérico al usuario (ver `MENSAJE_ERROR_GENERICO` en `app/api/auth/login/route.ts`
 como ejemplo de no filtrar detalles internos en la respuesta).
+
+Registra fallas técnicas: excepciones de BD, errores de infraestructura, fallos al emitir la sesión.
+Cada entrada debe incluir el mensaje del error y el contexto donde ocurrió; nunca datos sensibles
+(contraseñas, tokens, hashes).
+
+#### 3. Log de auditoría — `logs/auditoria.txt`
+
+Registra **quién le hizo qué a quién** en el mantenedor de usuarios: creación, actualización,
+activación, desactivación y restablecimiento de contraseña. Es distinto de `accesos.txt` (que responde
+"quién intentó entrar") y de `errores.txt` (fallas técnicas).
+
+Se escribe con `loggerAuditoria` a través de `registrarAuditoria()`
+(`infrastructure/logging/auditoria.ts`), **nunca** con `logger`: un evento de auditoría no es un error
+y emitirlo en nivel `error` ensuciaría la métrica de errores. Se invoca desde los Route Handlers, no
+desde `application/`, porque la entrada incluye datos de transporte (IP, user agent) que la capa de
+aplicación no debe conocer, y porque el handler es el único punto que ve por igual el éxito, el rechazo
+de negocio y el 403 que ni siquiera llega al caso de uso.
+
+Campos: `accion`, `resultado` (`EXITO` / `RECHAZADO`), `motivo`, `actorId`, `actorRut`, `actorRol`,
+`usuarioObjetivoId`, `usuarioObjetivoRut`, `campos` (solo nombres de campos modificados, sin valores),
+`rolAnterior` / `rolNuevo`, `ip`, `userAgent`.
+
+Se auditan las escrituras exitosas **y los rechazos** (403 por rol, 409 por duplicado, autooperación o
+último admin, 404 por no encontrado): auditar solo los éxitos dejaría ciego el escenario que motiva
+tener auditoría. No se auditan lecturas ni los 400 de validación.
+
+**Nunca registrar contraseñas ni hashes**, ni siquiera su longitud. En `CONTRASENA_RESTABLECIDA` se
+registra solo quién restableció la de quién y cuándo.
+
+#### Reglas comunes a los tres logs
+
+`infrastructure/logging/logger.ts` crea una instancia de Winston **independiente por archivo**, cada
+una con su propio transporte, de modo que un evento no puede terminar escrito en el log equivocado. El
+módulo usa `node:fs`: solo puede importarse desde Route Handlers y Server Actions, **nunca** desde
+`src/proxy.ts` (runtime Edge) ni desde Client Components. La rotación de los archivos queda a cargo del
+sistema operativo del servidor. `logs/` está en `.gitignore`: estos archivos contienen RUT e IP de
+funcionarios y no deben versionarse.
+
+**Estado:** `logs/errores.txt` y `logs/auditoria.txt` están implementados. `logs/accesos.txt` está
+**pendiente de implementar** (RF-07).
 
 ### Base de datos
 
@@ -219,10 +306,21 @@ con lógica de negocio. Ver flujo de autenticación arriba para el ejemplo compl
 - Verificar que las variables de entorno existan antes de usarlas (patrón: `infrastructure/config/env.ts`).
 - Registrar los errores en formato JSON en `/logs/errores.txt` (patrón: `infrastructure/logging/logger.ts`).
 - Para los usuarios, los email, rut y nombre de usuario (username) son únicos.
+- **El `username` siempre es el RUT de la persona**, normalizado — no se pide como dato de entrada al
+  crear un usuario, se deriva del RUT (`derivarUsername()` en
+  `modules/usuarios/schemas/usuario.schema.ts`). La columna `username` se mantiene en el modelo
+  `Usuario` por compatibilidad y sigue siendo única, pero nunca debe recibir un valor distinto del RUT.
+- Todo intento de login (exitoso y fallido) se registra en `logs/accesos.txt`, y los errores técnicos
+  en `logs/errores.txt` (ver sección Logging).
 - Nuevos casos de uso van en `modules/<módulo>/application/use-cases/`, contra interfaces en
   `domain/repositories/` y `application/ports.ts`; las implementaciones concretas van en
   `modules/<módulo>/infrastructure/`, nunca invocadas directamente desde `domain/` o `application/`.
 - Se prioriza la creación de componentes reutilizables.
+- **Iconos:** una sola familia, `@phosphor-icons/react`, y siempre a través de
+  `shared/components/iconos.tsx`, que fija tamaño y peso. No dibujar SVG a mano ni importar el
+  glifo directamente en un componente. Los iconos son decorativos (`aria-hidden`) cuando van
+  acompañados de texto; si la acción es solo icono, el botón necesita `aria-label` con el sujeto
+  de la acción (ver `shared/components/BotonIcono.tsx`).
 - Antes de construir algo nuevo, revisar si ya existe (en el módulo correspondiente o en `shared/`).
   Si existe, reutilizar.
 

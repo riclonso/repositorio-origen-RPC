@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Ingresar — Intranet SEREMI de Salud Biobío",
+  title: "Ingresar - Intranet SEREMI de Salud Biobío",
 };
 
 export default function LoginPage() {

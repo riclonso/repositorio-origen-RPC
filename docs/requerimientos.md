@@ -1,6 +1,6 @@
 # Requerimientos
 
-Última actualización: 2026-09-04
+Última actualización: 2026-09-09
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` (ver
 > `.claude/commands/feature.md`) cada vez que se aprueba e implementa un requerimiento nuevo. También
@@ -25,14 +25,16 @@ el usuario/product owner antes de diseñar ese módulo.
 | RF-01 | Autenticación por RUT + contraseña                                          | `POST /api/auth/login`, JWT (jose, HS256, 8h) en cookie httpOnly `sesion` |
 | RF-02 | Protección de rutas `/dashboard/:path*` para rol `ADMIN`                    | `src/proxy.ts` |
 | RF-03 | Cierre de sesión                                                             | Server Action `cerrarSesionAction` en `app/dashboard/actions.ts` |
-| RF-04 | Modelo de usuario con `email`, `rut`, `username` únicos                     | `prisma/schema.prisma`, modelo `Usuario` |
+| RF-04 | Modelo de usuario con `email`, `rut`, `username` únicos                     | `prisma/schema.prisma`, modelo `Usuario`. El `username` siempre es el RUT de la persona (no se ingresa, se deriva con `derivarUsername()`). |
 | RF-05 | Seed de usuario administrador inicial                                       | `scripts/seed-admin.ts`, `npm run db:seed` |
+| RF-06 | Mantenedor de usuarios: listar (búsqueda y paginación en servidor), crear, editar, activar/desactivar, restablecer contraseña | Pantalla `/dashboard/usuarios`, módulo `modules/usuarios/` y 4 endpoints bajo `app/api/usuarios/`. Fuera de alcance por decisión: borrado físico (la baja lógica preserva trazabilidad) y edición de `rut`/`username` (el RUT es la credencial de acceso). |
+| RF-08 | Auditoría de operaciones sobre usuarios                                      | `logs/auditoria.txt` vía `registrarAuditoria()`. Audita las cuatro escrituras en éxito y también los rechazos (403, 409, 404). No audita lecturas ni errores de validación. Nunca registra contraseñas ni hashes. |
 
 ### En progreso / stub (sin implementar)
 
 | ID    | Requerimiento                          | Estado |
 |-------|-----------------------------------------|--------|
-| RF-06 | CRUD de administración de usuarios      | `modules/usuarios/` es andamiaje: `CrearUsuario`, `ObtenerUsuario` y `PrismaUsuarioRepository` lanzan `Error("...: no implementado")` a propósito. `app/dashboard/usuarios/page.tsx` y `app/api/usuarios/route.ts` son placeholders. |
+| RF-07 | Log de accesos: registrar todo intento de login, exitoso y fallido | Definido en `CLAUDE.md` (sección Logging) con los campos y el destino `logs/accesos.txt`. **Sin implementar**: el `logger` actual solo tiene nivel `error` con un transporte a `logs/errores.txt`; falta agregar el logger/transporte de accesos y conectarlo en `app/api/auth/login/route.ts`. |
 
 ### Pendientes de definir
 
