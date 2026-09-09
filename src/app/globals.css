@@ -10,6 +10,16 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Paleta oficial: https://framework.digital.gob.cl/colors.html */
+  --color-gob-primary: #006fb3;
+  --color-gob-secondary: #fe6565;
+  --color-gob-tertiary: #0a132d;
+  --color-gob-accent: #a8b7c7;
+  --color-gob-neutral: #eeeeee;
+  --color-gob-gray-a: #4a4a4a;
+  --color-gob-gray-b: #8a8a8a;
+  --color-gob-black: #111111;
 }
 
 @media (prefers-color-scheme: dark) {

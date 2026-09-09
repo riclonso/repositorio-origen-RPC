@@ -1,0 +1,23 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - paragraph [ref=e4]: Gobierno de Chile
+    - main [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - heading "Intranet SEREMI de Salud" [level=1] [ref=e8]
+          - paragraph [ref=e9]: Región del Biobío
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - generic [ref=e12]: RUT
+            - textbox "RUT" [ref=e13]:
+              - /placeholder: 12345678-9
+          - generic [ref=e14]:
+            - generic [ref=e15]: Contraseña
+            - generic [ref=e16]:
+              - textbox "Contraseña" [ref=e17]
+              - button "Ocultar contraseña" [active] [ref=e34]
+          - alert [ref=e33]: Ingresa un RUT válido
+          - button "Ingresar" [ref=e22]
+  - button "Open Next.js Dev Tools" [ref=e28] [cursor=pointer]
+  - alert [ref=e32]
