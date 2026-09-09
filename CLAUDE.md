@@ -8,7 +8,7 @@ Este archivo proporciona guía a Claude Code (claude.ai/code) al trabajar con c�
 
 ## Contexto
 
-Sistema que usan laboratorios y/o unidades de entidades de salud, para reportar datos de [xxxxxxx] en formato excel o csv. 
+Sistema que usan laboratorios y/o unidades de entidades de salud, para reportar datos de Registro Poblacional de Cancer en formato excel o csv. 
 
 ## Documentación viva (`docs/`)
 
@@ -202,6 +202,11 @@ como ejemplo de no filtrar detalles internos en la respuesta).
 - **Validación:** Zod.
 - **Estilos:** Tailwind v4.
 - **Cookies:** cookies-next.
+
+### API Routes
+
+El proyecto **usa API Routes** (`app/api/**/route.ts`) como patrón principal para exponer endpoints REST
+con lógica de negocio. Ver flujo de autenticación arriba para el ejemplo completo.
 
 ### Reglas a seguir
 
