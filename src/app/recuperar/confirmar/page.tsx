@@ -4,7 +4,7 @@ import { CLASES_ENLACE_PUBLICO, MarcoPublico } from "@/shared/components/MarcoPu
 import { ConfirmarForm } from "./confirmar-form";
 
 export const metadata: Metadata = {
-  title: "Elegir contraseña nueva - Intranet SEREMI de Salud Biobío",
+  title: "Elegir contraseña nueva - Repositorio RPC - SEREMI de Salud Biobío",
   robots: { index: false, follow: false },
   // Corta la fuga del token por la cabecera `Referer` hacia cualquier recurso externo. Es la
   // contrapartida de llevar el token en la query string.

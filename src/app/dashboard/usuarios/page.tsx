@@ -16,7 +16,7 @@ import { ListadoUsuarios } from "./listado-usuarios";
 import { RUTA_USUARIOS, construirRutaUsuarios } from "./ruta-usuarios";
 
 export const metadata: Metadata = {
-  title: "Usuarios - Intranet SEREMI de Salud Biobío",
+  title: "Repositorio RPC - SEREMI de Salud Biobío",
 };
 
 type UsuariosPageProps = {

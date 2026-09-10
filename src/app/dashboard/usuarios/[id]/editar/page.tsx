@@ -9,7 +9,7 @@ import { aOpcionesPerfil } from "../../opciones-perfil";
 import { UsuarioForm } from "../../usuario-form";
 
 export const metadata: Metadata = {
-  title: "Editar usuario - Intranet SEREMI de Salud Biobío",
+  title: "Editar usuario - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
 const idSchema = z.uuid();

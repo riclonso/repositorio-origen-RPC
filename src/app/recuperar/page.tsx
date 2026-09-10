@@ -3,7 +3,7 @@ import { MarcoPublico } from "@/shared/components/MarcoPublico";
 import { RecuperarForm } from "./recuperar-form";
 
 export const metadata: Metadata = {
-  title: "Recuperar contraseña - Intranet SEREMI de Salud Biobío",
+  title: "Recuperar contraseña - Repositorio RPC - SEREMI de Salud Biobío",
   // Pantalla de un flujo de credenciales: no tiene por qué aparecer en buscadores, y el
   // `no-referrer` evita que la dirección de esta página viaje a sitios externos.
   robots: { index: false, follow: false },

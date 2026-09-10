@@ -4,7 +4,7 @@ import { cerrarSesionAction } from "./actions";
 import { NavLateral } from "./nav-lateral";
 
 export const metadata: Metadata = {
-  title: "Dashboard administrador - Intranet SEREMI de Salud Biobío",
+  title: "Dashboard administrador - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -15,8 +15,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           la acción primaria de cada página. */}
       <header className="flex items-center justify-between gap-4 bg-gob-tertiary px-4 py-3 md:px-6">
         <div>
-          <p className="text-sm font-semibold tracking-wide text-white">Intranet SEREMI de Salud</p>
-          <p className="text-xs text-gob-accent">Región del Biobío</p>
+          <p className="text-sm font-semibold tracking-wide text-white">Repositorio RPC</p>
+          <p className="text-xs text-gob-accent">SEREMI de Salud Biobío</p>
         </div>
 
         <form action={cerrarSesionAction}>

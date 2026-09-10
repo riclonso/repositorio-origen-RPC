@@ -7,7 +7,7 @@ import { aOpcionesPerfil } from "../opciones-perfil";
 import { UsuarioForm } from "../usuario-form";
 
 export const metadata: Metadata = {
-  title: "Nuevo usuario - Intranet SEREMI de Salud Biobío",
+  title: "Nuevo usuario - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
 // Sin perfil preseleccionado: el esquema rechaza el valor vacío, así que el operador está

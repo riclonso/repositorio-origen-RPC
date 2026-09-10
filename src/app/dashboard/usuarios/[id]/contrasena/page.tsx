@@ -7,7 +7,7 @@ import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repos
 import { ContrasenaForm } from "./contrasena-form";
 
 export const metadata: Metadata = {
-  title: "Restablecer contraseña - Intranet SEREMI de Salud Biobío",
+  title: "Restablecer contraseña - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
 const idSchema = z.uuid();
