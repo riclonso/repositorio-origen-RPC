@@ -82,6 +82,7 @@ function auditarDesenlace(
     logger.error("Error al enviar el correo de recuperación", {
       tokenId: resultado.tokenId,
       usuarioId: resultado.usuarioId,
+      diagnostico: resultado.diagnostico,
     });
     auditarRecuperacion(contexto, {
       accion: "RECUPERACION_SOLICITADA",

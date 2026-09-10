@@ -11,12 +11,47 @@ import type {
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
 
+// Los errores de un relay SMTP suelen citar la dirección de destino en su respuesta, y esa
+// dirección no puede terminar en `errores.txt`. Se conservan los campos estructurados, que son
+// los que permiten diagnosticar, y del texto se borra cualquier cosa con forma de correo.
+function describirFalloEnvio(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "error desconocido";
+  }
+
+  const detalle = error as Error & {
+    code?: string;
+    responseCode?: number;
+    command?: string;
+  };
+
+  const partes = [
+    detalle.code ? `code=${detalle.code}` : null,
+    detalle.responseCode ? `responseCode=${detalle.responseCode}` : null,
+    detalle.command ? `command=${detalle.command}` : null,
+    detalle.message
+      ? `mensaje=${detalle.message.replace(/[^\s<>@]+@[^\s<>@]+/g, "[correo]").slice(0, 300)}`
+      : null,
+  ];
+
+  return partes.filter(Boolean).join(" | ") || "sin detalle";
+}
+
 export type ResultadoSolicitudRecuperacion =
   | { enlace: "ENVIADO"; usuarioId: string; usuarioRut: string }
   | { enlace: "SIN_CUENTA" }
   | { enlace: "CUENTA_INACTIVA"; usuarioId: string; usuarioRut: string }
   | { enlace: "LIMITE_ALCANZADO"; usuarioId: string; usuarioRut: string }
-  | { enlace: "ENVIO_FALLIDO"; usuarioId: string; usuarioRut: string; tokenId: string }
+  | {
+      enlace: "ENVIO_FALLIDO";
+      usuarioId: string;
+      usuarioRut: string;
+      tokenId: string;
+      // Diagnóstico del relay, ya saneado: sin él, un fallo de envío quedaba registrado como
+      // "algo falló" y no había forma de distinguir un relay caído de una credencial vencida
+      // o de un remitente no autorizado.
+      diagnostico: string;
+    }
   | { enlace: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string };
 
 export type DependenciasSolicitudRecuperacion = {
@@ -93,7 +128,7 @@ export async function requestPasswordReset(
       { email: usuario.email, nombres: usuario.nombres },
       token,
     );
-  } catch {
+  } catch (error) {
     // Nadie recibió una copia, así que dejar el token vigente dos horas no aporta nada y ensucia
     // el estado. La fila NO se borra: sigue contando para el cupo, para que un relay caído no
     // habilite reintentos ilimitados contra un servicio que no responde.
@@ -104,6 +139,7 @@ export async function requestPasswordReset(
       usuarioId: usuario.id,
       usuarioRut: usuario.rut,
       tokenId: tokenCreado.id,
+      diagnostico: describirFalloEnvio(error),
     };
   }
 
