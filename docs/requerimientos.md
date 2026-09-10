@@ -30,6 +30,7 @@ el usuario/product owner antes de diseñar ese módulo.
 | RF-06 | Mantenedor de usuarios: listar (búsqueda y paginación en servidor), crear, editar, activar/desactivar, restablecer contraseña | Pantalla `/dashboard/usuarios`, módulo `modules/usuarios/` y 4 endpoints bajo `app/api/usuarios/`. Fuera de alcance por decisión: borrado físico (la baja lógica preserva trazabilidad) y edición de `rut`/`username` (el RUT es la credencial de acceso). |
 | RF-08 | Auditoría de operaciones sobre usuarios                                      | `logs/auditoria.txt` vía `registrarAuditoria()`. Audita las cuatro escrituras en éxito y también los rechazos (403, 409, 404). No audita lecturas ni errores de validación. Nunca registra contraseñas ni hashes. |
 | RF-09 | Catálogo de perfiles en base de datos, reemplazando el enum `Rol`         | Tabla `perfil` con `ADMIN` ("Administrador") y `NOTIFICADOR_RPC` ("Notificador RPC"). `usuario.rol` pasa a `usuario.perfilCodigo` (FK). Módulo `modules/perfiles/`. Agregar un perfil es un INSERT, sin desplegar. **Los permisos siguen en código**: una fila nueva crea un perfil asignable, no uno con permisos. |
+| RF-11 | Visor de registros del sistema (errores y auditoría)                        | Pantalla solo-ADMIN en `/dashboard/logs` con dos pestañas que leen `logs/errores.txt` y `logs/auditoria.txt`. Lector `infrastructure/logging/leerLogs.ts` que hace streaming línea por línea (memoria acotada a 500 entradas), con filtro opcional por rango de fechas (día desde / día hasta, en zona America/Santiago), paginación de 25/50/100 por página (25 por defecto), más recientes primero, detalle colapsable. Solo lectura; no expone rutas absolutas. Construido fuera del flujo `/feature` por ser una pantalla de solo lectura. |
 
 ### En progreso / stub (sin implementar)
 
@@ -52,6 +53,6 @@ el usuario/product owner antes de diseñar ese módulo.
    notas), y `docs/arquitectura.md` / `docs/resumen-tecnico.md` si el cambio los afecta.
 
 ### RF-10: recuperación por correo
-Implementado: solicitud pública por email, enlace de 2 horas y un uso, máximo 3 solicitudes/hora
+Implementado: solicitud pública por email, enlace de 2 horas y un uso, máximo 3 solicitudes cada 15 minutos
 por cuenta, validación compartida de contraseña y envío SMTP institucional configurable.
 Pendiente operativo: configurar el relay y comprobar entrega real.

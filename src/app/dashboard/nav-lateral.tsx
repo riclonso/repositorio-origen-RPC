@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const ENLACES = [
   { href: "/dashboard", etiqueta: "Panel" },
   { href: "/dashboard/usuarios", etiqueta: "Usuarios" },
+  { href: "/dashboard/logs", etiqueta: "Logs" },
 ] as const;
 
 function esActivo(rutaActual: string, href: string): boolean {

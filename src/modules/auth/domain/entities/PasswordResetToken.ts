@@ -19,8 +19,10 @@ export const HORAS_VIGENCIA_TOKEN = 2;
 
 // Cupo por cuenta: es el límite que de verdad protege una casilla del bombardeo, porque acota
 // cuántos correos se le pueden mandar a una persona sin importar desde cuántas IPs se pida.
+// Máximo 3 solicitudes por cada ventana de 15 minutos, para no saturar la casilla ni el relay
+// institucional (evitar que la reputación del remitente caiga en listas negras).
 export const MAXIMO_SOLICITUDES_POR_CUENTA = 3;
-export const VENTANA_SOLICITUDES_MINUTOS = 60;
+export const VENTANA_SOLICITUDES_MINUTOS = 15;
 
 // Retención de filas ya inertes. La purga es oportunista y acotada al usuario que solicita, no
 // un cron: siete días dan margen de sobra al soporte y el historial del evento vive de todas

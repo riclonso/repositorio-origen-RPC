@@ -54,6 +54,7 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | Módulo               | Estado | Detalle |
 |------------------------|--------|---------|
 | `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
+| Visor de registros    | Implementado | `/dashboard/logs` (solo ADMIN) lee `logs/errores.txt` y `logs/auditoria.txt` vía `infrastructure/logging/leerLogs.ts`, que lee solo la cola del archivo para acotar memoria. |
 | `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
 | `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
 | Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
