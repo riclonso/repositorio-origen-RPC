@@ -1,4 +1,5 @@
 import { esAutoOperacion, type Usuario } from "@/modules/usuarios/domain/entities/Usuario";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 
 export type ResultadoCambiarEstadoUsuario =
@@ -25,7 +26,7 @@ export async function cambiarEstadoUsuario(
       return { ok: false, motivo: "AUTO_OPERACION", rut: actual.rut };
     }
 
-    if (actual.activo && actual.rol === "ADMIN") {
+    if (actual.activo && esPerfilAdministrador(actual.perfilCodigo)) {
       if ((await dependencias.repositorio.contarAdminsActivos()) <= 1) {
         return { ok: false, motivo: "ULTIMO_ADMIN", rut: actual.rut };
       }

@@ -1,6 +1,6 @@
 # Requerimientos
 
-Última actualización: 2026-09-09
+Última actualización: 2026-09-10
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` (ver
 > `.claude/commands/feature.md`) cada vez que se aprueba e implementa un requerimiento nuevo. También
@@ -29,6 +29,7 @@ el usuario/product owner antes de diseñar ese módulo.
 | RF-05 | Seed de usuario administrador inicial                                       | `scripts/seed-admin.ts`, `npm run db:seed` |
 | RF-06 | Mantenedor de usuarios: listar (búsqueda y paginación en servidor), crear, editar, activar/desactivar, restablecer contraseña | Pantalla `/dashboard/usuarios`, módulo `modules/usuarios/` y 4 endpoints bajo `app/api/usuarios/`. Fuera de alcance por decisión: borrado físico (la baja lógica preserva trazabilidad) y edición de `rut`/`username` (el RUT es la credencial de acceso). |
 | RF-08 | Auditoría de operaciones sobre usuarios                                      | `logs/auditoria.txt` vía `registrarAuditoria()`. Audita las cuatro escrituras en éxito y también los rechazos (403, 409, 404). No audita lecturas ni errores de validación. Nunca registra contraseñas ni hashes. |
+| RF-09 | Catálogo de perfiles en base de datos, reemplazando el enum `Rol`         | Tabla `perfil` con `ADMIN` ("Administrador") y `NOTIFICADOR_RPC` ("Notificador RPC"). `usuario.rol` pasa a `usuario.perfilCodigo` (FK). Módulo `modules/perfiles/`. Agregar un perfil es un INSERT, sin desplegar. **Los permisos siguen en código**: una fila nueva crea un perfil asignable, no uno con permisos. |
 
 ### En progreso / stub (sin implementar)
 

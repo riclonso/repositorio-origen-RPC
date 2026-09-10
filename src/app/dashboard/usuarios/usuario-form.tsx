@@ -4,7 +4,6 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ZodError } from "zod";
-import type { RolUsuario } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   crearUsuarioFormSchema,
   editarUsuarioSchema,
@@ -13,23 +12,18 @@ import { Boton } from "@/shared/components/Boton";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
 import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
 import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
-import { CampoSelect } from "@/shared/components/CampoSelect";
+import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { RUTA_USUARIOS } from "./ruta-usuarios";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el usuario. Intenta nuevamente.";
-
-const OPCIONES_ROL = [
-  { valor: "USUARIO", etiqueta: "Usuario" },
-  { valor: "ADMIN", etiqueta: "Administrador" },
-];
 
 export type ValoresUsuarioForm = {
   nombres: string;
   apellidos: string;
   rut: string;
   email: string;
-  rol: RolUsuario;
+  perfilCodigo: string;
 };
 
 type EstadoUsuarioForm = {
@@ -63,9 +57,18 @@ type UsuarioFormProps = {
   endpoint: string;
   metodo: "POST" | "PUT";
   valoresIniciales: ValoresUsuarioForm;
+  // Vienen de la base a través de la página. En el alta incluyen una opción vacía que el
+  // esquema rechaza, para que el perfil sea una elección explícita del operador.
+  opcionesPerfil: OpcionSelect[];
 };
 
-export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: UsuarioFormProps) {
+export function UsuarioForm({
+  modo,
+  endpoint,
+  metodo,
+  valoresIniciales,
+  opcionesPerfil,
+}: UsuarioFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
 
@@ -89,7 +92,7 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
         nombres: String(formData.get("nombres") ?? ""),
         apellidos: String(formData.get("apellidos") ?? ""),
         email: String(formData.get("email") ?? ""),
-        rol: String(formData.get("rol") ?? ""),
+        perfilCodigo: String(formData.get("perfilCodigo") ?? ""),
         rut: String(formData.get("rut") ?? ""),
         contrasena: String(formData.get("contrasena") ?? ""),
         confirmacionContrasena: String(formData.get("confirmacionContrasena") ?? ""),
@@ -109,7 +112,7 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
           apellidos: analisis.data.apellidos,
           rut: analisis.data.rut,
           email: analisis.data.email,
-          rol: analisis.data.rol,
+          perfilCodigo: analisis.data.perfilCodigo,
           contrasena: analisis.data.contrasena,
         };
       } else {
@@ -198,13 +201,13 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
         />
 
         <CampoSelect
-          id="rol"
-          name="rol"
-          etiqueta="Rol"
-          opciones={OPCIONES_ROL}
-          value={valores.rol}
-          onChange={(evento) => actualizarCampo("rol", evento.target.value)}
-          error={estado.errores.rol}
+          id="perfilCodigo"
+          name="perfilCodigo"
+          etiqueta="Perfil"
+          opciones={opcionesPerfil}
+          value={valores.perfilCodigo}
+          onChange={(evento) => actualizarCampo("perfilCodigo", evento.target.value)}
+          error={estado.errores.perfilCodigo}
         />
       </div>
 

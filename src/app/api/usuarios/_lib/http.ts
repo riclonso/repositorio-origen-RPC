@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { SesionPayload } from "@/modules/auth/infrastructure/auth/JwtService";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import type { CampoUnico, Usuario } from "@/modules/usuarios/domain/entities/Usuario";
 
 export const MENSAJE_ERROR_INTERNO = "No se pudo completar la operación. Intenta nuevamente.";
@@ -11,6 +12,7 @@ export const MENSAJE_DATOS_INVALIDOS = "Los datos enviados no son válidos";
 // El `id` de ruta se valida como UUID: un identificador mal formado responde 404, no 500.
 export const idUsuarioSchema = z.uuid();
 
+// `perfilCodigo` identifica y `perfilNombre` se muestra: el cliente no arma etiquetas.
 export type UsuarioDTO = Omit<Usuario, "createdAt"> & { createdAt: string };
 
 // Ninguna respuesta incluye `contrasenaHash`: el tipo `Usuario` ya no lo contiene.
@@ -39,6 +41,15 @@ export function respuestaDuplicado(campo: CampoUnico): NextResponse {
   return respuestaError(MENSAJES_DUPLICADO[campo], 409, { campo, codigo: "DUPLICADO" });
 }
 
+// Un perfil inexistente o dado de baja es un dato inválido del formulario, no un fallo del
+// servidor: se responde 400 sobre el campo y nunca se deja escalar la violación de FK a un 500.
+export function respuestaPerfilInvalido(): NextResponse {
+  return respuestaError("El perfil seleccionado no está disponible", 400, {
+    campo: "perfilCodigo",
+    codigo: "PERFIL_INVALIDO",
+  });
+}
+
 export type AccesoAdmin =
   | { ok: true; sesion: SesionPayload }
   | { ok: false; estado: 401 }
@@ -54,7 +65,7 @@ export async function exigirAdmin(): Promise<AccesoAdmin> {
     return { ok: false, estado: 401 };
   }
 
-  if (sesion.rol !== "ADMIN") {
+  if (!esPerfilAdministrador(sesion.perfil)) {
     return { ok: false, estado: 403, sesion };
   }
 

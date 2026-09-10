@@ -51,8 +51,8 @@ librería de infraestructura directamente desde `app/`.
 
 Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no un Server Action):
 
-1. `modules/auth/domain/entities/User.ts` — tipo `User`, `Rol` (`"ADMIN" | "USUARIO"`), regla
-   `puedeIniciarSesion`.
+1. `modules/auth/domain/entities/User.ts` — tipo `User` (con `perfilCodigo: string`) y regla
+   `puedeIniciarSesion`. El tipo `Rol` ya no existe.
 2. `modules/auth/domain/repositories/UserRepository.ts` — interfaz `UserRepository`
    (`buscarPorRut`). `modules/auth/application/ports.ts` — interfaces técnicas
    `VerificadorContrasena`, `EmisorSesion`.
@@ -69,7 +69,7 @@ Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no 
 6. `app/login/login-form.tsx` — Client Component; `useActionState` con función cliente que hace el
    `fetch` de arriba (no Server Action).
 7. `src/proxy.ts` — protege `/dashboard/:path*`: lee la cookie `sesion`, la verifica con
-   `verificarSesion()` y exige `rol === "ADMIN"`; si no, redirige a `/login`.
+   `verificarSesion()` y exige `esPerfilAdministrador(sesion.perfil)`; si no, redirige a `/login`.
 8. `app/dashboard/actions.ts` (`cerrarSesionAction`, Server Action) — borra la cookie y redirige.
 
 ## Decisiones de diseño ya tomadas
@@ -110,8 +110,14 @@ no ampliar el matcher y poner el guard dentro de cada handler (`exigirAdmin()` e
 `app/api/usuarios/_lib/http.ts`). Tres razones: el proxy responde con `NextResponse.redirect` a
 `/login`, y un `fetch` del cliente seguiría el redirect y recibiría HTML donde espera JSON; los casos de
 uso necesitan el `id` del actor para las reglas anti-autobloqueo, dato que el handler debe obtener de
-todas formas; y el proxy corre en runtime Edge, donde multiplicar responsabilidades aumenta la
-superficie de fallo.
+todas formas; y el proxy es el punto de entrada de toda navegación protegida, donde multiplicar
+responsabilidades aumenta la superficie de fallo.
+
+**Corrección:** una versión anterior de este documento afirmaba que el proxy corre en runtime Edge.
+Es falso en Next.js 16: `Proxy` usa el runtime **Node.js** por defecto y la opción `runtime` ni
+siquiera está disponible en ese archivo (ver
+`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`). La decisión de
+mantener el guard en el handler sigue en pie por las dos primeras razones.
 
 **Consecuencia para módulos nuevos:** todo Route Handler bajo `/api/` que exponga datos o mutaciones
 debe traer su propio guard. No se puede asumir que el proxy lo cubre.
@@ -148,3 +154,79 @@ La paleta oficial de gob.cl no trae un rojo que pase WCAG AA como texto sobre bl
 (`gob-secondary` #fe6565 queda en ~3.0:1). Se agregó `--color-gob-danger` (#a01f1f, ~7.7:1) para texto
 de error y acciones destructivas. `gob-gray-b` (#8a8a8a, ~3.1:1) es solo para bordes y placeholders:
 etiquetas y texto de ayuda usan `gob-gray-a` (#4a4a4a, ~7.4:1).
+
+## Decisiones de diseño de RF-09 (catálogo de perfiles)
+
+### Los perfiles son datos; los permisos siguen siendo código
+
+La tabla `perfil` reemplazó al enum `Rol`, de modo que agregar un perfil es un `INSERT`, no un
+despliegue. Pero **insertar una fila crea un perfil asignable, no un perfil con permisos**:
+`esPerfilAdministrador()` (`modules/perfiles/domain/entities/Perfil.ts`) compara contra la constante
+`CODIGO_PERFIL_ADMIN`, no contra una columna del catálogo. Esa es justamente la propiedad que hace
+seguro dejar la tabla abierta a INSERT manual: nadie escala privilegios insertando filas.
+
+Permisos configurables por perfil son un requerimiento aparte: exigen una tabla de permisos y
+reescribir los guards del proxy y de la API.
+
+### `modules/perfiles/` es un módulo propio, no parte de `usuarios/`
+
+El perfil lo consumen dos módulos: `usuarios/` (select, filtro, validación, reglas anti-autobloqueo) y
+`auth/` (el código privilegiado que compara el guard). Si viviera dentro de `usuarios/`, tanto `auth/`
+como `proxy.ts` tendrían que importar desde `usuarios/`, invirtiendo la dependencia natural: el
+mantenedor de usuarios depende de la autenticación, no al revés.
+
+`domain/entities/Perfil.ts` se mantiene como TypeScript puro (sin Prisma, sin `node:*`, sin Zod)
+porque lo importan `proxy.ts` y `JwtService.ts`. Ahí vive también `FORMA_CODIGO_PERFIL`, la expresión
+regular del código, para que el esquema Zod y la verificación del JWT no tengan dos copias que puedan
+derivar.
+
+### El JWT lleva el código del perfil, y su renombre invalida las sesiones
+
+El token lleva el claim `perfil` con el **código**. `verificarSesion()` valida su **forma**, no su
+pertenencia a una lista: validar contra una lista cerrada reintroduciría el acoplamiento que el
+catálogo elimina, porque al insertar un perfil nuevo los tokens de sus titulares serían inválidos
+hasta desplegar.
+
+El renombre del claim (`rol` a `perfil`) **es** el mecanismo de invalidación: un token anterior a
+RF-09 no trae `perfil`, así que `verificarSesion()` devuelve `null`, que es el camino ya probado de
+"sin sesión" (redirect en el proxy, 401 JSON en la API). Nunca produce un 500. No se agregó
+compatibilidad hacia atrás: sería código muerto permanente en la ruta más sensible del sistema.
+
+**Limitación conocida:** el perfil viaja dentro del token, así que cambiar el perfil de una persona (o
+desactivar su cuenta) no surte efecto hasta que el token expira, como máximo 8 horas. Ya era cierto
+con el enum; con perfiles gestionables por datos la expectativa de "lo cambié y no pasó nada" se
+vuelve más probable, por eso queda escrito.
+
+### Qué significa `perfil.activo`
+
+Gobierna la **asignabilidad**, no la **autorización**: un perfil inactivo no se puede asignar a nadie
+más, pero quienes ya lo tienen conservan su acceso. Dos consecuencias que hay que respetar:
+
+* El formulario de **edición** carga los perfiles activos **más el perfil actual del usuario**. Sin
+  eso, editar el email de alguien cuyo perfil fue dado de baja mostraría un `<select>` sin su valor
+  vigente y guardar le cambiaría el perfil en silencio.
+* `ActualizarUsuario` acepta que el perfil enviado sea el que la persona ya tiene, aunque esté
+  inactivo. Exigir que estuviera activo dejaría esa cuenta imposible de editar.
+* El perfil `ADMIN` no se puede desactivar: lo impide el CHECK `perfil_admin_siempre_activo`. Borrarlo
+  lo impide el `ON DELETE RESTRICT` mientras tenga usuarios asignados.
+
+### Sin índice sobre `usuario.perfilCodigo`
+
+PostgreSQL no indexa automáticamente las columnas de clave foránea, y el filtro del listado,
+`contarAdminsActivos()` y la verificación del RESTRICT la recorren. Se omite igual, por la misma razón
+ya documentada para el listado: con una tabla de decenas de filas un índice encarece los INSERT sin
+acelerar nada. **Mismo umbral para revisitarlo: ~50.000 filas en `usuario`.**
+
+### La migración es destructiva y atómica
+
+`20260910120000_perfil_reemplaza_enum_rol` crea la tabla, siembra las dos filas, agrega la columna,
+hace el backfill (`USUARIO` a `NOTIFICADOR_RPC`), la marca `NOT NULL`, agrega la FK y recién entonces
+borra `usuario.rol` y el tipo `Rol`. Prisma ejecuta cada migración en una transacción y todas las
+sentencias son transaccionales, así que **no hay estado intermedio observable**: o queda migrada o
+queda como estaba. No agregar nunca sentencias no transaccionales (`CREATE INDEX CONCURRENTLY`) a este
+archivo: rompería esa garantía.
+
+Los dos `DROP` son irreversibles, así que la aplicación exige `pg_dump` previo de la tabla `usuario`.
+Las filas semilla van **en la migración y no en el seed** porque `prisma migrate deploy` corre siempre
+en el despliegue y `db:seed` no; sin ellas, el `SET NOT NULL` y la FK no tendrían a qué apuntar.
+

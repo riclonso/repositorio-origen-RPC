@@ -1,27 +1,30 @@
 import type { Metadata } from "next";
+import { MarcoPublico } from "@/shared/components/MarcoPublico";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
   title: "Ingresar - Intranet SEREMI de Salud Biobío",
 };
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{ restablecida?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const { restablecida } = await searchParams;
+
   return (
-    <div className="flex flex-1 flex-col bg-gob-neutral">
-      <header className="bg-gob-tertiary px-6 py-4">
-        <p className="text-sm font-medium tracking-wide text-white">Gobierno de Chile</p>
-      </header>
+    <MarcoPublico titulo="Intranet SEREMI de Salud" subtitulo="Región del Biobío">
+      {restablecida === "1" ? (
+        <p
+          role="status"
+          className="mb-5 rounded-md border border-gob-accent bg-gob-neutral px-3 py-2 text-sm font-medium text-gob-gray-a"
+        >
+          Tu contraseña quedó guardada. Ingresa con la contraseña nueva.
+        </p>
+      ) : null}
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm rounded-lg border border-gob-accent bg-white p-8 shadow-sm">
-          <div className="mb-6 text-center">
-            <h1 className="text-xl font-semibold text-gob-black">Intranet SEREMI de Salud</h1>
-            <p className="mt-1 text-sm text-gob-gray-a">Región del Biobío</p>
-          </div>
-
-          <LoginForm />
-        </div>
-      </main>
-    </div>
+      <LoginForm />
+    </MarcoPublico>
   );
 }

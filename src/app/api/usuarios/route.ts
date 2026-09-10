@@ -3,6 +3,7 @@ import { logger } from "@/infrastructure/logging/logger";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { crearUsuario } from "@/modules/usuarios/application/use-cases/CrearUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
+import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { hasheadorContrasenaBcrypt } from "@/modules/usuarios/infrastructure/auth/HasheadorContrasenaBcrypt";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { listadoUsuariosSchema } from "@/modules/usuarios/schemas/listado-usuarios.schema";
@@ -14,6 +15,7 @@ import {
   exigirAdmin,
   respuestaDuplicado,
   respuestaError,
+  respuestaPerfilInvalido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
@@ -76,10 +78,16 @@ export async function POST(request: Request) {
   try {
     const resultado = await crearUsuario(datos.data, {
       repositorio: prismaUsuarioRepository,
+      repositorioPerfiles: prismaPerfilRepository,
       hasheadorContrasena: hasheadorContrasenaBcrypt,
     });
 
     if (!resultado.ok) {
+      // Un perfil inválido es un error de validación: no se audita, como el resto de los 400.
+      if (resultado.motivo === "PERFIL_INVALIDO") {
+        return respuestaPerfilInvalido();
+      }
+
       auditarUsuario(acceso.sesion, request, {
         accion: "USUARIO_CREADO",
         resultado: "RECHAZADO",

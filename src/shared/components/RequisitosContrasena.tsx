@@ -1,6 +1,6 @@
 "use client";
 
-import { REGLAS_CONTRASENA } from "@/modules/usuarios/schemas/usuario.schema";
+import { REGLAS_CONTRASENA } from "@/shared/schemas/contrasena.schema";
 import { IconoCumplido, IconoPendiente } from "@/shared/components/iconos";
 
 type RequisitosContrasenaProps = {

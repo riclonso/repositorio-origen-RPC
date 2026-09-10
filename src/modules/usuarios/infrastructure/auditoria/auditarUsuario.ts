@@ -7,10 +7,8 @@ import {
   type ResultadoAuditoria,
 } from "@/infrastructure/logging/auditoria";
 import type { SesionPayload } from "@/modules/auth/infrastructure/auth/JwtService";
-import type { RolUsuario } from "@/modules/usuarios/domain/entities/Usuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
-
-const LARGO_MAXIMO_USER_AGENT = 200;
+import { extraerIp, extraerUserAgent } from "@/shared/utils/peticion";
 
 export type DesenlaceAuditoria = {
   accion: AccionAuditoria;
@@ -19,22 +17,11 @@ export type DesenlaceAuditoria = {
   usuarioObjetivoId?: string | null;
   usuarioObjetivoRut?: string | null;
   campos?: string[];
-  rolAnterior?: RolUsuario;
-  rolNuevo?: RolUsuario;
+  perfilAnterior?: string;
+  perfilNuevo?: string;
 };
 
-function extraerIp(peticion: Request): string | null {
-  const reenviadas = peticion.headers.get("x-forwarded-for");
-  const primera = reenviadas?.split(",")[0]?.trim();
-  return primera && primera.length > 0 ? primera : null;
-}
-
-function extraerUserAgent(peticion: Request): string | null {
-  const userAgent = peticion.headers.get("user-agent");
-  return userAgent ? userAgent.slice(0, LARGO_MAXIMO_USER_AGENT) : null;
-}
-
-// El RUT del actor no viaja en el JWT (solo `sub` y `rol`), así que se resuelve aquí. La
+// El RUT del actor no viaja en el JWT (solo `sub` y `perfil`), así que se resuelve aquí. La
 // consulta ocurre fuera del camino de respuesta para no penalizar la petición.
 async function resolverRutActor(actorId: string): Promise<string | null> {
   const actor = await prismaUsuarioRepository.obtenerPorId(actorId);
@@ -50,14 +37,15 @@ async function construirYRegistrar(
     accion: desenlace.accion,
     resultado: desenlace.resultado,
     ...(desenlace.motivo ? { motivo: desenlace.motivo } : {}),
+    actorTipo: "SESION",
     actorId: sesion.sub,
     actorRut: await resolverRutActor(sesion.sub),
-    actorRol: sesion.rol,
+    actorPerfil: sesion.perfil,
     usuarioObjetivoId: desenlace.usuarioObjetivoId ?? null,
     usuarioObjetivoRut: desenlace.usuarioObjetivoRut ?? null,
     ...(desenlace.campos ? { campos: desenlace.campos } : {}),
-    ...(desenlace.rolAnterior ? { rolAnterior: desenlace.rolAnterior } : {}),
-    ...(desenlace.rolNuevo ? { rolNuevo: desenlace.rolNuevo } : {}),
+    ...(desenlace.perfilAnterior ? { perfilAnterior: desenlace.perfilAnterior } : {}),
+    ...(desenlace.perfilNuevo ? { perfilNuevo: desenlace.perfilNuevo } : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

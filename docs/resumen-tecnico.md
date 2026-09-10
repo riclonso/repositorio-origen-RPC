@@ -54,6 +54,7 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | Módulo               | Estado | Detalle |
 |------------------------|--------|---------|
 | `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
+| `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
 | `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
 | Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
 
@@ -94,4 +95,13 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   `infrastructure/config/env.ts`, y ese módulo valida con Zod al importarse. Si faltan, el build
   termina en `Failed to collect page data` con un `ZodError`. En Coolify hay que marcarlas como
   disponibles durante el build, no solo como variables de ejecución.
+* **RF-09 exige `pg_dump` antes de desplegar.** La migración `20260910120000_perfil_reemplaza_enum_rol`
+  borra `usuario.rol` y el tipo `Rol`: es irreversible in place. Respaldar con
+  `pg_dump "$DATABASE_URL" --table=usuario --data-only --column-inserts > respaldo.sql` antes de
+  aplicarla.
+* **RF-09 invalida todas las sesiones vigentes.** El claim del JWT pasó de `rol` a `perfil`, así que
+  quien esté conectado al desplegar será redirigido a `/login` y deberá volver a entrar.
+* **No puede haber despliegue rolling en RF-09.** Tras el `DROP COLUMN "rol"`, cualquier instancia con
+  el código anterior falla al consultar `usuario`. Con el contenedor único de Coolify la ventana es el
+  swap; si eso no fuera aceptable, detener el contenedor viejo antes de `prisma migrate deploy`.
 

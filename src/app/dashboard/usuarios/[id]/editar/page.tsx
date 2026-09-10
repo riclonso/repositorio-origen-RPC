@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { obtenerUsuario } from "@/modules/usuarios/application/use-cases/ObtenerUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
+import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
+import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { aOpcionesPerfil } from "../../opciones-perfil";
 import { UsuarioForm } from "../../usuario-form";
 
 export const metadata: Metadata = {
@@ -28,6 +31,14 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
   if (!usuario) {
     notFound();
   }
+
+  // El perfil vigente de la persona se incluye aunque esté dado de baja. Sin esto, editar el
+  // email de alguien cuyo perfil fue desactivado mostraría un select sin su valor actual: el
+  // navegador elegiría otra opción y guardar le cambiaría el perfil en silencio.
+  const perfiles = await listarPerfiles(
+    { soloActivos: true, incluirCodigos: [usuario.perfilCodigo] },
+    { repositorio: prismaPerfilRepository },
+  );
 
   return (
     <div className="max-w-3xl">
@@ -57,8 +68,9 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
           apellidos: usuario.apellidos,
           rut: usuario.rut,
           email: usuario.email,
-          rol: usuario.rol,
+          perfilCodigo: usuario.perfilCodigo,
         }}
+        opcionesPerfil={aOpcionesPerfil(perfiles)}
       />
     </div>
   );

@@ -2,7 +2,9 @@
 
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Boton } from "@/shared/components/Boton";
+import { CLASES_ENLACE_PUBLICO } from "@/shared/components/MarcoPublico";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 
@@ -69,6 +71,12 @@ export function LoginForm() {
       >
         Ingresar
       </Boton>
+
+      <p className="text-center text-sm">
+        <Link href="/recuperar" className={CLASES_ENLACE_PUBLICO}>
+          ¿Olvidó su contraseña?
+        </Link>
+      </p>
     </form>
   );
 }

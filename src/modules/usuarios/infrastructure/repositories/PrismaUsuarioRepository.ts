@@ -4,12 +4,14 @@ import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/U
 import type {
   CampoUnico,
   FiltroListadoUsuarios,
-  RolUsuario,
   Usuario,
 } from "@/modules/usuarios/domain/entities/Usuario";
+import { CODIGO_PERFIL_ADMIN } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
+import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 
-// Selección explícita: `contrasenaHash` nunca sale del repositorio en este módulo.
+// Selección explícita: `contrasenaHash` nunca sale del repositorio en este módulo. El nombre del
+// perfil se trae en la misma consulta (lectura de UNA fila con su perfil, no hay N+1).
 const SELECCION_USUARIO = {
   id: true,
   nombres: true,
@@ -17,7 +19,8 @@ const SELECCION_USUARIO = {
   rut: true,
   email: true,
   username: true,
-  rol: true,
+  perfilCodigo: true,
+  perfil: { select: { nombre: true } },
   activo: true,
   createdAt: true,
 } as const;
@@ -29,11 +32,13 @@ type RegistroUsuario = {
   rut: string;
   email: string;
   username: string;
-  rol: RolUsuario;
+  perfilCodigo: string;
+  perfil: { nombre: string };
   activo: boolean;
   createdAt: Date;
 };
 
+// Aplana el perfil anidado que devuelve Prisma a los dos campos planos del dominio.
 function aUsuario(registro: RegistroUsuario): Usuario {
   return {
     id: registro.id,
@@ -42,13 +47,15 @@ function aUsuario(registro: RegistroUsuario): Usuario {
     rut: registro.rut,
     email: registro.email,
     username: registro.username,
-    rol: registro.rol,
+    perfilCodigo: registro.perfilCodigo,
+    perfilNombre: registro.perfil.nombre,
     activo: registro.activo,
     createdAt: registro.createdAt,
   };
 }
 
 const CODIGO_UNIQUE_VIOLADO = "P2002";
+const CODIGO_FK_VIOLADA = "P2003";
 const MAXIMO_TOKENS_BUSQUEDA = 5;
 
 function campoDesdeConflicto(error: Prisma.PrismaClientKnownRequestError): CampoUnico {
@@ -60,12 +67,18 @@ function campoDesdeConflicto(error: Prisma.PrismaClientKnownRequestError): Campo
   return "rut";
 }
 
-function traducirConflicto(error: unknown): never {
-  if (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === CODIGO_UNIQUE_VIOLADO
-  ) {
-    throw new UsuarioDuplicadoError(campoDesdeConflicto(error));
+// El perfil enviado se valida antes de escribir, así que llegar aquí significa que el perfil
+// desapareció entre la comprobación y el INSERT. Se traduce igual que el duplicado, para que el
+// borde responda 400 y no un 500 por violación de clave foránea.
+function traducirConflicto(error: unknown, perfilCodigo: string): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === CODIGO_UNIQUE_VIOLADO) {
+      throw new UsuarioDuplicadoError(campoDesdeConflicto(error));
+    }
+
+    if (error.code === CODIGO_FK_VIOLADA) {
+      throw new PerfilInvalidoError(perfilCodigo);
+    }
   }
 
   throw error;
@@ -84,8 +97,9 @@ function escaparComodines(token: string): string {
 function construirPredicado(filtro: FiltroListadoUsuarios): Prisma.Sql {
   const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
 
-  if (filtro.rol) {
-    condiciones.push(Prisma.sql`u."rol"::text = ${filtro.rol}`);
+  // El filtro por perfil compara el código en la propia tabla `usuario`: no necesita el JOIN.
+  if (filtro.perfil) {
+    condiciones.push(Prisma.sql`u."perfilCodigo" = ${filtro.perfil}`);
   }
 
   if (filtro.activo !== undefined) {
@@ -120,7 +134,8 @@ type FilaListado = {
   rut: string;
   email: string;
   username: string;
-  rol: string;
+  perfilCodigo: string;
+  perfilNombre: string;
   activo: boolean;
   createdAt: Date;
 };
@@ -133,7 +148,8 @@ function aUsuarioDesdeFila(fila: FilaListado): Usuario {
     rut: String(fila.rut),
     email: String(fila.email),
     username: String(fila.username),
-    rol: fila.rol === "ADMIN" ? "ADMIN" : "USUARIO",
+    perfilCodigo: String(fila.perfilCodigo),
+    perfil: { nombre: String(fila.perfilNombre) },
     activo: Boolean(fila.activo),
     createdAt: fila.createdAt instanceof Date ? fila.createdAt : new Date(fila.createdAt),
   });
@@ -148,11 +164,14 @@ export const prismaUsuarioRepository: UsuarioRepository = {
 
     // El desempate por `id` es obligatorio: sin él, dos homónimos pueden repetirse o perderse
     // entre páginas. Ambas consultas van en la misma transacción para ver el mismo snapshot.
+    // El JOIN con `perfil` es interno y no LEFT: la clave foránea NOT NULL garantiza contraparte,
+    // y un LEFT JOIN escondería una inconsistencia devolviendo un nombre vacío.
     const [filas, conteo] = await prisma.$transaction([
       prisma.$queryRaw<FilaListado[]>`
         SELECT u."id", u."nombres", u."apellidos", u."rut", u."email", u."username",
-               u."rol"::text AS "rol", u."activo", u."createdAt"
+               u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt"
         FROM "usuario" u
+        JOIN "perfil" p ON p."codigo" = u."perfilCodigo"
         WHERE ${predicado}
         ORDER BY u."apellidos" ASC, u."nombres" ASC, u."id" ASC
         LIMIT ${filtro.tamano} OFFSET ${salto}
@@ -206,7 +225,9 @@ export const prismaUsuarioRepository: UsuarioRepository = {
   },
 
   contarAdminsActivos() {
-    return prisma.usuario.count({ where: { rol: "ADMIN", activo: true } });
+    return prisma.usuario.count({
+      where: { perfilCodigo: CODIGO_PERFIL_ADMIN, activo: true },
+    });
   },
 
   async crear(datos) {
@@ -219,7 +240,7 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           email: datos.email,
           username: datos.username,
           contrasenaHash: datos.contrasenaHash,
-          rol: datos.rol,
+          perfilCodigo: datos.perfilCodigo,
           activo: datos.activo,
         },
         select: SELECCION_USUARIO,
@@ -227,7 +248,7 @@ export const prismaUsuarioRepository: UsuarioRepository = {
 
       return aUsuario(registro);
     } catch (error) {
-      traducirConflicto(error);
+      traducirConflicto(error, datos.perfilCodigo);
     }
   },
 
@@ -239,14 +260,14 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           nombres: datos.nombres,
           apellidos: datos.apellidos,
           email: datos.email,
-          rol: datos.rol,
+          perfilCodigo: datos.perfilCodigo,
         },
         select: SELECCION_USUARIO,
       });
 
       return aUsuario(registro);
     } catch (error) {
-      traducirConflicto(error);
+      traducirConflicto(error, datos.perfilCodigo);
     }
   },
 
@@ -260,11 +281,23 @@ export const prismaUsuarioRepository: UsuarioRepository = {
     return aUsuario(registro);
   },
 
+  // Invariante del proyecto: TODO cambio de `usuario.contrasenaHash` invalida los tokens de
+  // recuperación vigentes de esa cuenta. Se hace cumplir aquí, en la única capa que escribe esa
+  // columna por el camino del administrador, y no con un puerto inyectado en cada caso de uso:
+  // así lo hereda por construcción cualquier caso de uso futuro que reutilice este método.
+  // La otra implementación de la misma invariante está en
+  // `PrismaPasswordResetTokenRepository.consumir`; si se cambia una, revisar la otra.
   async actualizarContrasena(id, contrasenaHash) {
-    await prisma.usuario.update({
-      where: { id },
-      data: { contrasenaHash },
-      select: { id: true },
-    });
+    await prisma.$transaction([
+      prisma.usuario.update({
+        where: { id },
+        data: { contrasenaHash },
+        select: { id: true },
+      }),
+      prisma.tokenRecuperacion.updateMany({
+        where: { usuarioId: id, usadoEn: null, invalidadoEn: null },
+        data: { invalidadoEn: new Date() },
+      }),
+    ]);
   },
 };

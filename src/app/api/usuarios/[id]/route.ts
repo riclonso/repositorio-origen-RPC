@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
 import { actualizarUsuario } from "@/modules/usuarios/application/use-cases/ActualizarUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
+import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { editarUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
 import {
@@ -13,12 +14,13 @@ import {
   idUsuarioSchema,
   respuestaDuplicado,
   respuestaError,
+  respuestaPerfilInvalido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
 const MENSAJES_CONFLICTO = {
-  AUTO_OPERACION: "No puedes quitarte a ti mismo el rol de administrador",
-  ULTIMO_ADMIN: "No puedes quitar el rol al último administrador activo",
+  AUTO_OPERACION: "No puedes quitarte a ti mismo el perfil de administrador",
+  ULTIMO_ADMIN: "No puedes quitar el perfil al último administrador activo",
 } as const;
 
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
@@ -60,10 +62,15 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       idValido.data,
       datos.data,
       acceso.sesion.sub,
-      { repositorio: prismaUsuarioRepository },
+      { repositorio: prismaUsuarioRepository, repositorioPerfiles: prismaPerfilRepository },
     );
 
     if (!resultado.ok) {
+      // Un perfil inválido es un error de validación: no se audita, como el resto de los 400.
+      if (resultado.motivo === "PERFIL_INVALIDO") {
+        return respuestaPerfilInvalido();
+      }
+
       auditarUsuario(acceso.sesion, request, {
         accion: "USUARIO_ACTUALIZADO",
         resultado: "RECHAZADO",
@@ -91,8 +98,8 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       usuarioObjetivoId: resultado.usuario.id,
       usuarioObjetivoRut: resultado.usuario.rut,
       campos: resultado.camposModificados,
-      rolAnterior: resultado.rolAnterior,
-      rolNuevo: resultado.rolNuevo,
+      perfilAnterior: resultado.perfilAnterior,
+      perfilNuevo: resultado.perfilNuevo,
     });
 
     return NextResponse.json({ usuario: aUsuarioDTO(resultado.usuario) });

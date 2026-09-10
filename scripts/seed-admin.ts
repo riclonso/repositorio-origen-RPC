@@ -14,6 +14,10 @@ try {
 // El username siempre es el RUT de la persona (regla de negocio, ver CLAUDE.md).
 const RUT_ADMIN = "14212602-8";
 
+// Literal a propósito: este script no importa nada de `src/`. La fila con este código la crea
+// la migración `perfil_reemplaza_enum_rol`, que corre siempre antes que el seed.
+const PERFIL_ADMIN = "ADMIN";
+
 const DATOS_ADMIN = {
   nombres: "Ricardo",
   apellidos: "Sanhueza Aguayo",
@@ -73,13 +77,13 @@ async function main() {
       email: DATOS_ADMIN.email,
       username: DATOS_ADMIN.username,
       contrasenaHash,
-      rol: "ADMIN",
+      perfilCodigo: PERFIL_ADMIN,
       activo: true,
     },
     create: {
       ...DATOS_ADMIN,
       contrasenaHash,
-      rol: "ADMIN",
+      perfilCodigo: PERFIL_ADMIN,
       activo: true,
     },
   });

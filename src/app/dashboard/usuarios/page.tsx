@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
+import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
+import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   FILTRO_LISTADO_POR_DEFECTO,
   listadoUsuariosSchema,
 } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import { EsqueletoTablaUsuarios } from "./esqueleto-tabla-usuarios";
+import { aOpcionesPerfil } from "./opciones-perfil";
 import { FiltrosUsuarios } from "./filtros-usuarios";
 import { ListadoUsuarios } from "./listado-usuarios";
 import { RUTA_USUARIOS, construirRutaUsuarios } from "./ruta-usuarios";
@@ -30,7 +33,13 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
     ? analisis.data
     : { ...FILTRO_LISTADO_POR_DEFECTO };
 
-  const sesion = await obtenerSesionActual();
+  // Se ofrecen TODOS los perfiles, incluidos los dados de baja: un perfil desactivado que aún
+  // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse.
+  const [sesion, perfiles] = await Promise.all([
+    obtenerSesionActual(),
+    listarPerfiles({}, { repositorio: prismaPerfilRepository }),
+  ]);
+
   const actorId = sesion?.sub ?? "";
   const claveFiltro = construirRutaUsuarios(filtro);
 
@@ -55,9 +64,10 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
       <FiltrosUsuarios
         key={`filtros:${claveFiltro}`}
         terminoInicial={filtro.termino ?? ""}
-        rolInicial={filtro.rol ?? ""}
+        perfilInicial={filtro.perfil ?? ""}
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
+        opcionesPerfil={aOpcionesPerfil(perfiles)}
       />
 
       {/* La key hace reaparecer el esqueleto en cada búsqueda y en cada salto de página;

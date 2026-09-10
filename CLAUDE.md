@@ -143,8 +143,9 @@ Puntos que hay que respetar al tocarlo:
 Ejemplo completo de cómo encajan las capas, usando el login — **es un Route Handler REST, no un
 Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desde el cliente):
 
-1. `modules/auth/domain/entities/User.ts` — tipo `User`, `Rol` (`"ADMIN" | "USUARIO"`), regla
-   `puedeIniciarSesion`.
+1. `modules/auth/domain/entities/User.ts` — tipo `User` (con `perfilCodigo: string`) y regla
+   `puedeIniciarSesion`. Ya no existe el tipo `Rol`: los perfiles son filas de la tabla `perfil`
+   (ver más abajo), no un enum.
 2. `modules/auth/domain/repositories/UserRepository.ts` — interfaz `UserRepository` (`buscarPorRut`).
    `modules/auth/application/ports.ts` — interfaces técnicas `VerificadorContrasena`, `EmisorSesion`.
 3. `modules/auth/application/use-cases/LoginUser.ts` — caso de uso
@@ -162,8 +163,8 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
 6. `app/login/login-form.tsx` — Client Component; usa `useActionState` con una función cliente que
    hace el `fetch` de arriba (no una Server Action) y, en éxito, navega con `router.push("/dashboard")`.
 7. `src/proxy.ts` — protege `/dashboard/:path*`: lee la cookie `sesion`, la verifica con
-   `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) y exige `rol === "ADMIN"`; si
-   no, redirige a `/login`. Rutas nuevas que deban protegerse van en el `matcher` de `config`. Debe
+   `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) y exige
+   `esPerfilAdministrador(sesion.perfil)`; si no, redirige a `/login`. Rutas nuevas que deban protegerse van en el `matcher` de `config`. Debe
    vivir dentro de `src/` (no en la raíz) porque el proyecto usa la convención `src`.
 8. `app/dashboard/actions.ts` (`cerrarSesionAction`, Server Action) — borra la cookie `sesion` y
    redirige a `/login`. Se dejó como Server Action (no API Route) por ser una mutación trivial sin
@@ -226,9 +227,15 @@ desde `application/`, porque la entrada incluye datos de transporte (IP, user ag
 aplicación no debe conocer, y porque el handler es el único punto que ve por igual el éxito, el rechazo
 de negocio y el 403 que ni siquiera llega al caso de uso.
 
-Campos: `accion`, `resultado` (`EXITO` / `RECHAZADO`), `motivo`, `actorId`, `actorRut`, `actorRol`,
+Campos: `accion`, `resultado` (`EXITO` / `RECHAZADO`), `motivo`, `actorId`, `actorRut`, `actorPerfil`,
 `usuarioObjetivoId`, `usuarioObjetivoRut`, `campos` (solo nombres de campos modificados, sin valores),
-`rolAnterior` / `rolNuevo`, `ip`, `userAgent`.
+`perfilAnterior` / `perfilNuevo` (con el **código** del perfil, no el nombre visible: un registro de
+auditoría debe apuntar a un identificador estable, para que renombrar un perfil no vuelva ilegible el
+histórico), `ip`, `userAgent`.
+
+**Corte en el histórico:** las entradas escritas antes de RF-09 traen `actorRol`, `rolAnterior` y
+`rolNuevo`; las posteriores, `actorPerfil`, `perfilAnterior` y `perfilNuevo`. Es el mismo evento con
+otro nombre de campo.
 
 Se auditan las escrituras exitosas **y los rechazos** (403 por rol, 409 por duplicado, autooperación o
 último admin, 404 por no encontrado): auditar solo los éxitos dejaría ciego el escenario que motiva
@@ -253,8 +260,9 @@ funcionarios y no deben versionarse.
 
 - PostgreSQL vía `@prisma/adapter-pg` (`src/infrastructure/database/prisma.ts` reutiliza el
   `PrismaClient` en `globalThis` para evitar abrir múltiples conexiones en dev).
-- `prisma/schema.prisma` define por ahora solo el modelo `Usuario` (`rol: Rol`, `activo`, timestamps),
-  mapeado a la tabla `usuario`. Se mantiene en la raíz del proyecto (fuera de `src/`), como exige la
+- `prisma/schema.prisma` define los modelos `Usuario` (mapeado a `usuario`) y `Perfil` (mapeado a
+  `perfil`). `usuario.perfilCodigo` es clave foránea a `perfil.codigo`, con `ON UPDATE CASCADE` y
+  `ON DELETE RESTRICT`. Se mantiene en la raíz del proyecto (fuera de `src/`), como exige la
   convención `src` de Next.js.
 - `scripts/seed-admin.ts` (ejecutado por `npm run db:seed`, también en la raíz) hace `upsert` de un
   usuario ADMIN fijo usando `ADMIN_SEED_PASSWORD`; requiere `.env` cargado (usa `process.loadEnvFile()`)

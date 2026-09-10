@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { nombreCompleto, type RolUsuario } from "@/modules/usuarios/domain/entities/Usuario";
+import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoContrasena, IconoEditar } from "@/shared/components/iconos";
@@ -16,16 +16,12 @@ export type FilaUsuarioVista = {
   rut: string;
   email: string;
   username: string;
-  rol: RolUsuario;
+  perfilNombre: string;
   activo: boolean;
   creadoEl: string;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del usuario. Intenta nuevamente.";
-const ETIQUETAS_ROL: Record<RolUsuario, string> = {
-  ADMIN: "Administrador",
-  USUARIO: "Usuario",
-};
 
 type AccionesFilaProps = {
   fila: FilaUsuarioVista;
@@ -137,7 +133,7 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
               <th scope="col" className="px-3 py-3 font-semibold">Nombre</th>
               <th scope="col" className="px-3 py-3 font-semibold">RUT</th>
               <th scope="col" className="px-3 py-3 font-semibold">Email</th>
-              <th scope="col" className="px-3 py-3 font-semibold">Rol</th>
+              <th scope="col" className="px-3 py-3 font-semibold">Perfil</th>
               <th scope="col" className="px-3 py-3 font-semibold">Creado</th>
               <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                 Acciones
@@ -155,7 +151,7 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
                 </td>
                 <td className="px-3 py-2 text-gob-gray-a">{fila.email}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-gob-gray-a">
-                  {ETIQUETAS_ROL[fila.rol]}
+                  {fila.perfilNombre}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
                   {fila.creadoEl}
@@ -183,7 +179,7 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
             <p className="mt-1 tabular-nums">{fila.rut}</p>
             <p className="break-all">{fila.email}</p>
             <p className="mt-1">
-              {ETIQUETAS_ROL[fila.rol]}, creado el {fila.creadoEl}
+              {fila.perfilNombre}, creado el {fila.creadoEl}
             </p>
             <div className="mt-3">
               <AccionesFila

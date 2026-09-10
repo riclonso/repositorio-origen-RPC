@@ -12,7 +12,7 @@ export function construirRutaUsuarios(
   const parametros = new URLSearchParams();
 
   if (filtro.termino) parametros.set("q", filtro.termino);
-  if (filtro.rol) parametros.set("rol", filtro.rol);
+  if (filtro.perfil) parametros.set("perfil", filtro.perfil);
   if (filtro.activo !== undefined) parametros.set("activo", String(filtro.activo));
   if (filtro.tamano !== FILTRO_LISTADO_POR_DEFECTO.tamano) {
     parametros.set("tamano", String(filtro.tamano));

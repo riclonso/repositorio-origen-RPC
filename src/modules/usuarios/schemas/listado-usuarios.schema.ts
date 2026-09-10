@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { normalizarRut } from "@/shared/utils/rut";
-import { rolSchema } from "@/modules/usuarios/schemas/usuario.schema";
+import { codigoPerfilSchema } from "@/modules/perfiles/schemas/perfil.schema";
 
 const PAGINA_POR_DEFECTO = 1;
 const PAGINA_MAXIMA = 10_000;
@@ -9,7 +9,7 @@ const TAMANO_POR_DEFECTO = 20;
 const TAMANO_MAXIMO = 100;
 const LARGO_MAXIMO_TERMINO = 100;
 
-const CLAVES_FILTRO = ["pagina", "tamano", "q", "rol", "activo"] as const;
+const CLAVES_FILTRO = ["pagina", "tamano", "q", "perfil", "activo"] as const;
 
 // Un token con forma de RUT ("14.212.602-8") se normaliza antes de compararlo contra la
 // columna `rut`, que guarda "14212602-8".
@@ -58,7 +58,9 @@ export const listadoUsuariosSchema = z
           const normalizado = normalizarTermino(valor);
           return normalizado.length > 0 ? normalizado : undefined;
         }),
-      rol: rolSchema.optional(),
+      // Solo se valida la FORMA del código. Un perfil bien formado pero inexistente devuelve
+      // una lista vacía, no un 400: es un filtro de búsqueda, no una mutación.
+      perfil: codigoPerfilSchema.optional(),
       activo: z
         .enum(["true", "false"])
         .optional()
@@ -67,7 +69,7 @@ export const listadoUsuariosSchema = z
   )
   .transform((datos) => ({
     termino: datos.q,
-    rol: datos.rol,
+    perfil: datos.perfil,
     activo: datos.activo,
     pagina: datos.pagina,
     tamano: datos.tamano,

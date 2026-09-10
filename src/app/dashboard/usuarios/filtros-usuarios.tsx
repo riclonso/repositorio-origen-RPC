@@ -2,17 +2,14 @@
 
 import { useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import type { RolUsuario } from "@/modules/usuarios/domain/entities/Usuario";
 import { Boton } from "@/shared/components/Boton";
-import { CampoSelect } from "@/shared/components/CampoSelect";
+import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { RUTA_USUARIOS, construirRutaUsuarios } from "./ruta-usuarios";
 
-const OPCIONES_ROL = [
-  { valor: "", etiqueta: "Todos los roles" },
-  { valor: "ADMIN", etiqueta: "Administrador" },
-  { valor: "USUARIO", etiqueta: "Usuario" },
-];
+// Los perfiles son datos del catálogo, no una lista fija en el código: llegan por props desde
+// la página, que los lee de la base.
+const OPCION_TODOS_LOS_PERFILES: OpcionSelect = { valor: "", etiqueta: "Todos los perfiles" };
 
 const OPCIONES_ESTADO = [
   { valor: "", etiqueta: "Todos los estados" },
@@ -22,18 +19,20 @@ const OPCIONES_ESTADO = [
 
 type FiltrosUsuariosProps = {
   terminoInicial: string;
-  rolInicial: string;
+  perfilInicial: string;
   activoInicial: string;
   tamano: number;
+  opcionesPerfil: OpcionSelect[];
 };
 
 // El filtro vive en la URL, no en un store ni en estado derivado: los campos son no
 // controlados y el componente se remonta con la `key` del filtro vigente que pasa la página.
 export function FiltrosUsuarios({
   terminoInicial,
-  rolInicial,
+  perfilInicial,
   activoInicial,
   tamano,
+  opcionesPerfil,
 }: FiltrosUsuariosProps) {
   const router = useRouter();
   const [buscando, iniciarBusqueda] = useTransition();
@@ -44,13 +43,13 @@ export function FiltrosUsuarios({
 
     const datos = new FormData(evento.currentTarget);
     const termino = String(datos.get("q") ?? "").trim();
-    const rol = String(datos.get("rol") ?? "");
+    const perfil = String(datos.get("perfil") ?? "");
     const activo = String(datos.get("activo") ?? "");
 
     const ruta = construirRutaUsuarios(
       {
         termino: termino === "" ? undefined : termino,
-        rol: rol === "" ? undefined : (rol as RolUsuario),
+        perfil: perfil === "" ? undefined : perfil,
         activo: activo === "" ? undefined : activo === "true",
         pagina: 1,
         tamano,
@@ -83,11 +82,11 @@ export function FiltrosUsuarios({
         />
 
         <CampoSelect
-          id="filtro-rol"
-          name="rol"
-          etiqueta="Rol"
-          opciones={OPCIONES_ROL}
-          defaultValue={rolInicial}
+          id="filtro-perfil"
+          name="perfil"
+          etiqueta="Perfil"
+          opciones={[OPCION_TODOS_LOS_PERFILES, ...opcionesPerfil]}
+          defaultValue={perfilInicial}
         />
 
         <CampoSelect

@@ -26,7 +26,7 @@ function aFilaVista(usuario: Usuario): FilaUsuarioVista {
     rut: usuario.rut,
     email: usuario.email,
     username: usuario.username,
-    rol: usuario.rol,
+    perfilNombre: usuario.perfilNombre,
     activo: usuario.activo,
     creadoEl: formateadorFecha.format(usuario.createdAt),
   };
@@ -52,7 +52,7 @@ export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps)
   const { filas, paginacion } = resultado;
 
   const hayFiltros =
-    filtro.termino !== undefined || filtro.rol !== undefined || filtro.activo !== undefined;
+    filtro.termino !== undefined || filtro.perfil !== undefined || filtro.activo !== undefined;
 
   const conteo =
     paginacion.total === 1 ? "1 usuario encontrado" : `${paginacion.total} usuarios encontrados`;

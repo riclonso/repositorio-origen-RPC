@@ -6,23 +6,70 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Rol {
-  ADMIN
-  USUARIO
+// Catálogo de perfiles. Reemplaza al enum `Rol`: los perfiles son datos, no código, para que
+// agregar uno nuevo no exija una migración ni un despliegue.
+model Perfil {
+  codigo      String   @id @db.VarChar(40)
+  nombre      String   @unique
+  descripcion String?
+  orden       Int      @default(0)
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Relación inversa exigida por Prisma. NUNCA usarla con `include` en el listado de usuarios:
+  // cargaría los usuarios de cada perfil (N+1).
+  usuarios Usuario[]
+
+  @@map("perfil")
 }
 
 model Usuario {
-  id              String   @id @default(uuid())
-  nombres         String
-  apellidos       String
-  rut             String   @unique
-  email           String   @unique
-  username        String   @unique
-  contrasenaHash  String
-  rol             Rol
-  activo          Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  id             String   @id @default(uuid())
+  nombres        String
+  apellidos      String
+  rut            String   @unique
+  email          String   @unique
+  username       String   @unique
+  contrasenaHash String
+  perfilCodigo   String   @db.VarChar(40)
+  perfil         Perfil   @relation(fields: [perfilCodigo], references: [codigo], onUpdate: Cascade, onDelete: Restrict)
+  activo         Boolean  @default(true)
+  createdAt      DateTime @default(now())
 
+  // Relación inversa exigida por Prisma. NUNCA usarla con `include`: el listado de usuarios
+  // arrastraría los tokens de cada fila (mismo motivo ya anotado en Perfil.usuarios).
+  tokensRecuperacion TokenRecuperacion[]
 
   @@map("usuario")
+}
+
+// Tokens de recuperación de contraseña (RF-10). En la base vive únicamente el SHA-256
+// hexadecimal del token: el valor en claro existe solo en memoria durante la petición que lo
+// emite y dentro del correo enviado.
+model TokenRecuperacion {
+  id           String    @id @default(uuid())
+  usuarioId    String
+  usuario      Usuario   @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  tokenHash    String    @unique @db.VarChar(64)
+  // Las cuatro fechas son `timestamp` SIN zona y guardan siempre el reloj de pared en UTC, la
+  // misma convención que `usuario` y `perfil`. Se evaluó y se MIDIÓ la variante con zona, que es
+  // lo que corresponde conceptualmente a un instante absoluto, y no es utilizable con este
+  // stack: Prisma sobre `@prisma/adapter-pg` serializa un `Date` como `2026-09-10 15:12:25.451`
+  // (hora UTC sin marca de zona), así que PostgreSQL la interpreta con el `TimeZone` de la
+  // sesión y guarda un instante corrido —tres horas con America/Santiago—, tanto por el API
+  // tipado como por SQL crudo. El desfase se veía en la propia base: `invalidadoEn` quedaba tres
+  // horas en el FUTURO respecto de `createdAt`.
+  //
+  // Con `timestamp` la convención es única en toda la tabla y no depende de ninguna zona. La
+  // regla que la sostiene, y que hay que respetar en cualquier consulta futura: NUNCA comparar
+  // estas columnas contra `now()` ni castearlas a la variante con zona; el instante siempre
+  // viaja como parámetro casteado a `timestamp`, que es exactamente lo que escribe Prisma.
+  expiraEn     DateTime  @db.Timestamp(3)
+  // Dos timestamps y no un enum de estado: distinguen "lo usó su titular" de "lo mató un
+  // cambio de contraseña por otra vía", y ambas son fechas útiles para el soporte.
+  usadoEn      DateTime? @db.Timestamp(3)
+  invalidadoEn DateTime? @db.Timestamp(3)
+  createdAt    DateTime  @default(now()) @db.Timestamp(3)
+
+  @@map("token_recuperacion")
 }

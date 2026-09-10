@@ -15,6 +15,7 @@ export interface UsuarioRepository {
     valores: { rut?: string; email?: string; username?: string },
     excluirId?: string,
   ): Promise<CampoUnico | null>;
+  // Cuenta administradores activos por CÓDIGO de perfil, no por el nombre visible.
   contarAdminsActivos(): Promise<number>;
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;

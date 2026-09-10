@@ -1,5 +1,3 @@
-export type Rol = "ADMIN" | "USUARIO";
-
 export type User = {
   id: string;
   nombres: string;
@@ -8,7 +6,7 @@ export type User = {
   email: string;
   username: string;
   contrasenaHash: string;
-  rol: Rol;
+  perfilCodigo: string;
   activo: boolean;
   createdAt: Date;
 };

@@ -3,7 +3,7 @@
 import {
   MENSAJE_COINCIDENCIA_CONTRASENA,
   MENSAJE_CONFIRMACION_CONTRASENA,
-} from "@/modules/usuarios/schemas/usuario.schema";
+} from "@/shared/schemas/contrasena.schema";
 import { IconoCumplido, IconoNoCumplido } from "@/shared/components/iconos";
 
 type CoincidenciaContrasenaProps = {
