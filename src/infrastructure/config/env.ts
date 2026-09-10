@@ -30,6 +30,7 @@ const schema = z
   .object({
     DATABASE_URL: z.string().min(1, "DATABASE_URL no está definida"),
     AUTH_SECRET: z.string().min(32, "AUTH_SECRET debe tener al menos 32 caracteres"),
+    TRUST_PROXY: booleanoSchema.optional(),
     APP_URL: z.url("APP_URL debe ser una URL absoluta válida").optional(),
     SMTP_HOST: z.string().min(1, "SMTP_HOST no puede estar vacía").optional(),
     SMTP_PORT: puertoSmtpSchema,
@@ -73,6 +74,7 @@ const schema = z
 export const env = schema.parse({
   DATABASE_URL: process.env.DATABASE_URL,
   AUTH_SECRET: process.env.AUTH_SECRET,
+  TRUST_PROXY: process.env.TRUST_PROXY,
   APP_URL: process.env.APP_URL,
   SMTP_HOST: process.env.SMTP_HOST,
   SMTP_PORT: process.env.SMTP_PORT,

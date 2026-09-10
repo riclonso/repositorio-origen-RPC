@@ -50,3 +50,8 @@ el usuario/product owner antes de diseñar ese módulo.
    agente `revisor` audita.
 3. Al final del flujo, este archivo se actualiza con el nuevo requerimiento (ID correlativo, estado,
    notas), y `docs/arquitectura.md` / `docs/resumen-tecnico.md` si el cambio los afecta.
+
+### RF-10: recuperación por correo
+Implementado: solicitud pública por email, enlace de 2 horas y un uso, máximo 3 solicitudes/hora
+por cuenta, validación compartida de contraseña y envío SMTP institucional configurable.
+Pendiente operativo: configurar el relay y comprobar entrega real.

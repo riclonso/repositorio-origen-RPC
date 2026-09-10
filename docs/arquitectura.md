@@ -230,3 +230,32 @@ Los dos `DROP` son irreversibles, así que la aplicación exige `pg_dump` previo
 Las filas semilla van **en la migración y no en el seed** porque `prisma migrate deploy` corre siempre
 en el despliegue y `db:seed` no; sin ellas, el `SET NOT NULL` y la FK no tendrían a qué apuntar.
 
+
+## Recuperación de contraseña (RF-10)
+
+Implementada en `/recuperar` y `/recuperar/confirmar`, enlazada desde el login.
+El enlace dura 2 horas y es de un solo uso. La base conserva únicamente su SHA-256.
+El cupo de 3 solicitudes por cuenta y hora se reserva bajo bloqueo transaccional por usuario.
+El consumo bloquea primero al usuario y luego al token; el cambio y la invalidación de otros
+ enlaces se confirman juntos. El restablecimiento desde el mantenedor también invalida enlaces.
+Las fechas se escriben y comparan como UTC sin zona mediante parámetros `timestamp`, nunca
+contra `now()` con zona. Pruebas de regresión en `tests/recuperacion.integration.ts`.
+
+El correo se envía por Nodemailer desde `after()`; la respuesta pública no revela si existe
+la cuenta. Los fallos técnicos se registran sin cuerpo de petición, token ni texto SQL.
+El transporte real requiere `SMTP_HOST`, `SMTP_FROM`, `APP_URL` y el puerto/TLS del relay;
+`SMTP_USER` y `SMTP_PASSWORD` son opcionales pero deben ir juntas. Ver `.env.example`.
+No hay credenciales institucionales configuradas ni envío real verificado todavía.
+
+`TRUST_PROXY=false` por defecto ignora X-Forwarded-For y aplica un cupo compartido conservador.
+En Coolify, activar `TRUST_PROXY=true` solamente tras confirmar que Traefik agrega la IP real
+al final de la cadena y que Next no recibe conexiones directas desde internet. El limitador
+por origen es local al proceso; el cupo por cuenta permanece en PostgreSQL entre instancias.
+No registrar el parámetro `token` en los access logs del proxy. La página usa `no-referrer`.
+Las sesiones JWT existentes todavía expiran a las 8 horas: este cambio no agrega revocación.
+
+Migración aditiva: `20260910180000_token_recuperacion`. Aplicar con `npx prisma migrate deploy`.
+Para pruebas usar exclusivamente PostgreSQL desechable local con todas las migraciones:
+`RF10_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... npx tsx tests/recuperacion.integration.ts`.
+Ejecutar en UTC, America/Santiago y Asia/Tokyo mediante `PGOPTIONS='-c timezone=...'`.
+La prueba SMTP usa solo 127.0.0.1:55440 y no entrega mensajes externos.

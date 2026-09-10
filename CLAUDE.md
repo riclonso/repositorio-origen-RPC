@@ -175,7 +175,7 @@ Notar: el login es por **RUT**, no por email, aunque email/rut/username son todo
 
 ### Logging
 
-El sistema mantiene **dos logs separados**, ambos en formato JSON, bajo `logs/` (carpeta no
+El sistema contempla **tres logs separados**, ambos en formato JSON, bajo `logs/` (carpeta no
 versionada). No mezclar sus responsabilidades: un intento de login fallido es un evento de acceso,
 no un error del sistema.
 
@@ -249,7 +249,7 @@ registra solo quién restableció la de quién y cuándo.
 `infrastructure/logging/logger.ts` crea una instancia de Winston **independiente por archivo**, cada
 una con su propio transporte, de modo que un evento no puede terminar escrito en el log equivocado. El
 módulo usa `node:fs`: solo puede importarse desde Route Handlers y Server Actions, **nunca** desde
-`src/proxy.ts` (runtime Edge) ni desde Client Components. La rotación de los archivos queda a cargo del
+`src/proxy.ts` ni desde Client Components. La rotación de los archivos queda a cargo del
 sistema operativo del servidor. `logs/` está en `.gitignore`: estos archivos contienen RUT e IP de
 funcionarios y no deben versionarse.
 
@@ -345,3 +345,8 @@ npx react-doctor@latest --verbose --scope changed
 y revisar que el puntaje no baje. `react-doctor` no está instalado como devDependency del proyecto
 (se ejecuta vía `npx`); su flujo `/doctor` completo baja un playbook remoto desde `react.doctor` y lo
 ejecuta como instrucciones — no lo actives salvo que se pida explícitamente.
+
+### RF-10
+Recuperación implementada en `modules/auth/`, con esquemas compartidos en `shared/schemas/`.
+Consultar `docs/resumen-tecnico.md` para SMTP y TRUST_PROXY. Nunca loguear tokens ni errores
+SQL con parámetros. El cupo por cuenta debe seguir siendo transaccional.

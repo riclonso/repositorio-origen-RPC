@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     // Aquí un 500 sí es admisible: para llegar a fallar hay que traer un token válido de alta
     // entropía, así que no hay ningún oráculo que proteger.
     logger.error("Error al confirmar una recuperación de contraseña", {
-      error: error instanceof Error ? error.message : String(error),
+      tipo: error instanceof Error ? error.name : "ErrorDesconocido",
     });
 
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);

@@ -110,6 +110,15 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
 
     try {
       return await prisma.$transaction(async (transaccion) => {
+        // Mismo orden de bloqueo que el mantenedor: usuario primero, tokens después.
+        // Serializa enlaces distintos de una misma cuenta y evita interbloqueos al
+        // invalidar los demás tokens o cambiar la contraseña desde el administrador.
+        await transaccion.$queryRaw`
+          SELECT u.id FROM usuario u
+          JOIN token_recuperacion t ON t."usuarioId" = u.id
+          WHERE t."tokenHash" = ${tokenHash}::varchar(64)
+          FOR UPDATE OF u
+        `;
         // Reclamo atómico: una única sentencia condicional con RETURNING. Si otra petición
         // llegó primero, esta devuelve cero filas. "Leer, validar y después marcar" sería una
         // condición de carrera que permitiría usar el mismo enlace dos veces.

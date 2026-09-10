@@ -135,23 +135,8 @@ export type ControlLimiteIp =
   | { permitido: true; ip: string | null }
   | { permitido: false; ip: string; segundosEspera: number };
 
-/**
- * Aplica el límite por IP de un endpoint público.
- *
- * Este límite SÍ es observable desde fuera (responde 429) porque solo informa sobre la IP del
- * propio solicitante y no sobre ninguna cuenta. El límite por cuenta, en cambio, es invisible.
- *
- * La clave es la IP que `extraerIp` toma del último salto de confianza de `x-forwarded-for`,
- * no la que declara el cliente: de lo contrario el límite se evade rotando la cabecera.
- *
- * Sobre el caso `ip === null`: en este runtime NO ocurre, porque Next.js rellena
- * `x-forwarded-for` con la dirección del socket cuando la petición no la trae. La rama existe
- * solo porque el tipo de retorno lo admite, y NO es una protección con la que se pueda contar.
- * Se resuelve dejando pasar la petición, y no agrupando todo el tráfico bajo una clave común,
- * porque ese agrupamiento sería una negación de servicio contra todo el mundo; lo que de verdad
- * protege una casilla del bombardeo es el cupo por cuenta, que vive en la base de datos y no
- * depende de ninguna cabecera.
- */
+// Sin proxy verificado se usa un cupo compartido conservador; no se aceptan IPs
+// declaradas por el cliente. Configurar TRUST_PROXY permite límites individuales.
 export function controlarLimitePorIp(
   peticion: Request,
   ambito: string,
@@ -160,13 +145,10 @@ export function controlarLimitePorIp(
 ): ControlLimiteIp {
   const ip = extraerIp(peticion);
 
-  if (!ip) {
-    return { permitido: true, ip: null };
-  }
-
-  const resultado = registrarIntento(ambito, ip, maximoIntentos, ventanaMinutos);
+  const clave = ip ?? "origen-no-verificado";
+  const resultado = registrarIntento(ambito, clave, maximoIntentos, ventanaMinutos);
 
   return resultado.permitido
     ? { permitido: true, ip }
-    : { permitido: false, ip, segundosEspera: resultado.segundosEspera };
+    : { permitido: false, ip: clave, segundosEspera: resultado.segundosEspera };
 }

@@ -163,7 +163,7 @@ export async function POST(request: Request) {
       // el camino "no existe" responde 200 sería un oráculo. Aquí ni siquiera es posible,
       // porque la respuesta ya salió.
       logger.error("Error al procesar una solicitud de recuperación de contraseña", {
-        error: error instanceof Error ? error.message : String(error),
+        tipo: error instanceof Error ? error.name : "ErrorDesconocido",
       });
     }
   });
