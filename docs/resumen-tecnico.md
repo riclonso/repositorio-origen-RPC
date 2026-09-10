@@ -81,3 +81,17 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   contraseña que no cumpla hace fallar `npm run db:seed` con un mensaje explícito. El login **no**
   valida complejidad (`login.schema.ts` conserva `min(1)`), así que las contraseñas anteriores siguen
   sirviendo para iniciar sesión.
+* **`npm run postinstall` genera el cliente de Prisma.** `@prisma/client` no exporta nada hasta que
+  se ejecuta `prisma generate`, así que sin este script el servidor de build compila y luego falla el
+  type check con `Module '@prisma/client' has no exported member 'PrismaClient'`. Localmente el error
+  no aparece si alguien ya corrió `prisma generate` a mano.
+* **`prisma.config.ts` no exige `.env` ni `DATABASE_URL`.** `process.loadEnvFile()` va en `try/catch`
+  (en el servidor ese archivo no existe) y la `datasource` solo se define si `DATABASE_URL` está
+  presente, porque `prisma generate` no se conecta a la base de datos y con `env("DATABASE_URL")`
+  abortaba con `PrismaConfigEnvError`. Los comandos que sí necesitan la URL la reciben cuando existe.
+* **`DATABASE_URL` y `AUTH_SECRET` deben estar disponibles en TIEMPO DE BUILD**, no solo en runtime.
+  `next build` evalúa los Route Handlers para recolectar su configuración, esos importan
+  `infrastructure/config/env.ts`, y ese módulo valida con Zod al importarse. Si faltan, el build
+  termina en `Failed to collect page data` con un `ZodError`. En Coolify hay que marcarlas como
+  disponibles durante el build, no solo como variables de ejecución.
+

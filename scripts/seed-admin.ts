@@ -2,7 +2,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
-process.loadEnvFile();
+// En local las variables vienen de .env; en el servidor de build y en producción llegan ya
+// puestas en el entorno y ese archivo no existe. Sin este try/catch, `prisma generate` aborta
+// con ENOENT antes de leer el schema y el build falla entero.
+try {
+  process.loadEnvFile();
+} catch {
+  // Sin .env: se usan las variables de entorno tal como estén.
+}
 
 // El username siempre es el RUT de la persona (regla de negocio, ver CLAUDE.md).
 const RUT_ADMIN = "14212602-8";
