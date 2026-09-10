@@ -4,12 +4,15 @@
 // para que ningún componente reinvente el tamaño ni el grosor de trazo. Antes había SVG
 // dibujados a mano aquí; se reemplazaron por la librería.
 import {
+  Check,
   CheckCircle,
+  Circle,
   Eye,
   EyeSlash,
   Key,
   PencilSimple,
   Prohibit,
+  X,
   type Icon,
 } from "@phosphor-icons/react";
 
@@ -33,6 +36,12 @@ export const IconoEditar = crearIcono(PencilSimple, TAMANO_ACCION);
 export const IconoContrasena = crearIcono(Key, TAMANO_ACCION);
 export const IconoDesactivar = crearIcono(Prohibit, TAMANO_ACCION);
 export const IconoActivar = crearIcono(CheckCircle, TAMANO_ACCION);
+
+// Requisitos de contraseña: el icono cambia de forma, no solo de color, porque el color no
+// puede ser el único portador de la información.
+export const IconoCumplido = crearIcono(Check, 14);
+export const IconoPendiente = crearIcono(Circle, 14);
+export const IconoNoCumplido = crearIcono(X, 14);
 
 export const IconoOjo = crearIcono(Eye, TAMANO_CAMPO);
 export const IconoOjoTachado = crearIcono(EyeSlash, TAMANO_CAMPO);

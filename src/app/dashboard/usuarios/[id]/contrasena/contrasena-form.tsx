@@ -1,15 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ZodError } from "zod";
 import {
-  MENSAJE_COMPLEJIDAD_CONTRASENA,
   restablecerContrasenaFormSchema,
 } from "@/modules/usuarios/schemas/usuario.schema";
 import { Boton } from "@/shared/components/Boton";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
+import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
+import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
 import { RUTA_USUARIOS } from "../../ruta-usuarios";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo restablecer la contraseña. Intenta nuevamente.";
@@ -36,6 +37,11 @@ function aErroresPorCampo(error: ZodError): Record<string, string> {
 
 export function ContrasenaForm({ usuarioId }: { usuarioId: string }) {
   const router = useRouter();
+  // Campos controlados a propósito: React 19 resetea los no controlados de un
+  // `<form action={...}>` en cuanto la acción termina, también al devolver errores de
+  // validación. Sin esto, un error borraba lo ya tecleado.
+  const [contrasena, setContrasena] = useState("");
+  const [confirmacion, setConfirmacion] = useState("");
 
   const [estado, enviarFormulario, enviando] = useActionState<EstadoContrasenaForm, FormData>(
     async (_estadoPrevio, formData) => {
@@ -74,22 +80,37 @@ export function ContrasenaForm({ usuarioId }: { usuarioId: string }) {
   return (
     <form action={enviarFormulario} className="mt-6 flex flex-col gap-5">
       <div className="grid gap-5 md:grid-cols-2">
-        <CampoContrasena
-          id="contrasena"
-          name="contrasena"
-          etiqueta="Nueva contraseña"
-          ayuda={MENSAJE_COMPLEJIDAD_CONTRASENA}
-          autoComplete="new-password"
-          error={estado.errores.contrasena}
-        />
+        <div>
+          <CampoContrasena
+            id="contrasena"
+            name="contrasena"
+            etiqueta="Nueva contraseña"
+            autoComplete="new-password"
+            error={estado.errores.contrasena}
+            aria-describedby="requisitos-contrasena"
+            value={contrasena}
+            onChange={(evento) => setContrasena(evento.target.value)}
+          />
+          <RequisitosContrasena id="requisitos-contrasena" contrasena={contrasena} />
+        </div>
 
-        <CampoContrasena
-          id="confirmacionContrasena"
-          name="confirmacionContrasena"
-          etiqueta="Repetir contraseña"
-          autoComplete="new-password"
-          error={estado.errores.confirmacionContrasena}
-        />
+        <div>
+          <CampoContrasena
+            id="confirmacionContrasena"
+            name="confirmacionContrasena"
+            etiqueta="Repetir contraseña"
+            autoComplete="new-password"
+            error={estado.errores.confirmacionContrasena}
+            aria-describedby="coincidencia-contrasena"
+            value={confirmacion}
+            onChange={(evento) => setConfirmacion(evento.target.value)}
+          />
+          <CoincidenciaContrasena
+            id="coincidencia-contrasena"
+            contrasena={contrasena}
+            confirmacion={confirmacion}
+          />
+        </div>
       </div>
 
       {estado.errorGeneral ? (

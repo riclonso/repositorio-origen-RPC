@@ -27,6 +27,9 @@
   /* Hover del azul institucional. Sin esto el hover saltaba de #006fb3 a gob-tertiary
      (#0a132d, casi negro), un cambio demasiado brusco para una accion primaria. */
   --color-gob-primary-oscuro: #005b91;
+  /* Verde oscurecido (~5.6:1 sobre blanco) para requisitos cumplidos. Los verdes vivos
+     habituales rondan 2:1 y no alcanzan el mínimo AA para texto. */
+  --color-gob-success: #146c43;
 }
 
 /* Tema bloqueado en claro a proposito. Las superficies del panel (blanco, gob-neutral) y la

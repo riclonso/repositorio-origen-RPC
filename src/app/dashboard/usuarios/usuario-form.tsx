@@ -1,17 +1,18 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ZodError } from "zod";
 import type { RolUsuario } from "@/modules/usuarios/domain/entities/Usuario";
 import {
-  MENSAJE_COMPLEJIDAD_CONTRASENA,
   crearUsuarioFormSchema,
   editarUsuarioSchema,
 } from "@/modules/usuarios/schemas/usuario.schema";
 import { Boton } from "@/shared/components/Boton";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
+import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
+import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
 import { CampoSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { RUTA_USUARIOS } from "./ruta-usuarios";
@@ -67,6 +68,20 @@ type UsuarioFormProps = {
 export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: UsuarioFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
+
+  // Los campos van CONTROLADOS a propósito. React 19 resetea los campos no controlados de un
+  // `<form action={...}>` en cuanto la acción termina, también cuando devuelve errores de
+  // validación: el operador corregía un RUT mal escrito y encontraba el resto del formulario
+  // en blanco. Con el valor en estado, un error deja de costar volver a teclear todo.
+  const [valores, setValores] = useState(() => ({
+    ...valoresIniciales,
+    contrasena: "",
+    confirmacionContrasena: "",
+  }));
+
+  function actualizarCampo(campo: keyof typeof valores, valor: string) {
+    setValores((previos) => ({ ...previos, [campo]: valor }));
+  }
 
   const [estado, enviarFormulario, enviando] = useActionState<EstadoUsuarioForm, FormData>(
     async (_estadoPrevio, formData) => {
@@ -143,7 +158,8 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
           name="nombres"
           etiqueta="Nombres"
           autoComplete="given-name"
-          defaultValue={valoresIniciales.nombres}
+          value={valores.nombres}
+          onChange={(evento) => actualizarCampo("nombres", evento.target.value)}
           error={estado.errores.nombres}
         />
 
@@ -152,7 +168,8 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
           name="apellidos"
           etiqueta="Apellidos"
           autoComplete="family-name"
-          defaultValue={valoresIniciales.apellidos}
+          value={valores.apellidos}
+          onChange={(evento) => actualizarCampo("apellidos", evento.target.value)}
           error={estado.errores.apellidos}
         />
 
@@ -163,7 +180,8 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
             etiqueta="RUT"
             ayuda="Con guion y dígito verificador. Será el usuario de ingreso."
             placeholder="12345678-9"
-            defaultValue={valoresIniciales.rut}
+            value={valores.rut}
+            onChange={(evento) => actualizarCampo("rut", evento.target.value)}
             error={estado.errores.rut}
           />
         ) : null}
@@ -174,7 +192,8 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
           etiqueta="Email"
           type="email"
           autoComplete="email"
-          defaultValue={valoresIniciales.email}
+          value={valores.email}
+          onChange={(evento) => actualizarCampo("email", evento.target.value)}
           error={estado.errores.email}
         />
 
@@ -183,29 +202,45 @@ export function UsuarioForm({ modo, endpoint, metodo, valoresIniciales }: Usuari
           name="rol"
           etiqueta="Rol"
           opciones={OPCIONES_ROL}
-          defaultValue={valoresIniciales.rol}
+          value={valores.rol}
+          onChange={(evento) => actualizarCampo("rol", evento.target.value)}
           error={estado.errores.rol}
         />
       </div>
 
       {esCreacion ? (
         <div className="grid gap-5 md:grid-cols-2">
-          <CampoContrasena
-            id="contrasena"
-            name="contrasena"
-            etiqueta="Contraseña"
-            ayuda={MENSAJE_COMPLEJIDAD_CONTRASENA}
-            autoComplete="new-password"
-            error={estado.errores.contrasena}
-          />
+          <div>
+            <CampoContrasena
+              id="contrasena"
+              name="contrasena"
+              etiqueta="Contraseña"
+              autoComplete="new-password"
+              error={estado.errores.contrasena}
+              aria-describedby="requisitos-contrasena"
+              value={valores.contrasena}
+              onChange={(evento) => actualizarCampo("contrasena", evento.target.value)}
+            />
+            <RequisitosContrasena id="requisitos-contrasena" contrasena={valores.contrasena} />
+          </div>
 
-          <CampoContrasena
-            id="confirmacionContrasena"
-            name="confirmacionContrasena"
-            etiqueta="Repetir contraseña"
-            autoComplete="new-password"
-            error={estado.errores.confirmacionContrasena}
-          />
+          <div>
+            <CampoContrasena
+              id="confirmacionContrasena"
+              name="confirmacionContrasena"
+              etiqueta="Repetir contraseña"
+              autoComplete="new-password"
+              error={estado.errores.confirmacionContrasena}
+              aria-describedby="coincidencia-contrasena"
+              value={valores.confirmacionContrasena}
+              onChange={(evento) => actualizarCampo("confirmacionContrasena", evento.target.value)}
+            />
+            <CoincidenciaContrasena
+              id="coincidencia-contrasena"
+              contrasena={valores.contrasena}
+              confirmacion={valores.confirmacionContrasena}
+            />
+          </div>
         </div>
       ) : null}
 
