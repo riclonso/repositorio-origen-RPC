@@ -26,7 +26,7 @@ export interface PasswordResetTokenRepository {
   // Crea el token y, en la misma transacción, purga las filas antiguas de ese usuario. El hash
   // entra como argumento y no vuelve en el resultado.
   //
-  // Devuelve `null` —sin crear nada— cuando la cuenta ya agotó su cupo en la ventana. La
+  // Devuelve `null` (sin crear nada) cuando la cuenta ya agotó su cupo en la ventana. La
   // decisión la toma la base de datos dentro de la sentencia de inserción, así que dos
   // peticiones simultáneas no pueden pasar ambas por el hueco.
   crear(datos: EmisionToken): Promise<PasswordResetToken | null>;

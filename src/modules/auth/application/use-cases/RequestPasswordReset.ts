@@ -29,7 +29,7 @@ export type DependenciasSolicitudRecuperacion = {
 /**
  * Emite un enlace de recuperación de contraseña.
  *
- * IMPORTANTE — el resultado discriminado que devuelve esta función existe SOLO para auditar.
+ * IMPORTANTE: el resultado discriminado que devuelve esta función existe SOLO para auditar.
  * El Route Handler no puede leerlo para decidir la respuesta HTTP, porque para cuando este
  * resultado existe la respuesta 200 ya se emitió: todo este trabajo corre dentro de un
  * `after()` de `next/server`. Esa imposibilidad física es deliberada, y es lo que hace que el
