@@ -34,6 +34,11 @@ export const prismaUserRepository: UserRepository = {
     return registro ? aUser(registro) : null;
   },
 
+  async buscarPorId(id): Promise<User | null> {
+    const registro = await prisma.usuario.findUnique({ where: { id } });
+    return registro ? aUser(registro) : null;
+  },
+
   // El email se persiste normalizado en minúsculas (ver `emailSchema`), así que quien llame
   // debe entregarlo ya normalizado: el UNIQUE de PostgreSQL distingue mayúsculas.
   async buscarPorEmail(email): Promise<User | null> {

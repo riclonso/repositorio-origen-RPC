@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Boton } from "@/shared/components/Boton";
 import { CLASES_ENLACE_PUBLICO } from "@/shared/components/MarcoPublico";
@@ -14,8 +13,6 @@ const estadoInicial: LoginState = { error: null };
 const MENSAJE_ERROR_GENERICO = "RUT o contraseña incorrectos";
 
 export function LoginForm() {
-  const router = useRouter();
-
   const [estado, formAction, pending] = useActionState<LoginState, FormData>(
     async (_estadoPrevio, formData) => {
       const respuesta = await fetch("/api/auth/login", {
@@ -32,8 +29,16 @@ export function LoginForm() {
         return { error: datos?.error ?? MENSAJE_ERROR_GENERICO };
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      // Navegación dura a propósito, no `router.push`: al iniciar sesión cambia la cookie de
+      // sesión, y una navegación suave del App Router puede reutilizar una entrada previa de la
+      // caché de rutas del cliente —por ejemplo el rebote a /login de un intento con un perfil
+      // sin acceso al panel— en vez de volver a pedir /inicio con la cookie recién emitida.
+      // `window.location.assign` fuerza una petición nueva: el despachador /inicio se evalúa con
+      // la sesión actual y redirige al panel del perfil, sin caché de cliente de por medio. La
+      // regla de ESLint sugiere `router.push()`, que es justo la navegación suave que reintroduce
+      // este bug, así que se desactiva de forma acotada y documentada solo en esta línea.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- ver nota arriba
+      window.location.assign("/inicio");
       return estadoInicial;
     },
     estadoInicial,

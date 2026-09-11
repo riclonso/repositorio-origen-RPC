@@ -161,7 +161,13 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
    `cookies-next/server` (`setCookie` funciona igual en Route Handlers que en Server Actions — ambos
    pueden escribir `Set-Cookie`).
 6. `app/login/login-form.tsx` — Client Component; usa `useActionState` con una función cliente que
-   hace el `fetch` de arriba (no una Server Action) y, en éxito, navega con `router.push("/dashboard")`.
+   hace el `fetch` de arriba (no una Server Action) y, en éxito, navega con
+   `window.location.assign("/dashboard")` — navegación **dura**, no `router.push`: el login cambia
+   la cookie de sesión, y una navegación suave del App Router puede reutilizar una entrada previa de
+   la caché de rutas del cliente (p.ej. el rebote a `/login` de un intento con un perfil sin acceso
+   al panel) en vez de volver a pedir `/dashboard` con la cookie recién emitida, dejando al usuario
+   atascado en `/login` sin mensaje de error. La petición nueva reevalúa el proxy con la sesión
+   vigente. Mantener ese patrón en cualquier navegación posterior a un cambio de sesión.
 7. `src/proxy.ts` — protege `/dashboard/:path*`: lee la cookie `sesion`, la verifica con
    `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) y exige
    `esPerfilAdministrador(sesion.perfil)`; si no, redirige a `/login`. Rutas nuevas que deban protegerse van en el `matcher` de `config`. Debe

@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-04
+Última actualización: 2026-09-11
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -25,11 +25,16 @@ src/
 │   │   └── schemas/        — login.schema.ts (Zod)
 │   └── usuarios/           — mismo patrón; mantenedor de usuarios (RF-06, implementado)
 ├── infrastructure/         — database/prisma.ts, config/env.ts, logging/{logger,auditoria}.ts (transversal)
-├── proxy.ts                — guard de sesión para rutas protegidas (reemplaza a middleware.ts en Next.js 16)
+├── proxy.ts                — guard de sesión por área protegida (reemplaza a middleware.ts en Next.js 16)
 └── shared/
-    ├── components/          — CampoTexto, CampoContrasena, CampoSelect, Boton, DialogoConfirmacion
+    ├── components/          — CampoTexto, CampoContrasena, CampoSelect, Boton, DialogoConfirmacion, EncabezadoPanel, NavegacionPanel
+    ├── acciones/            — cerrarSesion.ts (Server Action compartida por los paneles)
     └── utils/               — rut.ts (validación de RUT, usada por varios módulos)
 ```
+
+Bajo `app/` hay dos áreas de panel, una por perfil: `app/dashboard/` (solo ADMIN) y
+`app/notificador/` (solo NOTIFICADOR_RPC), más un despachador `app/inicio/` al que llega el login y
+que redirige a cada perfil a su panel. Ver "Panel del perfil NOTIFICADOR_RPC (RF-12)".
 
 `prisma/`, `scripts/`, `public/` y los archivos de configuración quedan en la raíz del proyecto,
 fuera de `src/` (convención `src` de Next.js). El alias `@/*` apunta a `src/*`.
@@ -259,3 +264,64 @@ Para pruebas usar exclusivamente PostgreSQL desechable local con todas las migra
 `RF10_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... npx tsx tests/recuperacion.integration.ts`.
 Ejecutar en UTC, America/Santiago y Asia/Tokyo mediante `PGOPTIONS='-c timezone=...'`.
 La prueba SMTP usa solo 127.0.0.1:55440 y no entrega mensajes externos.
+
+## Panel del perfil NOTIFICADOR_RPC (RF-12)
+
+### Áreas top-level separadas por perfil, no `/dashboard` compartido
+
+Cada perfil tiene su propia área bajo `app/`: `app/dashboard/` (solo ADMIN) y `app/notificador/`
+(solo NOTIFICADOR_RPC). Se descartó compartir `/dashboard` con secciones gateadas por perfil.
+
+La razón es el invariante más fuerte del proyecto: **todo lo que cuelga de `/dashboard` es solo-ADMIN,
+igual que `/api/usuarios/*`**. Con áreas separadas, el proxy protege cada una con una igualdad de
+perfil simple y positiva, y ese invariante se mantiene por construcción. Compartir `/dashboard`
+obligaría a degradar la regla del proxy de "subárbol de admin" a "subárbol autenticado" y mover la
+autorización real a cada subsección, multiplicando la superficie donde una sección sin su propio
+guard expondría en silencio una función de admin — justo el "gateo solo en UI" que `CLAUDE.md`
+prohíbe. Para dos perfiles no aporta nada y agrega refactor y riesgo.
+
+### El proxy hace chequeo positivo por área; `/inicio` despacha
+
+`src/proxy.ts` usa `matcher: ["/dashboard/:path*", "/notificador/:path*"]` y corre en runtime
+**Node.js** (no Edge, ver aviso de Next 16), por lo que importa `verificarSesion` y los helpers de
+dominio. Lógica: sin sesión válida → `/login`; bajo `/dashboard` y `!esPerfilAdministrador` → `/inicio`;
+bajo `/notificador` y `!esPerfilNotificador` → `/inicio`; si no, `next()`. El chequeo es **positivo**
+por área (no "autenticado y no-admin"): un tercer perfil futuro no se cuela en un panel ajeno. A un
+perfil que entra al área equivocada se le reenvía a `/inicio` (su propio panel), no a `/login`: ya
+tiene sesión, y mandarlo a login simularía una expiración.
+
+`app/inicio/page.tsx` es un Server Component despachador que **no** está en el matcher (se autoguarda
+leyendo la cookie con `obtenerSesionActual()`): sin sesión o perfil desconocido → `/login`; ADMIN →
+`/dashboard`; NOTIFICADOR_RPC → `/notificador`. Nunca renderiza contenido. Es la única fuente de
+"dónde aterriza cada perfil".
+
+### Navegación post-login consciente del perfil, sin que el cliente conozca el perfil
+
+`app/login/login-form.tsx` navega (duro, `window.location.assign`) a `/inicio`, no a una ruta fija de
+panel. El cliente no decide el destino: el servidor lo despacha en `/inicio`. Se mantiene la
+navegación **dura** (no `router.push`) porque una navegación suave del App Router puede reutilizar una
+entrada previa de la caché de rutas del cliente —por ejemplo el rebote de un perfil sin acceso— en vez
+de reevaluar el proxy con la cookie recién emitida; está documentado en ese archivo.
+
+### Shell compartido por ambos paneles
+
+El header y la navegación lateral se extrajeron a `shared/` parametrizados por datos, para no duplicar
+el estilo `gob-*`, el botón de cerrar sesión ni la lógica de estado activo/`aria-current`:
+`shared/components/EncabezadoPanel.tsx` (branding + cerrar sesión), `shared/components/NavegacionPanel.tsx`
+(Client Component con `usePathname`; recibe `enlaces` y `titulo`), y `shared/acciones/cerrarSesion.ts`
+(Server Action, movida desde `app/dashboard/`) para que `app/notificador/` no dependa de `app/dashboard/`.
+Los enlaces y el título de cada panel viven en su propio `nav-enlaces.ts`.
+
+### Saludo con el nombre: `buscarPorId` en el repositorio de `auth`
+
+La bienvenida muestra el nombre del usuario. El JWT solo lleva `sub` (id) y `perfil`, así que se agregó
+`buscarPorId(id)` a `modules/auth/domain/repositories/UserRepository.ts` y su implementación en
+`PrismaUserRepository.ts`, reutilizando el mapper `aUser` de `buscarPorRut`. La página obtiene la sesión,
+resuelve el usuario por id y saluda con `nombres`; el `contrasenaHash` no se serializa al cliente (la
+página solo lee `nombres`). Si el usuario no existe con sesión vigente (caso borde: cuenta borrada), la
+página redirige a `/login` en vez de renderizar un panel sin dueño. Esta lectura trivial llama al
+repositorio directamente desde `app/`; cuando aparezca lógica de negocio debe encapsularse en un caso de
+uso en `modules/auth/application/use-cases/`.
+
+Limitación heredada de RF-09: el perfil viaja en el JWT de 8 h, así que un cambio de perfil o una
+desactivación no surten efecto hasta que expire el token.

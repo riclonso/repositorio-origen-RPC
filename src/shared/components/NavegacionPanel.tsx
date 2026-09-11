@@ -3,18 +3,40 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const ENLACES = [
-  { href: "/dashboard", etiqueta: "Panel" },
-  { href: "/dashboard/usuarios", etiqueta: "Usuarios" },
-  { href: "/dashboard/logs", etiqueta: "Logs" },
-] as const;
+export type EnlacePanel = {
+  href: string;
+  etiqueta: string;
+};
 
-function esActivo(rutaActual: string, href: string): boolean {
-  return href === "/dashboard" ? rutaActual === href : rutaActual.startsWith(href);
+type NavegacionPanelProps = {
+  enlaces: readonly EnlacePanel[];
+  titulo: string;
+};
+
+// Determina el enlace activo por "prefijo más largo": el enlace activo es aquel cuyo `href` es la
+// coincidencia más específica con la ruta actual. Así el enlace raíz del área (p.ej. "/dashboard")
+// solo queda activo en la ruta exacta y no cuando se visita una subsección ("/dashboard/usuarios"),
+// sin necesidad de marcar manualmente cuál enlace es el índice.
+function calcularHrefActivo(rutaActual: string, enlaces: readonly EnlacePanel[]): string | null {
+  let hrefActivo: string | null = null;
+
+  for (const enlace of enlaces) {
+    const coincide =
+      rutaActual === enlace.href || rutaActual.startsWith(`${enlace.href}/`);
+
+    if (coincide && (hrefActivo === null || enlace.href.length > hrefActivo.length)) {
+      hrefActivo = enlace.href;
+    }
+  }
+
+  return hrefActivo;
 }
 
-export function NavLateral() {
+// Navegación lateral común a los paneles. Recibe los enlaces y el título de la sección como datos,
+// de modo que cada panel aporta los suyos sin duplicar el marcado ni la lógica de estado activo.
+export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
   const rutaActual = usePathname();
+  const hrefActivo = calcularHrefActivo(rutaActual, enlaces);
 
   return (
     <nav
@@ -24,10 +46,10 @@ export function NavLateral() {
       {/* El encabezado de sección solo aporta en la columna lateral; en la barra horizontal
           robaría ancho a los propios enlaces. */}
       <p className="hidden px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gob-gray-a md:block">
-        Administración
+        {titulo}
       </p>
-      {ENLACES.map((enlace) => {
-        const activo = esActivo(rutaActual, enlace.href);
+      {enlaces.map((enlace) => {
+        const activo = enlace.href === hrefActivo;
 
         return (
           <Link

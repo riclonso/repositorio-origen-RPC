@@ -21,6 +21,16 @@ export function esPerfilAdministrador(codigo: string): boolean {
   return codigo === CODIGO_PERFIL_ADMIN;
 }
 
+// Perfil de quien notifica casos al Registro Poblacional de Cáncer. Igual que `CODIGO_PERFIL_ADMIN`,
+// es un código que el sistema conoce por su nombre porque tiene un área propia (`/notificador`); no
+// se hace un genérico `tieneCodigoPerfil` porque cada área mapea 1:1 a un perfil conocido y un
+// helper genérico invitaría a saltarse ese mapeo explícito.
+export const CODIGO_PERFIL_NOTIFICADOR = "NOTIFICADOR_RPC";
+
+export function esPerfilNotificador(codigo: string): boolean {
+  return codigo === CODIGO_PERFIL_NOTIFICADOR;
+}
+
 // Forma válida de un código de perfil. Vive aquí, en TypeScript puro, porque la usan tanto el
 // esquema Zod como la verificación del JWT: una sola definición impide que las dos deriven.
 export const FORMA_CODIGO_PERFIL = /^[A-Z][A-Z0-9_]{0,39}$/;

@@ -57,7 +57,8 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | Visor de registros    | Implementado | `/dashboard/logs` (solo ADMIN) lee `logs/errores.txt` y `logs/auditoria.txt` vía `infrastructure/logging/leerLogs.ts`, que lee solo la cola del archivo para acotar memoria. |
 | `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
 | `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
-| Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
+| Panel notificador     | Implementado (solo shell) | Panel del perfil NOTIFICADOR_RPC (RF-12) en `/notificador`, área separada de `/dashboard` (solo ADMIN). Login → despachador `/inicio` que redirige por perfil; proxy protege ambas áreas con chequeo positivo. Por ahora solo shell + bienvenida con nombre y placeholder "Próximamente"; sin el flujo de reporte. Ver [docs/arquitectura.md](arquitectura.md#panel-del-perfil-notificador_rpc-rf-12). |
+| Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Será una sección del panel notificador. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
 
 ## Herramientas de calidad y agentes
 
