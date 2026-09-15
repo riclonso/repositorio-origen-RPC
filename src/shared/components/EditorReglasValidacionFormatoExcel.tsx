@@ -19,14 +19,18 @@ export type ReglaValidacionEditable = {
 // filtrar por tipo de dato (RF-15).
 export type ColumnaDisponible = { nombre: string; tipoDato: string };
 
-// Tipos de dato que `FECHA_DENTRO_DE_VENTANA_VIGENTE` puede evaluar: la regla compara la celda
-// contra un rango de fechas, así que solo tiene sentido ofrecer columnas que el sistema sabe
-// parsear como fecha.
+// Tipos de dato que `FECHA_DENTRO_DE_VENTANA_VIGENTE` y `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`
+// pueden evaluar: ambas reglas comparan la celda como fecha, así que solo tiene sentido ofrecer
+// columnas que el sistema sabe parsear como tal.
 const TIPOS_DATO_FECHA = new Set(["FECHA", "FECHA_HORA"]);
 
 const OPCIONES_TIPO_REGLA: OpcionSelect[] = [
   { valor: "ALGUNA_COLUMNA_CON_VALOR", etiqueta: "Al menos una columna con valor" },
   { valor: "FECHA_DENTRO_DE_VENTANA_VIGENTE", etiqueta: "Fecha dentro de la ventana de carga vigente" },
+  {
+    valor: "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
+    etiqueta: "Fecha efectiva (principal o alternativa más antigua) dentro del año de la ventana",
+  },
 ];
 
 const REGLA_POR_DEFECTO: ReglaValidacionEditable = {
@@ -57,10 +61,13 @@ type EditorReglasValidacionFormatoExcelProps = {
 // Un formato puede tener varias reglas. `ALGUNA_COLUMNA_CON_VALOR`: de un subconjunto de
 // columnas, al menos una debe traer valor; si todas vienen vacías, se rechaza.
 // `FECHA_DENTRO_DE_VENTANA_VIGENTE` (RF-15): una única columna de fecha debe caer dentro del
-// rango de la ventana de carga elegida por el notificador para esa subida. Los campos requeridos
-// de `TablaColumnasFormatoExcel` se validan primero; estas reglas se evalúan después (ver
-// `CLAUDE.md`), pero ese evaluador vive en `modules/reporte-excel/`: este componente solo
-// gestiona la configuración.
+// rango de la ventana de carga elegida por el notificador para esa subida.
+// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (ampliación posterior): una columna principal + al
+// menos una alternativa, todas de fecha; se usa la principal si trae valor, o la más antigua de
+// las alternativas si está vacía, y el año resultante debe coincidir con el de la ventana. Los
+// campos requeridos de `TablaColumnasFormatoExcel` se validan primero; estas reglas se evalúan
+// después (ver `CLAUDE.md`), pero ese evaluador vive en `modules/reporte-excel/`: este componente
+// solo gestiona la configuración.
 export function EditorReglasValidacionFormatoExcel({
   reglas,
   columnasDisponibles,
@@ -93,8 +100,11 @@ export function EditorReglasValidacionFormatoExcel({
           &ldquo;Al menos una columna con valor&rdquo; exige que, de un conjunto de columnas, al
           menos una venga con valor en el registro; si todas vienen vacías, se rechaza.
           &ldquo;Fecha dentro de la ventana de carga vigente&rdquo; exige que una columna de fecha
-          caiga dentro del rango de la ventana elegida por el notificador al subir el archivo. Se
-          evalúan después de comprobar las columnas requeridas.
+          caiga dentro del rango de la ventana elegida por el notificador al subir el archivo.
+          &ldquo;Fecha efectiva dentro del año de la ventana&rdquo; usa la columna principal si
+          trae valor; si viene vacía, usa la más antigua de las columnas alternativas que sí
+          traigan una fecha, y exige que el año de esa fecha efectiva coincida con el año de la
+          ventana. Se evalúan después de comprobar las columnas requeridas.
         </p>
       </div>
 
@@ -160,6 +170,53 @@ export function EditorReglasValidacionFormatoExcel({
                           : null
                     }
                   />
+                ) : regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA" ? (
+                  <>
+                    <CampoSelect
+                      id={`regla-${indice}-columna-principal`}
+                      etiqueta="Columna principal"
+                      opciones={[{ valor: "", etiqueta: "Selecciona una columna" }, ...opcionesColumnasFecha]}
+                      value={regla.columnas[0] ?? ""}
+                      onChange={(evento) => {
+                        const nuevaPrincipal = evento.target.value;
+                        // Al cambiar la principal, se descarta de las alternativas si ya estaba
+                        // seleccionada ahí, para que la misma columna nunca cuente dos veces.
+                        const alternativasSinPrincipal = regla.columnas
+                          .slice(1)
+                          .filter((nombre) => nombre !== nuevaPrincipal);
+
+                        actualizarRegla(indice, {
+                          columnas: nuevaPrincipal ? [nuevaPrincipal, ...alternativasSinPrincipal] : alternativasSinPrincipal,
+                        });
+                      }}
+                      ayuda="Se usa esta fecha si trae valor. Solo se listan columnas de tipo Fecha o Fecha y hora."
+                      error={
+                        opcionesColumnasFecha.length === 0
+                          ? "Este formato no tiene ninguna columna de tipo Fecha o Fecha y hora"
+                          : null
+                      }
+                    />
+
+                    <CampoSeleccionMultiple
+                      id={`regla-${indice}-columnas-alternativas`}
+                      etiqueta="Columnas alternativas"
+                      opciones={opcionesColumnasFecha.filter((opcion) => opcion.valor !== (regla.columnas[0] ?? ""))}
+                      valoresSeleccionados={regla.columnas.slice(1)}
+                      onCambiar={(alternativas) =>
+                        actualizarRegla(indice, {
+                          columnas: regla.columnas[0] ? [regla.columnas[0], ...alternativas] : alternativas,
+                        })
+                      }
+                      ayuda="Si la columna principal viene vacía, se usa la más antigua de estas que traiga fecha. Selecciona al menos una."
+                      error={
+                        columnasFaltantes.length > 0
+                          ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes
+                              .map((nombre) => `"${nombre}"`)
+                              .join(", ")}`
+                          : null
+                      }
+                    />
+                  </>
                 ) : (
                   <CampoSeleccionMultiple
                     id={`regla-${indice}-columnas`}

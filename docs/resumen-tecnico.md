@@ -184,6 +184,14 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   **Requiere reiniciar el proceso después de aplicarla** (mismo caveat de cliente de Prisma en
   memoria que las migraciones anteriores): `npx prisma generate` + restart, o falla con
   `Unknown argument 'formatoExcelId'`/`Unknown argument 'tipoArchivo'` según el sentido del desfase.
+* **Ampliación de RF-13/14/15 (`20260915153431_agregar_regla_fecha_efectiva_anio_ventana`) es
+  aditiva, sin backfill.** Agrega `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` a
+  `TipoReglaValidacionFormatoExcel` (`ALTER TYPE ... ADD VALUE`, mismo caveat de siempre: no
+  reversible en la misma transacción si hiciera falta deshacerla). No toca ninguna tabla ni columna
+  existente; ninguna fila puede usar el valor nuevo todavía, así que no hace falta backfill. Admite
+  despliegue rolling. **Requiere reiniciar el proceso después de aplicarla** (mismo caveat de
+  cliente de Prisma en memoria que RF-14/15): `npx prisma generate` + restart, o falla con
+  `Invalid value for argument tipo` al intentar guardar una regla de este tipo nuevo.
 
 
 ## Recuperación de contraseña (RF-10)

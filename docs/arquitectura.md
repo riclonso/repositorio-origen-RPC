@@ -729,6 +729,53 @@ vez por carga completa, no por fila. Si la celda no es una fecha válida, la reg
 (ese caso ya lo cubre `TIPO_DATO_INVALIDO` en el paso anterior de la misma validación por celda) —
 evita duplicar el mismo error dos veces sobre la misma celda.
 
+### Segundo tipo de regla de fecha: año calendario, no rango exacto, y sobre varias columnas
+
+`FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (ampliación posterior a la entrega inicial de RF-15) nace
+del requerimiento de negocio de validar la "fecha de diagnóstico" de un registro: si viene vacía,
+hay que caer a la más antigua entre "fecha de toma de muestra" y "fecha de recepción de muestra".
+Esa selección de valor (tomar la fecha más antigua entre varias) es una función, no un predicado
+booleano, así que no encaja en un árbol AND/OR genérico de reglas — se evaluó esa alternativa y se
+descartó explícitamente: un motor genérico no evita escribir esta lógica a medida de todos modos,
+solo la complica. Se implementó como un tipo FIJO más en `TipoReglaValidacionFormatoExcel`, mismo
+patrón que los otros dos.
+
+Reutiliza `ReglaValidacionFormatoExcel.columnas: string[]` con una convención posicional propia de
+este tipo: `columnas[0]` es la columna PRINCIPAL, `columnas[1..]` son las ALTERNATIVAS (mínimo 1,
+sin tope), documentada en el comentario de `domain/entities/FormatoExcel.ts` y validada en
+`formato-excel.schema.ts` (mínimo 2 columnas en total, y **todas** — no solo `columnas[0]` como en
+`FECHA_DENTRO_DE_VENTANA_VIGENTE` — deben ser `FECHA`/`FECHA_HORA`).
+
+`EvaluadorReglasValidacion.cumpleReglaValidacion()` gana el `case` nuevo con esta prioridad: (1)
+principal con valor parseable → fecha efectiva; (2) principal vacía → la más antigua entre las
+alternativas con valor parseable; (3) ninguna columna (principal ni alternativas) aporta una fecha
+utilizable → la regla falla, sin depender de que alguna columna esté marcada `requerida` (decisión
+explícita del usuario, confirmada dos veces durante el diseño). Compara
+`fechaEfectiva.getFullYear() === contexto.ventana.anio` — el año CALENDARIO de la ventana, campo ya
+persistido en `VentanaCarga.anio`, no el rango `fechaApertura`/`fechaVencimiento` que usa
+`FECHA_DENTRO_DE_VENTANA_VIGENTE`. Por eso `ContextoEvaluacionReglas.ventana` gana `anio: number`
+junto a las dos fechas ya existentes; `ValidarYCargarArchivo` no cambió su llamada porque ya pasaba
+la entidad `VentanaCarga` completa (que ya traía `anio`), solo el tipo del contexto se amplió.
+
+Mismo criterio anti-duplicado que la regla anterior: una columna (principal o alternativa) con
+algún valor que no parsea como fecha ya quedó reportada como `TIPO_DATO_INVALIDO` en el paso
+anterior de `ValidarYCargarArchivo`; para la lógica de selección se trata como "no utilizable" (ni
+aporta una fecha válida, ni cuenta como "vacía" para decidir si cae al caso 3), evitando reportar
+dos errores sobre la misma celda.
+
+En la UI (`EditorReglasValidacionFormatoExcel.tsx`), este tipo agrega dos controles en vez de uno:
+un `CampoSelect` para la columna principal y un `CampoSeleccionMultiple` para las alternativas,
+ambos filtrados a columnas `FECHA`/`FECHA_HORA` del formato. Las opciones de alternativas excluyen
+la columna ya elegida como principal (y cambiar la principal descarta esa columna de las
+alternativas si ya estaba marcada ahí), para que la misma columna nunca cuente dos veces en la
+misma regla.
+
+Migración `20260915153431_agregar_regla_fecha_efectiva_anio_ventana`: aditiva
+(`ALTER TYPE "TipoReglaValidacionFormatoExcel" ADD VALUE ...`), sin backfill (ninguna fila existente
+usaba este valor). Mismo caveat que las migraciones de enum anteriores de este módulo (RF-14/15):
+si el proceso de `next dev`/producción ya estaba corriendo, el cliente de Prisma en memoria no ve
+el valor nuevo hasta reiniciar con `prisma generate` + restart.
+
 ### Primera capacidad de escritura de REVISOR_REPOSITORIO
 
 Hasta RF-15, `/revisor` era 100% solo lectura (bienvenida + listado de cargas aprobadas, RF-14).

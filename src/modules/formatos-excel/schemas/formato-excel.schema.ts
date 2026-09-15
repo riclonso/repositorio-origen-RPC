@@ -34,12 +34,14 @@ const columnasFormatoExcelSchema = z
   .max(COLUMNAS_MAXIMO, `Se permiten como máximo ${COLUMNAS_MAXIMO} columnas`)
   .refine(nombresDeColumnaUnicos, "Los nombres de columna no pueden repetirse");
 
-// Dos tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
+// Tres tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
 // `ALGUNA_COLUMNA_CON_VALOR` exige un conjunto de columnas del que al menos una debe traer valor;
 // `FECHA_DENTRO_DE_VENTANA_VIGENTE` exige exactamente una columna de tipo `FECHA`/`FECHA_HORA`
-// cuyo valor debe caer dentro de la ventana de carga elegida por el notificador (RF-15). El
-// evaluador que las ejecuta contra un archivo real vive en `modules/reporte-excel/`; aquí solo se
-// persiste y valida la configuración.
+// cuyo valor debe caer dentro de la ventana de carga elegida por el notificador (RF-15);
+// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` exige una columna principal + al menos una alternativa
+// (todas `FECHA`/`FECHA_HORA`) cuya "fecha efectiva" resultante debe caer dentro del AÑO
+// calendario de esa ventana (ampliación posterior). El evaluador que las ejecuta contra un
+// archivo real vive en `modules/reporte-excel/`; aquí solo se persiste y valida la configuración.
 const reglaValidacionFormatoExcelSchema = z.object({
   tipo: tipoReglaValidacionSchema,
   columnas: z
@@ -86,10 +88,14 @@ const camposFormatoExcelSchema = {
   reglasValidacion: reglasValidacionFormatoExcelSchema,
 };
 
-// Tipos de columna admitidos por `FECHA_DENTRO_DE_VENTANA_VIGENTE`: la regla compara la celda
-// contra un rango de fechas, así que la columna referenciada debe ser una de las dos que el
-// sistema sabe parsear como fecha.
+// Tipos de columna admitidos por `FECHA_DENTRO_DE_VENTANA_VIGENTE` y por
+// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: ambas reglas comparan la celda como fecha, así que la
+// columna referenciada debe ser una de las dos que el sistema sabe parsear como tal.
 const TIPOS_DATO_FECHA: readonly string[] = ["FECHA", "FECHA_HORA"];
+
+// Principal + al menos una alternativa (ver convención de `columnas[]` en
+// `domain/entities/FormatoExcel.ts`), sin tope fijo de alternativas.
+const MINIMO_COLUMNAS_FECHA_EFECTIVA = 2;
 
 // Las columnas referenciadas por cada regla deben existir entre las columnas del mismo payload
 // (comparación case-insensitive, mismo criterio que `nombresDeColumnaUnicos` usa para la
@@ -144,6 +150,30 @@ function validarReferenciasDeReglas(
           });
         }
       }
+    }
+
+    if (regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA") {
+      if (regla.columnas.length < MINIMO_COLUMNAS_FECHA_EFECTIVA) {
+        contexto.addIssue({
+          code: "custom",
+          path: ["reglasValidacion", indiceRegla, "columnas"],
+          message: `La regla ${indiceRegla + 1} debe tener una columna principal y al menos una columna alternativa`,
+        });
+      }
+
+      // Todas las columnas referenciadas (principal Y alternativas) deben ser de tipo fecha, no
+      // solo `columnas[0]` como en `FECHA_DENTRO_DE_VENTANA_VIGENTE`.
+      regla.columnas.forEach((nombreColumna, indiceColumna) => {
+        const columna = columnasPorNombre.get(nombreColumna.trim().toLowerCase());
+
+        if (columna && !TIPOS_DATO_FECHA.includes(columna.tipoDato)) {
+          contexto.addIssue({
+            code: "custom",
+            path: ["reglasValidacion", indiceRegla, "columnas", indiceColumna],
+            message: `La regla ${indiceRegla + 1} exige que todas sus columnas sean de tipo FECHA o FECHA_HORA`,
+          });
+        }
+      });
     }
   });
 }

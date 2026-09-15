@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TipoReglaValidacionFormatoExcel" ADD VALUE 'FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA';
