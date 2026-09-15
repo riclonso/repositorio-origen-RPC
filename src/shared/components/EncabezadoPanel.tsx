@@ -5,10 +5,25 @@ type EncabezadoPanelProps = {
   perfil?: string;
 };
 
+// Iniciales para el avatar: primera letra del primer y del último token del nombre. Con un solo
+// token, una sola letra. Es puramente decorativo (el nombre completo ya va como texto en sm+).
+function calcularIniciales(nombreCompleto: string): string {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+
+  if (partes.length === 0) {
+    return "";
+  }
+
+  const primera = partes[0]!.charAt(0);
+  const ultima = partes.length > 1 ? partes[partes.length - 1]!.charAt(0) : "";
+
+  return (primera + ultima).toUpperCase();
+}
+
 // Encabezado común a los paneles (administración y notificador): branding + identidad de la sesión
 // (nombre y perfil). Es presentacional; la identidad la resuelve la capa `app/` y se inyecta por
 // props, para no acoplar un componente de `shared/` a los repositorios de `modules/`. El cierre de
-// sesión ya no vive aquí: se movió al pie de la barra lateral (`BarraLateralPanel`).
+// sesión no vive aquí: se movió al pie de la barra lateral (`BarraLateralPanel`).
 export function EncabezadoPanel({ nombreCompleto, perfil }: EncabezadoPanelProps) {
   return (
     <header className="flex items-center justify-between gap-4 bg-gob-tertiary px-4 py-3 md:px-6">
@@ -18,18 +33,28 @@ export function EncabezadoPanel({ nombreCompleto, perfil }: EncabezadoPanelProps
       </div>
 
       {nombreCompleto ? (
-        // Bloque de identidad de la sesión. El nombre se oculta bajo `sm` para no competir con el
-        // branding en pantallas angostas; el perfil (la chip) se mantiene siempre, porque es el
-        // dato que el usuario pidió tener visible en todo momento.
-        <div className="flex min-w-0 flex-col items-end leading-tight">
-          <p className="hidden max-w-[40vw] truncate text-sm font-medium text-white sm:block">
-            {nombreCompleto}
-          </p>
-          {perfil ? (
-            <span className="mt-0.5 inline-flex items-center rounded-full border border-white/40 bg-white/10 px-2 py-0.5 text-xs font-medium text-white">
-              {perfil}
-            </span>
-          ) : null}
+        // Clúster de identidad: bloque de texto (nombre + perfil) junto a un avatar de iniciales.
+        // El nombre se oculta bajo `sm` para no competir con el branding en pantallas angostas; el
+        // avatar y la chip de perfil se mantienen siempre, porque el perfil es el dato que debe
+        // quedar visible en todo momento.
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-col items-end leading-tight">
+            <p className="hidden max-w-[45vw] truncate text-sm font-medium text-white sm:block lg:max-w-xs">
+              {nombreCompleto}
+            </p>
+            {perfil ? (
+              <span className="mt-0.5 inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-xs font-medium text-gob-accent">
+                {perfil}
+              </span>
+            ) : null}
+          </div>
+
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-sm font-semibold text-white"
+          >
+            {calcularIniciales(nombreCompleto)}
+          </span>
         </div>
       ) : null}
     </header>
