@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
-import { NavegacionPanel } from "@/shared/components/NavegacionPanel";
+import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
 import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
 import { ENLACES_NOTIFICADOR } from "./nav-enlaces";
 
@@ -23,7 +23,7 @@ export default async function NotificadorLayout({ children }: { children: ReactN
           lateral (barra horizontal bajo md) y contenido. */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <aside className="shrink-0 border-b border-gob-accent bg-white md:w-52 md:border-b-0 md:border-r">
-          <NavegacionPanel enlaces={ENLACES_NOTIFICADOR} titulo="Notificación" />
+          <BarraLateralPanel enlaces={ENLACES_NOTIFICADOR} titulo="Notificación" />
         </aside>
 
         <main className="min-w-0 flex-1 bg-gob-neutral p-4 md:p-6">{children}</main>

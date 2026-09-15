@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
-import { NavegacionPanel } from "@/shared/components/NavegacionPanel";
+import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
 import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
 import { ENLACES_ADMIN } from "./nav-enlaces";
 
@@ -25,7 +25,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           desplegable: dos secciones no justifican el foco atrapado ni el JavaScript de un cajón. */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <aside className="shrink-0 border-b border-gob-accent bg-white md:w-52 md:border-b-0 md:border-r">
-          <NavegacionPanel enlaces={ENLACES_ADMIN} titulo="Administración" />
+          <BarraLateralPanel enlaces={ENLACES_ADMIN} titulo="Administración" />
         </aside>
 
         <main className="min-w-0 flex-1 bg-gob-neutral p-4 md:p-6">{children}</main>
