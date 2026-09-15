@@ -60,6 +60,17 @@ export default async function NotificadorPage() {
     vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
   }));
 
+  // Mismo filtro que `PanelCargaArchivo` aplica en el cliente tras un visto bueno: se repite aquí
+  // para que una combinación ya aprobada en una sesión anterior tampoco aparezca en el primer
+  // render (sin este filtro, se vería un instante hasta que el cliente vuelva a pedir "Mis
+  // cargas").
+  const combinacionesVisibles = combinaciones.filter(
+    (combinacion) =>
+      !cargasIniciales.some(
+        (carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "APROBADA",
+      ),
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -71,7 +82,7 @@ export default async function NotificadorPage() {
         </p>
       </div>
 
-      <PanelCargaArchivo combinaciones={combinaciones} cargasIniciales={cargasIniciales} />
+      <PanelCargaArchivo combinaciones={combinacionesVisibles} cargasIniciales={cargasIniciales} />
     </div>
   );
 }

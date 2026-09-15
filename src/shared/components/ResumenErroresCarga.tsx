@@ -1,12 +1,5 @@
 import type { ErrorCargaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-
-const ETIQUETAS_TIPO_ERROR: Record<ErrorCargaArchivo["tipoError"], string> = {
-  COLUMNA_FALTANTE: "Columna faltante",
-  COLUMNA_INESPERADA: "Columna inesperada",
-  VALOR_REQUERIDO_VACIO: "Valor requerido vacío",
-  TIPO_DATO_INVALIDO: "Tipo de dato inválido",
-  REGLA_VALIDACION: "Regla de validación",
-};
+import { ETIQUETAS_TIPO_ERROR, etiquetaFila } from "@/shared/utils/erroresCargaArchivo";
 
 // Resumen de errores de una carga (RF-14): número de fila, columna y tipo de error, con el
 // mensaje correspondiente. Los errores estructurales (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`)
@@ -34,7 +27,7 @@ export function ResumenErroresCarga({ errores }: ResumenErroresCargaProps) {
           {errores.map((error) => (
             <tr key={error.id} className="align-top">
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-black">
-                {error.numeroFila === 0 ? "Archivo completo" : error.numeroFila}
+                {etiquetaFila(error.numeroFila)}
               </td>
               <td className="px-3 py-2 text-gob-gray-a">{error.columna ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 text-gob-danger">

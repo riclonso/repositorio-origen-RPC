@@ -41,6 +41,7 @@ const SELECCION_RESUMEN = {
   id: true,
   formatoExcelId: true,
   formatoExcel: { select: { nombre: true } },
+  ventanaCargaId: true,
   ventanaCarga: { select: { anio: true } },
   usuario: { select: { nombres: true, apellidos: true, rut: true } },
   nombreArchivoOriginal: true,
@@ -73,7 +74,7 @@ type RegistroDetalle = {
 
 type RegistroResumen = Omit<
   RegistroDetalle,
-  "usuarioId" | "tipoContenidoArchivo" | "vistoBuenoPorId" | "updatedAt" | "errores" | "ventanaCargaId"
+  "usuarioId" | "tipoContenidoArchivo" | "vistoBuenoPorId" | "updatedAt" | "errores"
 >;
 
 function aCargaArchivo(registro: RegistroDetalle): CargaArchivo {
@@ -104,6 +105,7 @@ function aCargaArchivoResumen(registro: RegistroResumen) {
     id: registro.id,
     formatoExcelId: registro.formatoExcelId,
     formatoExcelNombre: registro.formatoExcel.nombre,
+    ventanaCargaId: registro.ventanaCargaId,
     anio: registro.ventanaCarga.anio,
     usuarioNombre: nombreCompleto(registro.usuario),
     usuarioRut: registro.usuario.rut,

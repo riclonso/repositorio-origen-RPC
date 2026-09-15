@@ -66,6 +66,9 @@ export type CargaArchivoResumen = {
   id: string;
   formatoExcelId: string;
   formatoExcelNombre: string;
+  // RF-15: se expone para que el cliente pueda agrupar cargas propias por combinación
+  // (formato, ventana) sin una consulta aparte — ver `panel-carga-archivo.tsx`.
+  ventanaCargaId: string;
   anio: number;
   usuarioNombre: string;
   usuarioRut: string;

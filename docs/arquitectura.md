@@ -1055,3 +1055,58 @@ genera siempre con `new Date()` dentro del caso de uso, nunca recibido del clien
 
 Sin endpoints `/api/` nuevos (todo el árbol es Server Components sobre repositorios ya existentes),
 sin migración de esquema, sin auditoría (es una lectura, mismo criterio del resto del proyecto).
+
+### Historial de intentos fallidos, detalle propio y descarga de errores en Excel (RF-14)
+
+**"Ocultar la tarjeta tras aprobar" se deriva, no se persiste.** El pedido original describía un
+botón "Finalizar" nuevo; tras varias rondas de aclaración con el usuario, la resolución final fue
+que "finalizar" y "dar visto bueno" son la misma acción — no hay botón, tabla ni endpoint nuevo para
+esto. `DarVistoBueno.ts` y `POST /api/notificador/cargas/[id]/visto-bueno` no cambiaron en absoluto.
+En su lugar, tanto `src/app/notificador/page.tsx` (server-side, sobre `cargasIniciales`) como
+`panel-carga-archivo.tsx` (client-side, sobre `misCargas` tras cada refresh) filtran las
+combinaciones a mostrar excluyendo cualquiera donde ya exista una carga `APROBADA` para ese
+`ventanaCargaId` — una condición calculada en cada lectura, nunca un flag persistido. Esto evitó una
+tabla nueva, una migración, un endpoint y un botón con su propio diálogo de confirmación.
+
+**`ventanaCargaId` agregado a `CargaArchivoResumen`, sin migración.** La columna `ventana_carga_id`
+ya existe en `carga_archivo`; el tipo de "resumen" (usado por "Mis cargas" y ahora también por el
+filtro de arriba) la omitía a propósito. Se dejó de omitir en `SELECCION_RESUMEN`/
+`aCargaArchivoResumen` (`PrismaCargaArchivoRepository.ts`). Alternativa descartada: emparejar por
+`(formatoExcelId, anio)` en vez de `ventanaCargaId` — funciona en el caso normal, pero confundiría
+una ventana eliminada y recreada para el mismo año+formato (posible por el índice único parcial
+`WHERE eliminadaEn IS NULL` de RF-15) con la ventana vigente.
+
+**Tabla "Intentos fallidos" por sección, sin consulta nueva al repositorio.** Se deriva en el
+cliente filtrando el mismo arreglo `misCargas` ya cargado para "Mis cargas"
+(`m.ventanaCargaId === combinacion.ventanaCargaId && m.estado === "CON_ERRORES"`), en vez de agregar
+un filtro nuevo a `FiltroListadoCargasPropias`/una consulta por combinación. Enlaza a la página de
+detalle nueva envuelto en `<ViewTransition>` (mismo patrón que el enlace "Detalle" de
+`TablaVentanasCarga`).
+
+**Página de detalle de una carga propia (`/notificador/cargas/[id]`), primera para este perfil.**
+ADMIN/REVISOR ya tenían `/dashboard/cargas/[id]`/`/revisor/cargas/[id]`; el notificador no tenía
+ninguna (el endpoint `GET /api/notificador/cargas/[id]` existía pero ningún componente lo consumía).
+`src/app/notificador/cargas/[id]/page.tsx` sigue el mismo patrón: Server Component,
+`obtenerCargaPropia(id, usuarioId)`, `notFound()` uniforme si no existe o no es del actor (mismo
+criterio de no distinguir ambos casos ya usado en el endpoint). `shared/components/DetalleCargaPropia.tsx`
+reutiliza `ResumenErroresCarga` sin cambios de lógica, envuelto en `<ViewTransition>`.
+
+**Primera generación de un `.xlsx` de salida en el proyecto.** Hasta ahora `exceljs` solo se usaba
+para *leer* (plantillas de RF-13, archivos de reporte de RF-14). El endpoint nuevo
+`GET /api/notificador/cargas/[id]/errores` genera un Excel de descarga con las mismas columnas que
+`ResumenErroresCarga` (Fila, Columna, Tipo de error, Mensaje), detrás de un puerto nuevo
+`GeneradorExcelErrores` (`modules/reporte-excel/application/ports.ts`) implementado en
+`infrastructure/generacion-excel/GeneradorErroresExcelJs.ts` — mismo criterio de puertos ya usado
+por `LectorPlantilla`/`LectorArchivoReporte`, para que el Route Handler nunca importe `exceljs`
+directamente. El generador solo recibe `ErrorCargaArchivo[]`, nunca el buffer del archivo original:
+el `.xlsx` de errores no puede filtrar datos de celdas (nombres, RUTs, etc.) del reporte subido, ni
+siquiera por accidente. Responde 404 uniforme en los tres casos posibles (no existe, no es del
+actor, sin errores) — mismo criterio de no revelar cuál ocurrió que ya usa el resto de
+`/api/notificador/`.
+
+**`ETIQUETAS_TIPO_ERROR`/`etiquetaFila` y `ETIQUETAS_ESTADO` extraídos a `shared/utils/`.** Antes
+vivían declarados dentro de `ResumenErroresCarga.tsx` y `panel-carga-archivo.tsx` respectivamente,
+sin reutilización. Al necesitar las mismas etiquetas también en `GeneradorErroresExcelJs.ts` y
+`DetalleCargaPropia.tsx`, se movieron a `shared/utils/erroresCargaArchivo.ts` y
+`shared/utils/estadoCargaArchivo.ts`: un único lugar por concepto evita que la tabla en pantalla, el
+Excel descargable y el detalle diverjan en el texto mostrado para el mismo dato.

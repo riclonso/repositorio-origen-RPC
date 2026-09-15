@@ -1,6 +1,6 @@
 # Resumen técnico
 
-Última actualización: 2026-09-15 (RF-16: tablero de seguimiento de ventanas de carga abiertas)
+Última actualización: 2026-09-15 (RF-14: descarga de errores de carga en Excel, primera generación de `.xlsx` de salida del proyecto)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo cambia el stack, agrega un comando de proyecto o cambia una variable de entorno.
@@ -23,6 +23,7 @@
 | Calidad React           | react-doctor (`npx react-doctor@latest`, ver `.agents/skills/react-doctor/`) |
 | Lectura de plantillas   | `exceljs` (RF-13), detrás del puerto `LectorPlantilla` en `modules/formatos-excel/application/ports.ts`; solo `.xlsx`/`.csv`, csv solo separador coma y UTF-8 |
 | Lectura de archivos de reporte | `exceljs` (RF-14), detrás del puerto `LectorArchivoReporte` en `modules/reporte-excel/application/ports.ts`; mismas restricciones de formato que `LectorPlantilla`, tope de 20.000 filas de datos procesadas |
+| Generación de Excel de salida | `exceljs` (RF-14, ampliación), primera vez que el proyecto ESCRIBE un `.xlsx` (antes solo lectura). Puerto `GeneradorExcelErrores` en `modules/reporte-excel/application/ports.ts`, implementación `infrastructure/generacion-excel/GeneradorErroresExcelJs.ts`, servido por `GET /api/notificador/cargas/[id]/errores`. Solo incluye fila/columna/tipo/mensaje del error, nunca contenido de celdas del archivo original |
 | Gráficos                | Sin librería (RF-16): el único gráfico del proyecto (torta de 2 segmentos en el tablero de seguimiento) es un `div` con `conic-gradient` CSS inline, `shared/components/GraficoTortaProporcion.tsx`. Evaluar antes de instalar una librería de charts si aparece una necesidad más compleja |
 
 Aviso de versión: Next.js 16 y React 19.2 son más recientes que el conocimiento de entrenamiento

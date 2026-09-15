@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, ViewTransition } from "react";
+import Link from "next/link";
 import type {
   CargaArchivoResumen,
   ErrorCargaArchivo,
@@ -10,6 +11,7 @@ import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import { IconoAprobado, IconoSubir } from "@/shared/components/iconos";
+import { ETIQUETAS_ESTADO } from "@/shared/utils/estadoCargaArchivo";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
 // Vista liviana para "Mis cargas": mismos campos que `CargaArchivoResumenDTO`, con las fechas ya
@@ -34,12 +36,6 @@ export type CombinacionCargaVista = {
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
-
-const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
-  CON_ERRORES: "Con errores",
-  PENDIENTE_VISTO_BUENO: "Pendiente de visto bueno",
-  APROBADA: "Aprobada",
-};
 
 const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
   CON_ERRORES: "border-gob-danger text-gob-danger",
@@ -72,9 +68,62 @@ function claveCombinacion(combinacion: CombinacionCargaVista): string {
   return `${combinacion.formatoExcelId}::${combinacion.ventanaCargaId}`;
 }
 
+// Historial persistente de intentos fallidos (`CON_ERRORES`) de una combinación (formato,
+// ventana) puntual, derivado de `misCargas` (ya cargada para "Mis cargas") sin ninguna consulta
+// nueva. Distinta de esa tabla global: esta vive anidada bajo cada `TarjetaCargaArchivo` y solo
+// muestra los intentos de ESA combinación.
+function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) {
+  if (intentos.length === 0) return null;
+
+  return (
+    <div className="mt-4 flex flex-col gap-2 border-t border-gob-accent pt-4">
+      <h4 className="text-sm font-semibold text-gob-black">Intentos fallidos</h4>
+      <div className="overflow-x-auto rounded-lg border border-gob-accent bg-white">
+        <table className="w-full min-w-xl border-collapse text-left text-sm">
+          <caption className="sr-only">Intentos fallidos de esta combinación de formato y ventana</caption>
+          <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
+            <tr>
+              <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
+              <th scope="col" className="px-3 py-3 font-semibold">Subido el</th>
+              <th scope="col" className="px-3 py-3 font-semibold">Errores</th>
+              <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
+                Detalle
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gob-accent/60">
+            {intentos.map((intento) => (
+              <tr key={intento.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
+                <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
+                  {intento.nombreArchivoOriginal}
+                </th>
+                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
+                  {formatearFechaHoraIso(intento.createdAt)}
+                </td>
+                <td className="px-3 py-2 tabular-nums text-gob-danger">{intento.cantidadErrores}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right">
+                  <ViewTransition>
+                    <Link
+                      href={`/notificador/cargas/${intento.id}`}
+                      className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                    >
+                      Ver detalle
+                    </Link>
+                  </ViewTransition>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 type TarjetaCargaArchivoProps = {
   combinacion: CombinacionCargaVista;
   resultado: CargaDetalleVista | null;
+  intentosFallidos: CargaResumenVista[];
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onSolicitarVistoBueno: (carga: CargaResumenVista) => void;
 };
@@ -84,6 +133,7 @@ type TarjetaCargaArchivoProps = {
 function TarjetaCargaArchivo({
   combinacion,
   resultado,
+  intentosFallidos,
   onSubidaExitosa,
   onSolicitarVistoBueno,
 }: TarjetaCargaArchivoProps) {
@@ -181,6 +231,8 @@ function TarjetaCargaArchivo({
           ) : null}
         </div>
       ) : null}
+
+      <TablaIntentosFallidos intentos={intentosFallidos} />
     </section>
   );
 }
@@ -254,9 +306,18 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales }: PanelCarga
     }
   }
 
+  // Una combinación deja de mostrarse (tarjeta completa, incluida su tabla de intentos fallidos
+  // anidada) en cuanto el notificador da visto bueno a una carga exitosa de esa misma
+  // combinación: se deriva de `misCargas`, que `confirmarVistoBueno` ya vuelve a pedir tras un
+  // visto bueno exitoso, sin ningún estado adicional que mantener sincronizado.
+  const combinacionesVisibles = combinaciones.filter(
+    (combinacion) =>
+      !misCargas.some((carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "APROBADA"),
+  );
+
   return (
     <div className="flex flex-col gap-6">
-      {combinaciones.length === 0 ? (
+      {combinacionesVisibles.length === 0 ? (
         <section
           aria-labelledby="titulo-reporte"
           className="rounded-lg border border-dashed border-gob-accent bg-white p-6"
@@ -270,11 +331,14 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales }: PanelCarga
           </p>
         </section>
       ) : (
-        combinaciones.map((combinacion) => (
+        combinacionesVisibles.map((combinacion) => (
           <TarjetaCargaArchivo
             key={claveCombinacion(combinacion)}
             combinacion={combinacion}
             resultado={resultados[claveCombinacion(combinacion)] ?? null}
+            intentosFallidos={misCargas.filter(
+              (carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "CON_ERRORES",
+            )}
             onSubidaExitosa={registrarResultado}
             onSolicitarVistoBueno={setObjetivoVistoBueno}
           />
