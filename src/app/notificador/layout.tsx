@@ -2,16 +2,22 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
 import { NavegacionPanel } from "@/shared/components/NavegacionPanel";
+import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
 import { ENLACES_NOTIFICADOR } from "./nav-enlaces";
 
 export const metadata: Metadata = {
   title: "Panel notificador - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
-export default function NotificadorLayout({ children }: { children: ReactNode }) {
+export default async function NotificadorLayout({ children }: { children: ReactNode }) {
+  const identidad = await obtenerIdentidadPanel();
+
   return (
     <div className="flex flex-1 flex-col">
-      <EncabezadoPanel />
+      <EncabezadoPanel
+        nombreCompleto={identidad ? `${identidad.nombres} ${identidad.apellidos}` : undefined}
+        perfil={identidad?.perfilNombre}
+      />
 
       {/* Mismo patrón de shell que el panel de administración: encabezado arriba, navegación
           lateral (barra horizontal bajo md) y contenido. */}

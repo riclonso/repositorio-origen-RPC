@@ -307,10 +307,24 @@ de reevaluar el proxy con la cookie recién emitida; está documentado en ese ar
 
 El header y la navegación lateral se extrajeron a `shared/` parametrizados por datos, para no duplicar
 el estilo `gob-*`, el botón de cerrar sesión ni la lógica de estado activo/`aria-current`:
-`shared/components/EncabezadoPanel.tsx` (branding + cerrar sesión), `shared/components/NavegacionPanel.tsx`
-(Client Component con `usePathname`; recibe `enlaces` y `titulo`), y `shared/acciones/cerrarSesion.ts`
-(Server Action, movida desde `app/dashboard/`) para que `app/notificador/` no dependa de `app/dashboard/`.
-Los enlaces y el título de cada panel viven en su propio `nav-enlaces.ts`.
+`shared/components/EncabezadoPanel.tsx` (branding + identidad de la sesión + cerrar sesión),
+`shared/components/NavegacionPanel.tsx` (Client Component con `usePathname`; recibe `enlaces` y
+`titulo`), y `shared/acciones/cerrarSesion.ts` (Server Action, movida desde `app/dashboard/`) para que
+`app/notificador/` no dependa de `app/dashboard/`. Los enlaces y el título de cada panel viven en su
+propio `nav-enlaces.ts`.
+
+### Identidad de la sesión en el encabezado
+
+Ambos paneles muestran, en el encabezado, el **nombre** de la persona logueada y el **nombre visible
+de su perfil** (una chip sutil sobre el fondo `gob-tertiary`), además de la bienvenida con el nombre en
+la página de inicio de cada panel. `EncabezadoPanel` es presentacional: recibe `nombreCompleto` y
+`perfil` por props. La identidad la resuelve `app/_lib/identidadPanel.ts` (`obtenerIdentidadPanel()`),
+que compone sesión → usuario → perfil: `obtenerSesionActual()` + `buscarPorId` (repositorio de `auth`)
++ `buscarPorCodigo` (repositorio de `perfiles`, agregado para traducir el código del JWT al nombre
+visible). La composición vive en la capa `app/` —la única que puede orquestar varios módulos— y no en
+`shared/`, que no debe importar de `modules/`. El JWT solo lleva el **código** del perfil; el nombre se
+consulta al catálogo. Si la cuenta ya no existe (token vigente sobre cuenta borrada), el encabezado se
+dibuja sin identidad y la página del panel fuerza el reingreso.
 
 ### Saludo con el nombre: `buscarPorId` en el repositorio de `auth`
 

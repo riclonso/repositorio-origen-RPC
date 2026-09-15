@@ -11,4 +11,8 @@ export type OpcionesListadoPerfiles = {
 export interface PerfilRepository {
   listar(opciones?: OpcionesListadoPerfiles): Promise<Perfil[]>;
   existeActivo(codigo: string): Promise<boolean>;
+  // Un perfil por su código, activo o no: se usa para mostrar el nombre visible del perfil de la
+  // sesión en el encabezado. No filtra por `activo` porque la persona conserva su perfil aunque el
+  // catálogo lo haya dado de baja, y su nombre debe seguir siendo legible.
+  buscarPorCodigo(codigo: string): Promise<Perfil | null>;
 }
