@@ -307,11 +307,16 @@ de reevaluar el proxy con la cookie recién emitida; está documentado en ese ar
 
 El header y la navegación lateral se extrajeron a `shared/` parametrizados por datos, para no duplicar
 el estilo `gob-*`, el botón de cerrar sesión ni la lógica de estado activo/`aria-current`:
-`shared/components/EncabezadoPanel.tsx` (branding + identidad de la sesión + cerrar sesión),
+`shared/components/EncabezadoPanel.tsx` (branding + identidad de la sesión),
 `shared/components/NavegacionPanel.tsx` (Client Component con `usePathname`; recibe `enlaces` y
-`titulo`), y `shared/acciones/cerrarSesion.ts` (Server Action, movida desde `app/dashboard/`) para que
+`titulo`), `shared/components/BarraLateralPanel.tsx` (navegación + "Cerrar sesión" al pie de la barra)
+y `shared/acciones/cerrarSesion.ts` (Server Action, movida desde `app/dashboard/`) para que
 `app/notificador/` no dependa de `app/dashboard/`. Los enlaces y el título de cada panel viven en su
 propio `nav-enlaces.ts`.
+
+El shell de cada panel fija su alto al viewport (`h-dvh`) y deja el scroll al contenido (`main` con
+`overflow-y-auto`), no a la página: así el encabezado y la barra lateral quedan siempre visibles y
+"Cerrar sesión" permanece anclado al pie de la barra (`mt-auto`) aunque el contenido sea largo.
 
 ### Identidad de la sesión en el encabezado
 

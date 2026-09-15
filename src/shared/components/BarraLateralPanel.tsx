@@ -17,7 +17,7 @@ type BarraLateralPanelProps = {
 // botón relleno que compita con la acción primaria de cada página).
 export function BarraLateralPanel({ enlaces, titulo }: BarraLateralPanelProps) {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 flex-col">
       <NavegacionPanel enlaces={enlaces} titulo={titulo} />
 
       <div className="mt-auto border-t border-gob-accent p-2 md:p-4">
