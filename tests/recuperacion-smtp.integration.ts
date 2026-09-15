@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { passwordResetMailer } from '../src/modules/auth/infrastructure/email/PasswordResetMailer';
+import { enlaceContrasenaMailer } from '../src/modules/auth/infrastructure/email/EnlaceContrasenaMailer';
 
 async function main() {
  assert.equal(process.env.SMTP_HOST,'127.0.0.1');
@@ -26,7 +26,11 @@ async function main() {
  });
  await new Promise<void>(resolve=>server.listen(55440,'127.0.0.1',resolve));
  try {
-  await passwordResetMailer.enviar({email:'prueba@example.invalid',nombres:'Ana'},'A'.repeat(43));
+  await enlaceContrasenaMailer.enviar(
+   {email:'prueba@example.invalid',nombres:'Ana'},
+   'A'.repeat(43),
+   {horasVigencia:2,contexto:'recuperacion'},
+  );
   assert.ok(mensaje.includes('recuperar/confirmar'));
   assert.ok(mensaje.includes('intranet.example.invalid'));
   assert.ok(mensaje.includes('text/plain'));

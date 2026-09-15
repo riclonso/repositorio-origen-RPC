@@ -12,12 +12,17 @@ export const metadata: Metadata = {
 };
 
 type ConfirmarPageProps = {
-  searchParams: Promise<{ token?: string | string[] }>;
+  searchParams: Promise<{
+    token?: string | string[];
+    contexto?: string | string[];
+  }>;
 };
 
 export default async function ConfirmarRecuperacionPage({ searchParams }: ConfirmarPageProps) {
-  const { token } = await searchParams;
+  const { token, contexto } = await searchParams;
   const tokenRecibido = Array.isArray(token) ? token[0] : token;
+  const contextoRecibido = Array.isArray(contexto) ? contexto[0] : contexto;
+  const esActivacion = contextoRecibido === "activacion";
 
   // La página NO pre-valida el token contra la base: hacerlo convertiría una simple visita en
   // un oráculo de validez y gastaría una consulta por cada visita. La validez se resuelve
@@ -41,8 +46,12 @@ export default async function ConfirmarRecuperacionPage({ searchParams }: Confir
 
   return (
     <MarcoPublico
-      titulo="Elegir contraseña nueva"
-      subtitulo="La contraseña anterior deja de funcionar apenas se guarda la nueva"
+      titulo={esActivacion ? "Crea tu contraseña" : "Elegir contraseña nueva"}
+      subtitulo={
+        esActivacion
+          ? "Define la contraseña con la que ingresarás al sistema"
+          : "La contraseña anterior deja de funcionar apenas se guarda la nueva"
+      }
     >
       <ConfirmarForm token={tokenRecibido} />
     </MarcoPublico>

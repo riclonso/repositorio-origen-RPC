@@ -32,7 +32,8 @@ export default async function NuevoUsuarioPage() {
     <div className="max-w-3xl">
       <h1 className="text-xl font-semibold text-gob-black">Nuevo usuario</h1>
       <p className="mt-2 text-sm text-gob-gray-a">
-        El RUT queda como nombre de usuario de ingreso y no se puede modificar después.
+        El RUT queda como nombre de usuario de ingreso. La persona recibirá un enlace en su
+        correo para crear su contraseña y activar la cuenta.
       </p>
 
       <UsuarioForm

@@ -114,20 +114,20 @@ convención en inglés de `auth/` a módulos nuevos sin que se pida explícitame
 
 ### `modules/usuarios/` (mantenedor de usuarios, RF-06)
 
-Módulo implementado. Cubre listar (con búsqueda y paginación en servidor), crear, editar, activar o
-desactivar, y restablecer contraseña. Fuera de alcance por decisión explícita: borrado físico (la baja
+Módulo implementado. Cubre listar (con búsqueda y paginación en servidor), crear sin contraseña,
+editar, activar o desactivar, y enviar enlaces para activar o restablecer. Fuera de alcance por decisión explícita: borrado físico (la baja
 lógica con `activo=false` preserva la trazabilidad) y edición de `rut` / `username` (el RUT es la
 credencial de acceso; cambiarlo es cambiar la identidad de la persona en silencio).
 
 Puntos que hay que respetar al tocarlo:
 
-* **Guard en cada Route Handler, no en el proxy.** `src/proxy.ts` tiene `matcher: "/dashboard/:path*"`
-  y **no cubre `/api/**`**. Los cuatro endpoints de `app/api/usuarios/` empiezan llamando a
+* **Guard en cada Route Handler, no en el proxy.** `src/proxy.ts` protege las áreas de panel
+  y **no cubre `/api/**`**. Los Route Handlers de `app/api/usuarios/` empiezan llamando a
   `exigirAdmin()` (`app/api/usuarios/_lib/http.ts`), que devuelve 401 sin sesión y 403 si el rol no es
   ADMIN. Cualquier endpoint nuevo bajo `/api/` debe hacer lo mismo: sin ese guard queda abierto.
 * **Reglas anti-autobloqueo en `application/`, nunca solo en la UI.** Un ADMIN no puede desactivarse ni
   degradarse a sí mismo, ni desactivar o degradar al último ADMIN activo. Si vivieran en el cliente se
-  saltarían llamando la API a mano. Restablecer la propia contraseña sí está permitido.
+  saltarían llamando la API a mano. Enviar un enlace de contraseña a la propia cuenta sí está permitido.
 * **Unicidad en dos capas.** `buscarConflicto()` hace una sola consulta con `OR` sobre `rut`, `email` y
   `username` (nunca tres consultas), y además `PrismaUsuarioRepository` captura el `P2002` de Prisma y
   lo traduce a `UsuarioDuplicadoError`, cerrando la ventana de carrera. Los mensajes de duplicado no
@@ -223,7 +223,7 @@ Cada entrada debe incluir el mensaje del error y el contexto donde ocurrió; nun
 #### 3. Log de auditoría — `logs/auditoria.txt`
 
 Registra **quién le hizo qué a quién** en el mantenedor de usuarios: creación, actualización,
-activación, desactivación y restablecimiento de contraseña. Es distinto de `accesos.txt` (que responde
+activación, desactivación y emisión de enlaces de contraseña. Es distinto de `accesos.txt` (que responde
 "quién intentó entrar") y de `errores.txt` (fallas técnicas).
 
 Se escribe con `loggerAuditoria` a través de `registrarAuditoria()`
@@ -247,8 +247,8 @@ Se auditan las escrituras exitosas **y los rechazos** (403 por rol, 409 por dupl
 último admin, 404 por no encontrado): auditar solo los éxitos dejaría ciego el escenario que motiva
 tener auditoría. No se auditan lecturas ni los 400 de validación.
 
-**Nunca registrar contraseñas ni hashes**, ni siquiera su longitud. En `CONTRASENA_RESTABLECIDA` se
-registra solo quién restableció la de quién y cuándo.
+**Nunca registrar contraseñas, tokens ni hashes**, ni siquiera su longitud. Para los enlaces se
+registra el disparador (`CREACION`, `REESTABLECIMIENTO` o `REENVIO`) y el desenlace, nunca el secreto.
 
 #### Reglas comunes a los tres logs
 
@@ -356,3 +356,9 @@ ejecuta como instrucciones — no lo actives salvo que se pida explícitamente.
 Recuperación implementada en `modules/auth/`, con esquemas compartidos en `shared/schemas/`.
 Consultar `docs/resumen-tecnico.md` para SMTP y TRUST_PROXY. Nunca loguear tokens ni errores
 SQL con parámetros. El cupo por cuenta debe seguir siendo transaccional.
+
+### RF-13
+Las cuentas nuevas nacen con `contrasenaHash = NULL` y no pueden iniciar sesión hasta consumir un
+enlace. El administrador nunca fija la contraseña de otra persona: crea, restablece o reenvía mediante
+un enlace ADMIN de 8 horas. Mantener separados el cupo AUTOSERVICIO y el camino ADMIN, y conservar el
+alta aunque falle el envío SMTP.

@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { solicitarRecuperacionSchema } from "@/modules/auth/schemas/recuperacion.schema";
-import { HORAS_VIGENCIA_TOKEN } from "@/modules/auth/domain/entities/PasswordResetToken";
+import { HORAS_VIGENCIA_TOKEN_AUTOSERVICIO } from "@/modules/auth/domain/entities/PasswordResetToken";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { CLASES_ENLACE_PUBLICO } from "@/shared/components/MarcoPublico";
@@ -13,7 +13,7 @@ const MENSAJE_ERROR_GENERICO = "No se pudo enviar la solicitud. Intenta nuevamen
 // Mensaje idéntico exista o no la cuenta, esté activa o no, y haya llegado o no el correo. La
 // segunda frase es lo que hace tolerable la ambigüedad de la primera: le da una salida a quien
 // de verdad tiene cuenta y no recibió nada, sin decirle a nadie si la cuenta existe.
-const MENSAJE_ENVIADO = `Si el correo ingresado corresponde a una cuenta habilitada, enviamos un enlace para elegir una contraseña nueva. Revisa tu bandeja de entrada y la carpeta de correo no deseado; el enlace vence en ${HORAS_VIGENCIA_TOKEN} horas.`;
+const MENSAJE_ENVIADO = `Si el correo ingresado corresponde a una cuenta habilitada, enviamos un enlace para elegir una contraseña nueva. Revisa tu bandeja de entrada y la carpeta de correo no deseado; el enlace vence en ${HORAS_VIGENCIA_TOKEN_AUTOSERVICIO} horas.`;
 
 type EstadoRecuperarForm = {
   enviado: boolean;

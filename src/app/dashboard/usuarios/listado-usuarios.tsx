@@ -28,6 +28,7 @@ function aFilaVista(usuario: Usuario): FilaUsuarioVista {
     username: usuario.username,
     perfilNombre: usuario.perfilNombre,
     activo: usuario.activo,
+    tieneContrasena: usuario.tieneContrasena,
     creadoEl: formateadorFecha.format(usuario.createdAt),
   };
 }

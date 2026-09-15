@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ChartBar, FileText, House, UsersThree } from "@phosphor-icons/react";
 
 export type EnlacePanel = {
   href: string;
@@ -37,6 +38,12 @@ function calcularHrefActivo(rutaActual: string, enlaces: readonly EnlacePanel[])
 export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
   const rutaActual = usePathname();
   const hrefActivo = calcularHrefActivo(rutaActual, enlaces);
+  const iconos = {
+    Inicio: House,
+    Panel: ChartBar,
+    Usuarios: UsersThree,
+    Logs: FileText,
+  } as const;
 
   return (
     <nav
@@ -45,11 +52,12 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
     >
       {/* El encabezado de sección solo aporta en la columna lateral; en la barra horizontal
           robaría ancho a los propios enlaces. */}
-      <p className="hidden px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-gob-gray-a md:block">
+      <p className="hidden px-3 pb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[#a8c1dc] md:block">
         {titulo}
       </p>
       {enlaces.map((enlace) => {
         const activo = enlace.href === hrefActivo;
+        const Icono = iconos[enlace.etiqueta as keyof typeof iconos];
 
         return (
           <Link
@@ -58,12 +66,13 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
             aria-current={activo ? "page" : undefined}
             /* El estado activo se marca con peso tipográfico y una barra lateral, no solo con
                color de fondo: el color no puede ser el único portador de la información. */
-            className={`whitespace-nowrap rounded-md border-b-3 px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary md:border-b-0 md:border-l-3 ${
+            className={`inline-flex whitespace-nowrap rounded-lg border-b-3 px-3 py-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:border-b-0 ${
               activo
-                ? "border-gob-primary bg-gob-neutral font-semibold text-gob-tertiary"
-                : "border-transparent font-medium text-gob-gray-a hover:bg-gob-neutral"
+                ? "border-transparent bg-white/15 font-semibold text-white"
+                : "border-transparent font-medium text-[#c6d5e4] hover:bg-white/10 hover:text-white"
             }`}
           >
+            {Icono ? <Icono size={19} weight={activo ? "fill" : "regular"} aria-hidden="true" className="mr-2 shrink-0" /> : null}
             {enlace.etiqueta}
           </Link>
         );

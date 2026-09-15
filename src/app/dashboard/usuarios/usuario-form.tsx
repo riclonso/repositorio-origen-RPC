@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ZodError } from "zod";
@@ -9,9 +9,6 @@ import {
   editarUsuarioSchema,
 } from "@/modules/usuarios/schemas/usuario.schema";
 import { Boton } from "@/shared/components/Boton";
-import { CampoContrasena } from "@/shared/components/CampoContrasena";
-import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
-import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { RUTA_USUARIOS } from "./ruta-usuarios";
@@ -76,14 +73,16 @@ export function UsuarioForm({
   // `<form action={...}>` en cuanto la acción termina, también cuando devuelve errores de
   // validación: el operador corregía un RUT mal escrito y encontraba el resto del formulario
   // en blanco. Con el valor en estado, un error deja de costar volver a teclear todo.
-  const [valores, setValores] = useState(() => ({
-    ...valoresIniciales,
-    contrasena: "",
-    confirmacionContrasena: "",
-  }));
+  const [valores, actualizarValores] = useReducer(
+    (actuales: ValoresUsuarioForm, cambios: Partial<ValoresUsuarioForm>) => ({
+      ...actuales,
+      ...cambios,
+    }),
+    valoresIniciales,
+  );
 
-  function actualizarCampo(campo: keyof typeof valores, valor: string) {
-    setValores((previos) => ({ ...previos, [campo]: valor }));
+  function actualizarCampo(campo: keyof ValoresUsuarioForm, valor: string) {
+    actualizarValores({ [campo]: valor });
   }
 
   const [estado, enviarFormulario, enviando] = useActionState<EstadoUsuarioForm, FormData>(
@@ -94,8 +93,6 @@ export function UsuarioForm({
         email: String(formData.get("email") ?? ""),
         perfilCodigo: String(formData.get("perfilCodigo") ?? ""),
         rut: String(formData.get("rut") ?? ""),
-        contrasena: String(formData.get("contrasena") ?? ""),
-        confirmacionContrasena: String(formData.get("confirmacionContrasena") ?? ""),
       };
 
       let cuerpo: Record<string, string>;
@@ -113,7 +110,6 @@ export function UsuarioForm({
           rut: analisis.data.rut,
           email: analisis.data.email,
           perfilCodigo: analisis.data.perfilCodigo,
-          contrasena: analisis.data.contrasena,
         };
       } else {
         const analisis = editarUsuarioSchema.safeParse(bruto);
@@ -146,7 +142,7 @@ export function UsuarioForm({
         return { errores: {}, errorGeneral: MENSAJE_ERROR_GENERICO };
       }
 
-      router.push(RUTA_USUARIOS);
+      router.push(esCreacion ? `${RUTA_USUARIOS}?creado=1` : RUTA_USUARIOS);
       router.refresh();
       return ESTADO_INICIAL;
     },
@@ -210,42 +206,6 @@ export function UsuarioForm({
           error={estado.errores.perfilCodigo}
         />
       </div>
-
-      {esCreacion ? (
-        <div className="grid gap-5 md:grid-cols-2">
-          <div>
-            <CampoContrasena
-              id="contrasena"
-              name="contrasena"
-              etiqueta="Contraseña"
-              autoComplete="new-password"
-              error={estado.errores.contrasena}
-              aria-describedby="requisitos-contrasena"
-              value={valores.contrasena}
-              onChange={(evento) => actualizarCampo("contrasena", evento.target.value)}
-            />
-            <RequisitosContrasena id="requisitos-contrasena" contrasena={valores.contrasena} />
-          </div>
-
-          <div>
-            <CampoContrasena
-              id="confirmacionContrasena"
-              name="confirmacionContrasena"
-              etiqueta="Repetir contraseña"
-              autoComplete="new-password"
-              error={estado.errores.confirmacionContrasena}
-              aria-describedby="coincidencia-contrasena"
-              value={valores.confirmacionContrasena}
-              onChange={(evento) => actualizarCampo("confirmacionContrasena", evento.target.value)}
-            />
-            <CoincidenciaContrasena
-              id="coincidencia-contrasena"
-              contrasena={valores.contrasena}
-              confirmacion={valores.confirmacionContrasena}
-            />
-          </div>
-        </div>
-      ) : null}
 
       {estado.errorGeneral ? (
         <p role="alert" className="text-sm font-medium text-gob-danger">

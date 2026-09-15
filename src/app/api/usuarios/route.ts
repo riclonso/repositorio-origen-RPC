@@ -1,11 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { crearUsuario } from "@/modules/usuarios/application/use-cases/CrearUsuario";
+import { emitirEnlaceContrasena } from "@/modules/auth/application/use-cases/EmitirEnlaceContrasena";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
-import { hasheadorContrasenaBcrypt } from "@/modules/usuarios/infrastructure/auth/HasheadorContrasenaBcrypt";
+import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
+import { prismaPasswordResetTokenRepository } from "@/modules/auth/infrastructure/repositories/PrismaPasswordResetTokenRepository";
+import { tokenService } from "@/modules/auth/infrastructure/tokens/TokenService";
+import { enlaceContrasenaMailer } from "@/modules/auth/infrastructure/email/EnlaceContrasenaMailer";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
+import { auditarDesenlaceEnlace } from "@/app/api/usuarios/_lib/auditarEnlace";
 import { listadoUsuariosSchema } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import { crearUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
 import {
@@ -79,7 +84,6 @@ export async function POST(request: Request) {
     const resultado = await crearUsuario(datos.data, {
       repositorio: prismaUsuarioRepository,
       repositorioPerfiles: prismaPerfilRepository,
-      hasheadorContrasena: hasheadorContrasenaBcrypt,
     });
 
     if (!resultado.ok) {
@@ -103,6 +107,30 @@ export async function POST(request: Request) {
       resultado: "EXITO",
       usuarioObjetivoId: resultado.usuario.id,
       usuarioObjetivoRut: resultado.usuario.rut,
+    });
+
+    // El correo de activación se DIFIERE con after(): la respuesta 201 no depende de que el
+    // relay SMTP esté configurado ni de que el envío tenga éxito. Si el correo no sale, el
+    // usuario queda creado y pendiente, y el administrador puede reenviar el enlace desde el
+    // mantenedor. El desenlace del envío se audita como ENLACE_CONTRASENA_ENVIADO / CREACION.
+    const sesion = acceso.sesion;
+    const usuarioCreadoId = resultado.usuario.id;
+    after(async () => {
+      try {
+        const enlace = await emitirEnlaceContrasena(usuarioCreadoId, {
+          repositorioUsuarios: prismaUserRepository,
+          repositorioTokens: prismaPasswordResetTokenRepository,
+          generadorToken: tokenService,
+          enviadorCorreo: enlaceContrasenaMailer,
+        });
+
+        auditarDesenlaceEnlace(sesion, request, enlace, "CREACION");
+      } catch (error) {
+        logger.error("Error al emitir el enlace de activación de un usuario recién creado", {
+          usuarioId: usuarioCreadoId,
+          tipo: error instanceof Error ? error.name : "ErrorDesconocido",
+        });
+      }
     });
 
     return NextResponse.json({ usuario: aUsuarioDTO(resultado.usuario) }, { status: 201 });

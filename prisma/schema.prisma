@@ -30,7 +30,10 @@ model Usuario {
   rut            String   @unique
   email          String   @unique
   username       String   @unique
-  contrasenaHash String
+  // NULL = cuenta pendiente de activación: se creó sin contraseña y no puede iniciar sesión
+  // hasta fijarla con un enlace de un solo uso. No-nulo = cuenta con contraseña. Esta columna
+  // es la autoridad ÚNICA del estado "pendiente" (sin flag paralelo que pueda desincronizarse).
+  contrasenaHash String?
   perfilCodigo   String   @db.VarChar(40)
   perfil         Perfil   @relation(fields: [perfilCodigo], references: [codigo], onUpdate: Cascade, onDelete: Restrict)
   activo         Boolean  @default(true)
@@ -51,6 +54,12 @@ model TokenRecuperacion {
   usuarioId    String
   usuario      Usuario   @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   tokenHash    String    @unique @db.VarChar(64)
+  // Quién disparó la emisión: AUTOSERVICIO (formulario público "¿olvidó su contraseña?") o
+  // ADMIN (creación / restablecimiento / reenvío desde el mantenedor). El cupo por cuenta solo
+  // acota el camino AUTOSERVICIO, así que el conteo del cupo filtra por este valor; el camino
+  // ADMIN es una acción autenticada y no lleva cupo. El detalle fino del disparador admin
+  // (CREACION/REESTABLECIMIENTO/REENVIO) vive en `logs/auditoria.txt`, no aquí.
+  origen       String    @default("AUTOSERVICIO") @db.VarChar(20)
   // Las cuatro fechas son `timestamp` SIN zona y guardan siempre el reloj de pared en UTC, la
   // misma convención que `usuario` y `perfil`. Se evaluó y se MIDIÓ la variante con zona, que es
   // lo que corresponde conceptualmente a un instante absoluto, y no es utilizable con este

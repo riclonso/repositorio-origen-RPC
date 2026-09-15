@@ -20,5 +20,4 @@ export interface UsuarioRepository {
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;
   cambiarEstado(id: string, activo: boolean): Promise<Usuario>;
-  actualizarContrasena(id: string, contrasenaHash: string): Promise<void>;
 }

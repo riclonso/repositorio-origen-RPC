@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-11
+Última actualización: 2026-09-15
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -240,9 +240,9 @@ en el despliegue y `db:seed` no; sin ellas, el `SET NOT NULL` y la FK no tendrí
 
 Implementada en `/recuperar` y `/recuperar/confirmar`, enlazada desde el login.
 El enlace dura 2 horas y es de un solo uso. La base conserva únicamente su SHA-256.
-El cupo de 3 solicitudes por cuenta y hora se reserva bajo bloqueo transaccional por usuario.
+El cupo de 3 solicitudes por cuenta cada 15 minutos se reserva bajo bloqueo transaccional por usuario.
 El consumo bloquea primero al usuario y luego al token; el cambio y la invalidación de otros
- enlaces se confirman juntos. El restablecimiento desde el mantenedor también invalida enlaces.
+ enlaces se confirman juntos. Un enlace administrativo nuevo invalida los enlaces vigentes.
 Las fechas se escriben y comparan como UTC sin zona mediante parámetros `timestamp`, nunca
 contra `now()` con zona. Pruebas de regresión en `tests/recuperacion.integration.ts`.
 
@@ -344,3 +344,22 @@ uso en `modules/auth/application/use-cases/`.
 
 Limitación heredada de RF-09: el perfil viaja en el JWT de 8 h, así que un cambio de perfil o una
 desactivación no surten efecto hasta que expire el token.
+
+## Alta sin contraseña y activación por enlace (RF-13)
+
+La ausencia de contraseña es el único estado de activación: `usuario.contrasenaHash = NULL`. No se
+agrega un booleano paralelo. El login exige cuenta activa y hash presente, mientras que la emisión y
+el consumo de enlaces solo exigen que la cuenta esté activa; por eso una cuenta pendiente puede fijar
+su primera contraseña sin poder iniciar sesión antes.
+
+Los enlaces públicos de recuperación conservan su vigencia de 2 horas y su cupo transaccional. Los
+enlaces iniciados por un administrador duran 8 horas, no consumen el cupo público y se identifican con
+`token_recuperacion.origen = 'ADMIN'`. `emitirParaAdmin()` invalida los enlaces vigentes antes de
+crear el nuevo dentro de una transacción. El consumo detecta si el hash anterior era nulo para
+auditar `ACTIVACION`, actualiza la contraseña e invalida los demás enlaces juntos.
+
+`POST /api/usuarios` responde por el alta y difiere el correo mediante `after()`: si el relay falla,
+la cuenta permanece pendiente y el error queda registrado. El endpoint autenticado
+`POST /api/usuarios/[id]/enlace-contrasena` espera el resultado para informar al administrador y
+sirve tanto para reenviar la activación como para restablecer una cuenta ya activada. Ambos contextos
+reutilizan `EnlaceContrasenaMailer` y `/recuperar/confirmar`; solo cambia el texto presentado.

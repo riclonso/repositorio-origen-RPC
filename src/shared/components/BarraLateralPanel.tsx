@@ -20,11 +20,11 @@ export function BarraLateralPanel({ enlaces, titulo }: BarraLateralPanelProps) {
     <div className="flex flex-1 flex-col">
       <NavegacionPanel enlaces={enlaces} titulo={titulo} />
 
-      <div className="mt-auto border-t border-gob-accent p-2 md:p-4">
+      <div className="mt-auto border-t border-white/15 p-2 md:p-4">
         <form action={cerrarSesionAction}>
           <button
             type="submit"
-            className="w-full rounded-md border border-gob-accent px-3 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+            className="w-full rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             Cerrar sesión
           </button>

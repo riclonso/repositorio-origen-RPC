@@ -26,10 +26,10 @@ function calcularIniciales(nombreCompleto: string): string {
 // sesión no vive aquí: se movió al pie de la barra lateral (`BarraLateralPanel`).
 export function EncabezadoPanel({ nombreCompleto, perfil }: EncabezadoPanelProps) {
   return (
-    <header className="flex items-center justify-between gap-4 bg-gob-tertiary px-4 py-3 md:px-6">
+    <header className="flex items-center justify-between gap-4 border-b border-[#dce5ef] bg-white px-4 py-3.5 md:px-7">
       <div className="min-w-0">
-        <p className="text-sm font-semibold tracking-wide text-white">Repositorio RPC</p>
-        <p className="text-xs text-gob-accent">SEREMI de Salud Biobío</p>
+        <p className="text-sm font-semibold tracking-wide text-[#173b69]">Repositorio RPC</p>
+        <p className="text-xs text-[#6c8197]">SEREMI de Salud Biobío</p>
       </div>
 
       {nombreCompleto ? (
@@ -39,11 +39,11 @@ export function EncabezadoPanel({ nombreCompleto, perfil }: EncabezadoPanelProps
         // quedar visible en todo momento.
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex min-w-0 flex-col items-end leading-tight">
-            <p className="hidden max-w-[45vw] truncate text-sm font-medium text-white sm:block lg:max-w-xs">
+            <p className="hidden max-w-[45vw] truncate text-sm font-medium text-[#243c58] sm:block lg:max-w-xs">
               {nombreCompleto}
             </p>
             {perfil ? (
-              <span className="mt-0.5 inline-flex items-center rounded-full border border-white/30 bg-white/10 px-2 py-0.5 text-xs font-medium text-gob-accent">
+              <span className="mt-0.5 inline-flex items-center rounded-full bg-[#edf4fa] px-2 py-0.5 text-xs font-medium text-[#3973a6]">
                 {perfil}
               </span>
             ) : null}
@@ -51,7 +51,7 @@ export function EncabezadoPanel({ nombreCompleto, perfil }: EncabezadoPanelProps
 
           <span
             aria-hidden="true"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-sm font-semibold text-white"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#173b69] text-sm font-semibold text-white"
           >
             {calcularIniciales(nombreCompleto)}
           </span>

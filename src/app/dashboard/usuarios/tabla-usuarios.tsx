@@ -18,6 +18,7 @@ export type FilaUsuarioVista = {
   username: string;
   perfilNombre: string;
   activo: boolean;
+  tieneContrasena: boolean;
   creadoEl: string;
 };
 
@@ -45,9 +46,13 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
         href={`${RUTA_USUARIOS}/${fila.id}/editar`}
       />
       <BotonIcono
-        etiqueta={`Cambiar la contraseña de ${persona}`}
+        etiqueta={
+          fila.tieneContrasena
+            ? `Enviar enlace para restablecer la contraseña de ${persona}`
+            : `Reenviar enlace de activación a ${persona}`
+        }
         Icono={IconoContrasena}
-        href={`${RUTA_USUARIOS}/${fila.id}/contrasena`}
+        href={`${RUTA_USUARIOS}/${fila.id}/enlace-contrasena`}
       />
 
       {/* El interruptor reemplaza al botón de desactivar y además muestra el estado, así que la
@@ -135,7 +140,9 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
               <th scope="col" className="px-3 py-3 font-semibold">Email</th>
               <th scope="col" className="px-3 py-3 font-semibold">Perfil</th>
               <th scope="col" className="px-3 py-3 font-semibold">Creado</th>
-              <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
+              {/* `w-px` encoge la columna al ancho de sus acciones, así el título alineado a la
+                  izquierda empieza justo donde empieza el botón de editar de cada fila. */}
+              <th scope="col" className="w-px whitespace-nowrap px-3 py-3 text-left font-semibold">
                 Acciones
               </th>
             </tr>
@@ -144,7 +151,12 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
             {filas.map((fila) => (
               <tr key={fila.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
                 <th scope="row" className="min-w-36 px-3 py-2 font-medium text-gob-black">
-                  {nombreCompleto(fila)}
+                  <span>{nombreCompleto(fila)}</span>
+                  {!fila.tieneContrasena ? (
+                    <span className="mt-1 block w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
+                      Pendiente de activación
+                    </span>
+                  ) : null}
                 </th>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
                   {fila.rut}
@@ -176,6 +188,11 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
             className="rounded-lg border border-gob-accent bg-white p-4 text-sm text-gob-gray-a"
           >
             <p className="font-semibold text-gob-black">{nombreCompleto(fila)}</p>
+            {!fila.tieneContrasena ? (
+              <p className="mt-1 w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
+                Pendiente de activación
+              </p>
+            ) : null}
             <p className="mt-1 tabular-nums">{fila.rut}</p>
             <p className="break-all">{fila.email}</p>
             <p className="mt-1">

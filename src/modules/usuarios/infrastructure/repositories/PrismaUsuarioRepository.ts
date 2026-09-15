@@ -10,8 +10,10 @@ import { CODIGO_PERFIL_ADMIN } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 
-// Selección explícita: `contrasenaHash` nunca sale del repositorio en este módulo. El nombre del
-// perfil se trae en la misma consulta (lectura de UNA fila con su perfil, no hay N+1).
+// Selección explícita. Se trae `contrasenaHash` SOLO para derivar `tieneContrasena`: el hash se
+// reduce a un booleano en el mapper y NO se copia al objeto de dominio, así que sigue sin salir
+// del repositorio (el tipo `Usuario` ni siquiera lo declara). El nombre del perfil se trae en la
+// misma consulta (lectura de UNA fila con su perfil, no hay N+1).
 const SELECCION_USUARIO = {
   id: true,
   nombres: true,
@@ -19,6 +21,7 @@ const SELECCION_USUARIO = {
   rut: true,
   email: true,
   username: true,
+  contrasenaHash: true,
   perfilCodigo: true,
   perfil: { select: { nombre: true } },
   activo: true,
@@ -32,13 +35,15 @@ type RegistroUsuario = {
   rut: string;
   email: string;
   username: string;
+  contrasenaHash: string | null;
   perfilCodigo: string;
   perfil: { nombre: string };
   activo: boolean;
   createdAt: Date;
 };
 
-// Aplana el perfil anidado que devuelve Prisma a los dos campos planos del dominio.
+// Aplana el perfil anidado que devuelve Prisma a los dos campos planos del dominio y reduce
+// `contrasenaHash` al booleano `tieneContrasena` SIN copiar el hash.
 function aUsuario(registro: RegistroUsuario): Usuario {
   return {
     id: registro.id,
@@ -50,6 +55,7 @@ function aUsuario(registro: RegistroUsuario): Usuario {
     perfilCodigo: registro.perfilCodigo,
     perfilNombre: registro.perfil.nombre,
     activo: registro.activo,
+    tieneContrasena: registro.contrasenaHash !== null,
     createdAt: registro.createdAt,
   };
 }
@@ -134,14 +140,19 @@ type FilaListado = {
   rut: string;
   email: string;
   username: string;
+  // El motor NO devuelve el hash en el listado: devuelve solo el booleano ya calculado con
+  // `(u."contrasenaHash" IS NOT NULL)`, de modo que el hash nunca cruza la frontera de la base.
+  tieneContrasena: boolean;
   perfilCodigo: string;
   perfilNombre: string;
   activo: boolean;
   createdAt: Date;
 };
 
+// El listado NO pasa por `aUsuario` porque el hash no sale del motor: aquí `tieneContrasena` ya
+// viene resuelto por el SQL, así que se arma el objeto de dominio directamente.
 function aUsuarioDesdeFila(fila: FilaListado): Usuario {
-  return aUsuario({
+  return {
     id: String(fila.id),
     nombres: String(fila.nombres),
     apellidos: String(fila.apellidos),
@@ -149,10 +160,11 @@ function aUsuarioDesdeFila(fila: FilaListado): Usuario {
     email: String(fila.email),
     username: String(fila.username),
     perfilCodigo: String(fila.perfilCodigo),
-    perfil: { nombre: String(fila.perfilNombre) },
+    perfilNombre: String(fila.perfilNombre),
     activo: Boolean(fila.activo),
+    tieneContrasena: Boolean(fila.tieneContrasena),
     createdAt: fila.createdAt instanceof Date ? fila.createdAt : new Date(fila.createdAt),
-  });
+  };
 }
 
 export const prismaUsuarioRepository: UsuarioRepository = {
@@ -169,6 +181,7 @@ export const prismaUsuarioRepository: UsuarioRepository = {
     const [filas, conteo] = await prisma.$transaction([
       prisma.$queryRaw<FilaListado[]>`
         SELECT u."id", u."nombres", u."apellidos", u."rut", u."email", u."username",
+               (u."contrasenaHash" IS NOT NULL) AS "tieneContrasena",
                u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt"
         FROM "usuario" u
         JOIN "perfil" p ON p."codigo" = u."perfilCodigo"
@@ -279,25 +292,5 @@ export const prismaUsuarioRepository: UsuarioRepository = {
     });
 
     return aUsuario(registro);
-  },
-
-  // Invariante del proyecto: TODO cambio de `usuario.contrasenaHash` invalida los tokens de
-  // recuperación vigentes de esa cuenta. Se hace cumplir aquí, en la única capa que escribe esa
-  // columna por el camino del administrador, y no con un puerto inyectado en cada caso de uso:
-  // así lo hereda por construcción cualquier caso de uso futuro que reutilice este método.
-  // La otra implementación de la misma invariante está en
-  // `PrismaPasswordResetTokenRepository.consumir`; si se cambia una, revisar la otra.
-  async actualizarContrasena(id, contrasenaHash) {
-    await prisma.$transaction([
-      prisma.usuario.update({
-        where: { id },
-        data: { contrasenaHash },
-        select: { id: true },
-      }),
-      prisma.tokenRecuperacion.updateMany({
-        where: { usuarioId: id, usadoEn: null, invalidadoEn: null },
-        data: { invalidadoEn: new Date() },
-      }),
-    ]);
   },
 };

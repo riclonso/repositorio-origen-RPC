@@ -1,6 +1,6 @@
 # Resumen técnico
 
-Última actualización: 2026-09-04
+Última actualización: 2026-09-15
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo cambia el stack, agrega un comando de proyecto o cambia una variable de entorno.
@@ -56,7 +56,7 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
 | Visor de registros    | Implementado | `/dashboard/logs` (solo ADMIN) lee `logs/errores.txt` y `logs/auditoria.txt` vía `infrastructure/logging/leerLogs.ts`, que lee solo la cola del archivo para acotar memoria. |
 | `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
-| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
+| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06/RF-13): listar, crear sin contraseña, editar, activar/desactivar y enviar o reenviar enlaces de contraseña. Los endpoints tienen guard propio. Ver [docs/arquitectura.md](arquitectura.md#alta-sin-contraseña-y-activación-por-enlace-rf-13). |
 | Panel notificador     | Implementado (solo shell) | Panel del perfil NOTIFICADOR_RPC (RF-12) en `/notificador`, área separada de `/dashboard` (solo ADMIN). Login → despachador `/inicio` que redirige por perfil; proxy protege ambas áreas con chequeo positivo. Por ahora solo shell + bienvenida con nombre y placeholder "Próximamente"; sin el flujo de reporte. Ver [docs/arquitectura.md](arquitectura.md#panel-del-perfil-notificador_rpc-rf-12). |
 | Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Será una sección del panel notificador. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
 
@@ -112,9 +112,9 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 
 Implementada en `/recuperar` y `/recuperar/confirmar`, enlazada desde el login.
 El enlace dura 2 horas y es de un solo uso. La base conserva únicamente su SHA-256.
-El cupo de 3 solicitudes por cuenta y hora se reserva bajo bloqueo transaccional por usuario.
+El cupo de 3 solicitudes por cuenta cada 15 minutos se reserva bajo bloqueo transaccional por usuario.
 El consumo bloquea primero al usuario y luego al token; el cambio y la invalidación de otros
- enlaces se confirman juntos. El restablecimiento desde el mantenedor también invalida enlaces.
+ enlaces se confirman juntos.
 Las fechas se escriben y comparan como UTC sin zona mediante parámetros `timestamp`, nunca
 contra `now()` con zona. Pruebas de regresión en `tests/recuperacion.integration.ts`.
 
@@ -136,3 +136,16 @@ Para pruebas usar exclusivamente PostgreSQL desechable local con todas las migra
 `RF10_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... npx tsx tests/recuperacion.integration.ts`.
 Ejecutar en UTC, America/Santiago y Asia/Tokyo mediante `PGOPTIONS='-c timezone=...'`.
 La prueba SMTP usa solo 127.0.0.1:55440 y no entrega mensajes externos.
+
+## Alta sin contraseña y activación por enlace (RF-13)
+
+`usuario.contrasenaHash` es nullable: `NULL` identifica una cuenta pendiente que no puede iniciar
+sesión. `POST /api/usuarios` crea la cuenta en ese estado y agenda el correo de activación con
+`after()`; un fallo SMTP no revierte el alta. El enlace administrativo dura 8 horas, reemplaza
+cualquier enlace vigente de la cuenta y se guarda con `token_recuperacion.origen = 'ADMIN'`.
+
+El mantenedor muestra "Pendiente de activación" y usa
+`POST /api/usuarios/[id]/enlace-contrasena` para reenviar una activación o solicitar un
+restablecimiento. La persona siempre define la contraseña en `/recuperar/confirmar`; el
+administrador nunca conoce ni fija contraseñas ajenas. Migración aditiva:
+`20260915120000_alta_sin_contrasena`.

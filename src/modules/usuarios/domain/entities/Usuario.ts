@@ -14,11 +14,21 @@ export type Usuario = {
   perfilCodigo: string;
   perfilNombre: string;
   activo: boolean;
+  // `true` = la cuenta ya tiene contraseña; `false` = pendiente de activación. Se deriva de si
+  // `contrasenaHash` es nulo SIN exponer el hash: el hash nunca sale del repositorio (misma
+  // razón por la que `Usuario` no lo declara). Es lo que el mantenedor usa para el chip
+  // "Pendiente de activación" y para decidir entre "enviar" y "reenviar" el enlace.
+  tieneContrasena: boolean;
   createdAt: Date;
 };
 
-export type DatosNuevoUsuario = Omit<Usuario, "id" | "createdAt" | "perfilNombre"> & {
-  contrasenaHash: string;
+// Al crear, la cuenta nace SIN contraseña (pendiente de activación): `contrasenaHash` es `null`.
+// `tieneContrasena` no forma parte de la creación (se deriva del hash), por eso se omite.
+export type DatosNuevoUsuario = Omit<
+  Usuario,
+  "id" | "createdAt" | "perfilNombre" | "tieneContrasena"
+> & {
+  contrasenaHash: string | null;
 };
 
 export type DatosEdicionUsuario = Pick<

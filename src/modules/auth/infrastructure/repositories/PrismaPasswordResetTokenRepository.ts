@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { PasswordResetToken } from "@/modules/auth/domain/entities/PasswordResetToken";
 import { DIAS_RETENCION_TOKEN } from "@/modules/auth/domain/entities/PasswordResetToken";
-import { puedeIniciarSesion } from "@/modules/auth/domain/entities/User";
+import { puedeRecibirEnlaceContrasena } from "@/modules/auth/domain/entities/User";
 import type {
   PasswordResetTokenRepository,
   ResultadoConsumoToken,
@@ -76,17 +76,24 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
       // Ver la nota de convención en `prisma/schema.prisma`.
       //
       // `tokenHash` no entra en el RETURNING: el hash entra como argumento y no vuelve.
+      //
+      // El camino público inserta SIEMPRE con origen AUTOSERVICIO, y el conteo del cupo cuenta
+      // SOLO tokens AUTOSERVICIO: los enlaces que emite el administrador (origen ADMIN) no gastan
+      // el cupo de la persona, para que un reenvío legítimo del admin nunca choque contra el tope
+      // del formulario público.
       const creados = await transaccion.$queryRaw<FilaToken[]>`
-        INSERT INTO "token_recuperacion" ("id", "usuarioId", "tokenHash", "expiraEn", "createdAt")
+        INSERT INTO "token_recuperacion" ("id", "usuarioId", "tokenHash", "origen", "expiraEn", "createdAt")
         SELECT
           ${id}::text,
           ${datos.usuarioId}::text,
           ${datos.tokenHash}::varchar(64),
+          'AUTOSERVICIO'::varchar(20),
           ${datos.expiraEn}::timestamp,
           ${ahora}::timestamp
         WHERE (
           SELECT count(*) FROM "token_recuperacion"
           WHERE "usuarioId" = ${datos.usuarioId}::text
+            AND "origen" = 'AUTOSERVICIO'
             AND "createdAt" > ${datos.inicioVentana}::timestamp
         ) < ${datos.maximoPorCuenta}::int
         RETURNING "id", "usuarioId", "expiraEn", "usadoEn", "invalidadoEn", "createdAt"
@@ -95,6 +102,50 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
       // Cero filas significa cupo agotado. Quien llama responde exactamente lo mismo que en el
       // camino feliz: el cupo jamás puede ser observable desde fuera.
       return creados[0] ?? null;
+    });
+  },
+
+  async emitirParaAdmin(datos): Promise<PasswordResetToken> {
+    const ahora = new Date();
+    const id = randomUUID();
+
+    return prisma.$transaction(async (transaccion) => {
+      // Mismo cerrojo consultivo por usuario que `crear`: serializa a los emisores de una misma
+      // cuenta (por ejemplo, el after() de la creación y un reenvío manual casi simultáneo), de
+      // modo que "invalidar los vigentes y luego insertar" no se entrelace con otra emisión.
+      await transaccion.$executeRaw`
+        SELECT pg_advisory_xact_lock(${ESPACIO_CERROJO_RECUPERACION}::int, ${claveCerrojo(datos.usuarioId)}::int)
+      `;
+
+      // Un enlace admin nuevo reemplaza a cualquier enlace vigente de la cuenta (de cualquier
+      // origen): así el último que el administrador emite es el único que funciona, y un enlace
+      // viejo que quedó en un correo anterior deja de servir.
+      await transaccion.tokenRecuperacion.updateMany({
+        where: { usuarioId: datos.usuarioId, usadoEn: null, invalidadoEn: null },
+        data: { invalidadoEn: ahora },
+      });
+
+      // Sin cupo (acción autenticada del admin). Las fechas viajan casteadas a `timestamp`, misma
+      // convención que `crear` y `consumir`; nunca `now()`.
+      const creados = await transaccion.$queryRaw<FilaToken[]>`
+        INSERT INTO "token_recuperacion" ("id", "usuarioId", "tokenHash", "origen", "expiraEn", "createdAt")
+        VALUES (
+          ${id}::text,
+          ${datos.usuarioId}::text,
+          ${datos.tokenHash}::varchar(64),
+          'ADMIN'::varchar(20),
+          ${datos.expiraEn}::timestamp,
+          ${ahora}::timestamp
+        )
+        RETURNING "id", "usuarioId", "expiraEn", "usadoEn", "invalidadoEn", "createdAt"
+      `;
+
+      // El INSERT incondicional siempre produce una fila; el `?? ` es solo para el tipo.
+      const creado = creados[0];
+      if (!creado) {
+        throw new Error("No se pudo emitir el token de contraseña");
+      }
+      return creado;
     });
   },
 
@@ -152,15 +203,23 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
 
         const usuario = await transaccion.usuario.findUnique({
           where: { id: reclamado.usuarioId },
-          select: { id: true, rut: true, activo: true },
+          // Se lee `contrasenaHash` SOLO para saber si era nulo (cuenta pendiente que se activa
+          // con este consumo): ese booleano alimenta el motivo de auditoría. El hash en sí no
+          // sale de la transacción; solo se evalúa aquí.
+          select: { id: true, rut: true, activo: true, contrasenaHash: true },
         });
 
         // Se vuelve a verificar dentro de la transacción porque un administrador pudo desactivar
-        // la cuenta entre la solicitud y el clic. Lanzar provoca el ROLLBACK, dejando el token
-        // sin consumir y la contraseña intacta.
-        if (!usuario || !puedeIniciarSesion(usuario)) {
+        // la cuenta entre la solicitud y el clic. Es `puedeRecibirEnlaceContrasena` y NO
+        // `puedeIniciarSesion`: una cuenta pendiente (hash nulo) todavía no puede iniciar sesión,
+        // pero SÍ debe poder consumir el enlace para fijar su primera contraseña; exigir
+        // `puedeIniciarSesion` aquí haría ROLLBACK y la activación nunca ocurriría. Lanzar
+        // provoca el ROLLBACK, dejando el token sin consumir y la contraseña intacta.
+        if (!usuario || !puedeRecibirEnlaceContrasena(usuario)) {
           throw new CuentaInactivaError();
         }
+
+        const activacion = usuario.contrasenaHash === null;
 
         await transaccion.usuario.update({
           where: { id: usuario.id },
@@ -169,15 +228,20 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
         });
 
         // Invariante del proyecto: todo cambio de `usuario.contrasenaHash` invalida los tokens
-        // vigentes de esa cuenta. La otra implementación de la misma invariante está en
-        // `PrismaUsuarioRepository.actualizarContrasena` (camino del administrador); si se
-        // cambia una, revisar la otra.
+        // vigentes de esa cuenta. Tras retirar el camino del administrador que fijaba hash
+        // directo, esta es la ÚNICA vía por la que cambia `contrasenaHash`, así que la invariante
+        // vive aquí; la emisión admin (`emitirParaAdmin`) además invalida los vigentes al emitir.
         await transaccion.tokenRecuperacion.updateMany({
           where: { usuarioId: usuario.id, usadoEn: null, invalidadoEn: null },
           data: { invalidadoEn: ahora },
         });
 
-        return { ok: true, usuarioId: usuario.id, usuarioRut: usuario.rut } as const;
+        return {
+          ok: true,
+          usuarioId: usuario.id,
+          usuarioRut: usuario.rut,
+          activacion,
+        } as const;
       });
     } catch (error) {
       if (error instanceof CuentaInactivaError) {
