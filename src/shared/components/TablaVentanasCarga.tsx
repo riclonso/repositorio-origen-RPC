@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, ViewTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
@@ -32,6 +33,13 @@ export type VentanaCargaVista = {
   // eliminación física simplemente hace desaparecer la fila del listado siguiente.
   eliminadaEn: string | null;
   abierta: boolean;
+  // Cantidad de `CargaArchivo` en estado APROBADA asociadas a esta ventana, resuelta server-side
+  // vía `_count` de Prisma (nunca contada en el cliente).
+  cantidadCargas: number;
+  // Ruta de detalle ya resuelta en el servidor (`ListadoVentanasCarga.tsx`), como string: este
+  // componente es Client ("use client" arriba, por sus formularios/diálogos) y no puede recibir
+  // una función como prop desde un Server Component.
+  rutaDetalle: string;
 };
 
 // Un `<input type="date">` espera "AAAA-MM-DD". El ISO ya viaja en UTC "de pared" (mismo
@@ -78,7 +86,12 @@ type TablaVentanasCargaProps = {
   opcionesFormatoExcel: OpcionSelect[];
 };
 
-export function TablaVentanasCarga({ ventanas, actorId, esAdmin, opcionesFormatoExcel }: TablaVentanasCargaProps) {
+export function TablaVentanasCarga({
+  ventanas,
+  actorId,
+  esAdmin,
+  opcionesFormatoExcel,
+}: TablaVentanasCargaProps) {
   const router = useRouter();
 
   const [formulario, setFormulario] = useState<FormularioCreacion>(() =>
@@ -330,6 +343,10 @@ export function TablaVentanasCarga({ ventanas, actorId, esAdmin, opcionesFormato
                 <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Publicada</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Creada por</th>
+                <th scope="col" className="px-3 py-3 font-semibold">Cargas</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
+                  Detalle
+                </th>
                 <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                   Acciones
                 </th>
@@ -428,6 +445,17 @@ export function TablaVentanasCarga({ ventanas, actorId, esAdmin, opcionesFormato
                       </span>
                     </td>
                     <td className="px-3 py-2 text-gob-gray-a">{ventana.creadoPorNombre}</td>
+                    <td className="px-3 py-2 tabular-nums text-gob-gray-a">{ventana.cantidadCargas}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <ViewTransition>
+                        <Link
+                          href={ventana.rutaDetalle}
+                          className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                        >
+                          Detalle
+                        </Link>
+                      </ViewTransition>
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">
                       {ventana.eliminadaEn ? (
                         <span className="text-xs text-gob-gray-a">—</span>

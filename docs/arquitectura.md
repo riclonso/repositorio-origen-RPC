@@ -931,3 +931,127 @@ reemplazó el índice único parcial de `anio` por uno sobre `(anio, formatoExce
 "eliminadaEn" IS NULL`) y finalmente eliminó la columna `tipoArchivo` de `ventana_carga`. Todas las
 columnas nacen `NULLABLE` (o con default) y se fijan `NOT NULL` después del `UPDATE`, porque Prisma
 no genera el backfill automáticamente cuando la tabla ya tiene filas.
+
+### Cantidad de cargas por ventana y detalle de cargas aprobadas (ampliación de RF-15)
+
+Agregado después de la entrega inicial de RF-15, a pedido explícito del usuario: la tabla de
+ventanas gana visibilidad sobre cuántas cargas aprobadas tiene cada una y una pantalla de detalle
+para revisarlas, sin duplicar ninguna consulta.
+
+**`VentanaCarga.cantidadCargas` vía `_count`, mismo patrón que `FormatoExcelResumen.cantidadReglas`.**
+`SELECCION_VENTANA` (`PrismaVentanaCargaRepository.ts`) agrega
+`_count: { select: { cargas: { where: { estado: "APROBADA" } } } }`: el conteo se filtra dentro del
+propio `_count`, en la misma consulta que ya trae el resto de la ventana, así que `listar()` no
+incurre en N+1 al pintar la columna "Cargas" de `TablaVentanasCarga`. Como esta selección la
+comparten `crear`/`listar`/`obtenerPorId`/`obtenerPorAnioYFormato`/`actualizar`/`cambiarPublicacion`,
+`cantidadCargas` viaja en las seis, aunque solo el listado y el detalle lo muestren.
+
+**Filtro por ventana reutiliza `listarAprobadas`, no un caso de uso nuevo.**
+`FiltroListadoCargasAprobadas` (`modules/reporte-excel/domain/entities/CargaArchivo.ts`) gana
+`ventanaCargaId?: string`, opcional y aplicado siempre junto a `estado: APROBADA` en el mismo
+`WHERE` de `PrismaCargaArchivoRepository.listarAprobadas()` — nunca como filtro separado ni en la
+UI. `listarCargasAprobadas()` (el caso de uso) no cambió: ya recibía el filtro completo y lo pasaba
+tal cual al repositorio, así que extender el tipo de filtro bastó para soportar el detalle por
+ventana sin tocar la capa de aplicación.
+
+**Páginas nuevas, mismo guard que el resto del área.** `/dashboard/ventanas-carga/[id]` y
+`/revisor/ventanas-carga/[id]` no agregan ningún Route Handler ni guard propio: quedan cubiertas por
+el `matcher` ya existente de `src/proxy.ts` (`/dashboard/:path*`, `/revisor/:path*`), igual que el
+resto de páginas de ambas áreas. Cada `page.tsx` resuelve `obtenerVentanaCarga(id, ...)` para el
+encabezado (`notFound()` si no existe) y delega el cuerpo a `shared/components/DetalleVentanaCarga`
+(compartido entre ambas áreas, mismo patrón que `DetalleCargaAprobada`), que a su vez renderiza
+`ListadoCargasVentana` (pagina el listado con el mismo esquema `listadoCargasSchema`/25-50-100 que
+`/dashboard/cargas`) y `TablaCargasVentana`. Es una pantalla de solo lectura: no se audita el
+acceso, mismo criterio que el resto del proyecto para lecturas.
+
+**`TablaCargasVentana` no exporta ningún mapper, a diferencia de `TablaCargasAprobadas`.**
+`TablaCargasAprobadas.tsx` exporta `aFilaCargaAprobadaVista` junto al componente — señalado por
+`react-doctor` (`only-export-components`) como ruido pre-existente fuera de este alcance, no
+corregido aquí. Para no repetir el mismo patrón en código nuevo, `ListadoCargasVentana` (el Server
+Component) arma la fila de vista inline y `TablaCargasVentana.tsx` solo exporta el componente y su
+tipo de props.
+
+**Descarga reutilizada sin cambios.** El enlace "Descargar" de cada fila apunta al mismo
+`GET /api/dashboard/cargas/[id]/archivo` que ya usa `DetalleCargaAprobada` (guardado por
+`exigirAdminORevisor`, y que ya filtra `estado = APROBADA` en su propia consulta): no hizo falta
+ningún endpoint nuevo.
+
+**`<ViewTransition>` de `react`, sin instalar `react@canary`.** El enlace "Detalle" en
+`TablaVentanasCarga` y el contenedor principal de `DetalleVentanaCarga` (el "contenido de la
+página", no un layout — los layouts persisten entre navegaciones y nunca disparan enter/exit) usan
+`<ViewTransition>` importado directamente desde `"react"`. Aunque el paquete `react` instalado en
+`node_modules` (canal estable) no exporta ese componente en tiempo de ejecución ni en sus tipos, el
+propio paquete `next` sí: `node_modules/next/dist/types.d.ts` referencia `react/experimental`
+(`@types/react/experimental.d.ts`, que a su vez importa `canary.d.ts`), lo que amplía el módulo
+ambiental `"react"` con los tipos de `ViewTransition` para todo el proyecto; y en tiempo de
+ejecución, el App Router de Next sustituye `react`/`react-dom` por su propia copia interna en canal
+canary (`next/dist/compiled/react`, que sí implementa `ViewTransition`) al compilar páginas y
+componentes de `app/`. Verificado con `npx tsc --noEmit` y `npm run build` antes de dar esta
+ampliación por terminada.
+
+### Tablero de seguimiento de ventanas de carga abiertas (RF-16)
+
+**Reutiliza "abierta" tal cual, no la reimplementa.** `TableroSeguimientoVentanas`
+(`shared/components/`, Server Component puro, montado en `src/app/dashboard/page.tsx` y
+`src/app/revisor/page.tsx`) invoca `VentanaCargaRepository.listarDisponibles(ahora)` — el mismo
+método que ya usa `src/app/notificador/page.tsx` para decidir qué ventanas ofrecerle a un
+notificador. "Abierta" sigue significando exactamente lo mismo en todo el sistema: fechas dentro de
+rango, `publicada = true`, no eliminada.
+
+**Dos conteos agregados nuevos, deliberadamente distintos entre sí.**
+`FormatoExcelRepository.contarNotificadoresAsignadosActivosPorFormato(formatoExcelIds)` (nuevo,
+`PrismaFormatoExcelRepository.ts`) agrupa `usuario_formato_excel` por `formatoExcelId` filtrando
+`usuario.activo = true` y `perfilCodigo = NOTIFICADOR_RPC`; como esa tabla es única por
+`(usuarioId, formatoExcelId)`, contar filas del grupo ya equivale a contar usuarios distintos, sin
+`DISTINCT` adicional. Es una cuenta **estructural**: no filtra por `FormatoExcel.activo`, así que un
+formato dado de baja después de crear la ventana sigue contando a sus notificadores asignados como
+"deben reportar" (decisión explícita del usuario, para no tener que decidir además si mostrar 0 en
+ese caso).
+
+`CargaArchivoRepository.contarNotificadoresDistintosPorVentana(ventanaCargaIds)` (nuevo,
+`PrismaCargaArchivoRepository.ts`) SÍ necesita `DISTINCT` real, y a propósito no usa un `_count`
+simple: `CargaArchivo` no tiene ninguna restricción de unicidad sobre `(usuarioId, ventanaCargaId)`,
+así que un notificador puede acumular varias cargas `APROBADA` en la misma ventana (correcciones
+sucesivas ya validadas). Contar filas sobre-contaría a ese notificador. La consulta agrupa por el
+PAR `(ventanaCargaId, usuarioId)` — el `groupBy` devuelve como máximo una fila por combinación,
+aunque ese usuario tenga N cargas aprobadas ahí — y el conteo final por ventana se reduce en JS
+contando esas filas. El código deja un comentario explícito de por qué se agrupa por el par y no se
+"simplifica" a un `_count` plano, precisamente para que nadie reintroduzca el sobre-conteo más
+adelante. `VentanaCarga.cantidadCargas` (RF-15, cuenta **filas** de `CargaArchivo` para la columna
+"Cargas" de la tabla administrativa) es un campo distinto y no sirve para esto.
+
+**Sin librería de gráficos.** El proyecto no tenía ninguna instalada. `GraficoTortaProporcion`
+(`shared/components/`) dibuja el pie de 2 segmentos con un solo `div` circular y
+`background: conic-gradient(...)` calculado inline (el ángulo es dinámico, no expresable como clase
+Tailwind estática) — sin SVG, sin dependencia nueva. Si `total === 0` no dibuja el gráfico: muestra
+el mensaje "Sin notificadores asignados a este formato" en su lugar, para no dividir por cero ni
+mostrar un círculo sin significado. La proporción siempre va acompañada de texto ("X de Y
+notificadores reportaron"), no solo color, por accesibilidad.
+
+**Umbral de alerta como constante de dominio, no como configuración en BD.**
+`UMBRAL_DIAS_ALERTA_VENCIMIENTO_VENTANA = 45` vive junto a `estaAbierta`/`disponibleParaNotificador`
+en `modules/ventanas-carga/domain/entities/VentanaCarga.ts`, mismo patrón que
+`TOPE_FILAS_DATOS`/`TOPE_ERRORES_PERSISTIDOS` de RF-14: un valor que un desarrollador cambia en el
+código y despliega, no algo que nadie pidió gestionar en tiempo de ejecución. Agregar una tabla de
+configuración para un único valor sin ese requisito habría sido sobre-ingeniería.
+`calcularDiasRestantes`/`calcularFraccionTiempoTranscurrido` son funciones puras nuevas junto a la
+constante. La barra de progreso (`BarraProgresoVentana`) representa **tiempo transcurrido** (se
+llena con el tiempo, no se vacía) — decisión explícita del usuario — y pasa a la paleta de peligro
+cuando `diasRestantes <= UMBRAL_DIAS_ALERTA_VENCIMIENTO_VENTANA`.
+
+**Rendimiento: 3 consultas fijas, nunca una por tarjeta.** El caso de uso nuevo
+`ObtenerResumenSeguimientoVentanasAbiertas` (`modules/ventanas-carga/application/use-cases/`) llama
+`listarDisponibles`, y luego los dos métodos agregados de arriba en paralelo (`Promise.all`),
+pasándoles todos los ids de una vez — nunca dentro de un loop por ventana. Solo conoce interfaces de
+`domain/repositories/`, igual que el resto de `application/`.
+
+**`export const dynamic = "force-dynamic"` agregado a `src/app/dashboard/page.tsx`.** Antes de este
+cambio esa página no leía ninguna API dinámica (a diferencia de `/revisor/page.tsx`, que ya es
+dinámica porque llama `obtenerSesionActual()`), así que Next la generaba **estática en build time**.
+Sin este flag, los datos del tablero (que dependen de `ahora` y del estado real de la BD) habrían
+quedado congelados en la foto del build para siempre en producción. Confirmado comparando la tabla
+de rutas de `npm run build` antes (`○ /dashboard`) y después (`ƒ /dashboard`) del cambio. `ahora` se
+genera siempre con `new Date()` dentro del caso de uso, nunca recibido del cliente.
+
+Sin endpoints `/api/` nuevos (todo el árbol es Server Components sobre repositorios ya existentes),
+sin migración de esquema, sin auditoría (es una lectura, mismo criterio del resto del proyecto).

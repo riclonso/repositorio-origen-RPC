@@ -14,7 +14,14 @@ import type { OpcionSelect } from "@/shared/components/CampoSelect";
 // eliminar cualquiera, REVISOR_REPOSITORIO solo las que él mismo creó. Esto es solo para no
 // mostrar un botón que el servidor de todas formas rechazaría (`EliminarVentanaCarga.ts` aplica
 // la misma regla); la autorización real vive ahí, no aquí.
-export async function ListadoVentanasCarga() {
+type ListadoVentanasCargaProps = {
+  // Base de la ruta de detalle de cargas aprobadas; cada área aporta la suya
+  // (`/dashboard/ventanas-carga` o `/revisor/ventanas-carga`), mismo criterio que `rutaBase` en
+  // `ListadoCargasAprobadas`.
+  rutaBase: string;
+};
+
+export async function ListadoVentanasCarga({ rutaBase }: ListadoVentanasCargaProps) {
   const [ventanas, sesion, formatos] = await Promise.all([
     listarVentanasCarga({ repositorio: prismaVentanaCargaRepository }),
     obtenerSesionActual(),
@@ -42,6 +49,11 @@ export async function ListadoVentanasCarga() {
     creadoPorNombre: ventana.creadoPorNombre,
     eliminadaEn: ventana.eliminadaEn ? ventana.eliminadaEn.toISOString() : null,
     abierta: ventana.abierta,
+    cantidadCargas: ventana.cantidadCargas,
+    // Resuelta aquí, como string: `TablaVentanasCarga` es un Client Component ("use client", por
+    // sus formularios/diálogos) y no puede recibir una función como prop desde este Server
+    // Component.
+    rutaDetalle: `${rutaBase}/${ventana.id}`,
   }));
 
   return (

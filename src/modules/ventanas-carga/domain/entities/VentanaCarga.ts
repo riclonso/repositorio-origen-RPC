@@ -36,6 +36,10 @@ export type VentanaCarga = {
   eliminadaPorNombre: string | null;
   createdAt: Date;
   updatedAt: Date;
+  // Cantidad de `CargaArchivo` en estado APROBADA asociadas a esta ventana. Contado vía `_count`
+  // de Prisma (nunca trayendo las cargas completas ni contando en JS), mismo patrón que
+  // `FormatoExcelResumen.cantidadReglas`.
+  cantidadCargas: number;
 };
 
 export type DatosNuevaVentanaCarga = {
@@ -77,3 +81,38 @@ export function disponibleParaNotificador(
 // Vista de listado: misma forma que `VentanaCarga`, con el estado ya calculado para pintar la
 // tabla de `/dashboard` y `/revisor` sin que la vista tenga que importar `estaAbierta()`.
 export type VentanaCargaConEstado = VentanaCarga & { abierta: boolean };
+
+// RF-16 (tablero de seguimiento): umbral, en días, bajo el cual una ventana abierta se considera
+// "por vencer" y la barra de progreso de tiempo cambia a color de alerta. Constante de dominio en
+// código, no en BD, mismo patrón que `TOPE_FILAS_DATOS`/`TOPE_ERRORES_PERSISTIDOS`
+// (`modules/reporte-excel/domain/entities/CargaArchivo.ts`).
+export const UMBRAL_DIAS_ALERTA_VENCIMIENTO_VENTANA = 45;
+
+const MILISEGUNDOS_POR_DIA = 24 * 60 * 60 * 1000;
+
+// Días restantes hasta el vencimiento, redondeados hacia arriba (un vencimiento a mitad de día
+// cuenta como un día completo restante). `Math.max(0, ...)` es una defensa adicional: al venir ya
+// filtrada por `listarDisponibles()`/`disponibleParaNotificador()`, `fechaVencimiento >= ahora`
+// siempre debería cumplirse, pero no cuesta nada blindarlo contra un `ahora` inconsistente.
+export function calcularDiasRestantes(fechaVencimiento: Date, ahora: Date): number {
+  const diferenciaMs = fechaVencimiento.getTime() - ahora.getTime();
+  return Math.max(0, Math.ceil(diferenciaMs / MILISEGUNDOS_POR_DIA));
+}
+
+// Fracción de tiempo transcurrido entre apertura y vencimiento, acotada a `[0, 1]`. Es la base de
+// la barra de progreso "de tiempo": se LLENA a medida que pasa el tiempo, al revés de una barra de
+// avance de tareas completadas.
+export function calcularFraccionTiempoTranscurrido(
+  fechaApertura: Date,
+  fechaVencimiento: Date,
+  ahora: Date,
+): number {
+  const duracionTotalMs = fechaVencimiento.getTime() - fechaApertura.getTime();
+
+  // Ventana con fechas degeneradas (vencimiento <= apertura): no debería ocurrir (el formulario de
+  // creación lo valida), pero de darse se trata como "ya consumida" en vez de dividir por cero.
+  if (duracionTotalMs <= 0) return 1;
+
+  const transcurridoMs = ahora.getTime() - fechaApertura.getTime();
+  return Math.min(1, Math.max(0, transcurridoMs / duracionTotalMs));
+}

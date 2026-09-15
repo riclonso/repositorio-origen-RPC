@@ -193,6 +193,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     const where = {
       estado: "APROBADA" as const,
       ...(filtro.formatoExcelId ? { formatoExcelId: filtro.formatoExcelId } : {}),
+      ...(filtro.ventanaCargaId ? { ventanaCargaId: filtro.ventanaCargaId } : {}),
     };
 
     const [registros, total] = await prisma.$transaction([
@@ -222,6 +223,30 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
 
     const registro = await prisma.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
     return registro ? aCargaArchivo(registro) : null;
+  },
+
+  async contarNotificadoresDistintosPorVentana(ventanaCargaIds) {
+    if (ventanaCargaIds.length === 0) return {};
+
+    // Se agrupa por el PAR (ventanaCargaId, usuarioId) y NO se usa un `_count` plano de filas por
+    // `ventanaCargaId`: `CargaArchivo` no tiene restricción de unicidad sobre
+    // `(usuarioId, ventanaCargaId)`, así que un mismo notificador puede tener varias cargas
+    // APROBADA en la misma ventana (correcciones sucesivas). Agrupar solo por `ventanaCargaId`
+    // sobre-contaría a ese notificador una vez por cada carga aprobada que tenga. Agrupar por el
+    // par produce como mucho una fila por combinación (ventana, usuario) realmente existente, así
+    // que reducir contando filas por `ventanaCargaId` en JS sí refleja usuarios DISTINTOS. No
+    // "simplificar" esto a un `_count` directo: reintroduciría el sobre-conteo.
+    const grupos = await prisma.cargaArchivo.groupBy({
+      by: ["ventanaCargaId", "usuarioId"],
+      where: { ventanaCargaId: { in: ventanaCargaIds }, estado: "APROBADA" },
+    });
+
+    const conteoPorVentana: Record<string, number> = {};
+    for (const grupo of grupos) {
+      conteoPorVentana[grupo.ventanaCargaId] = (conteoPorVentana[grupo.ventanaCargaId] ?? 0) + 1;
+    }
+
+    return conteoPorVentana;
   },
 
   async obtenerParaDescarga(id) {

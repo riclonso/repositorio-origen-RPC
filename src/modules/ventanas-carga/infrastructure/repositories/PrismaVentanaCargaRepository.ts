@@ -26,6 +26,9 @@ const SELECCION_VENTANA = {
   eliminadaPor: { select: { nombres: true, apellidos: true } },
   createdAt: true,
   updatedAt: true,
+  // Cuenta solo las cargas APROBADAS de esta ventana, filtrando dentro del propio `_count`: nunca
+  // trae las filas completas, evitando el N+1 de contar en JS por cada ventana del listado.
+  _count: { select: { cargas: { where: { estado: "APROBADA" } } } },
 } as const;
 
 type RegistroVentana = {
@@ -43,6 +46,7 @@ type RegistroVentana = {
   eliminadaPor: { nombres: string; apellidos: string } | null;
   createdAt: Date;
   updatedAt: Date;
+  _count: { cargas: number };
 };
 
 function aVentanaCarga(registro: RegistroVentana): VentanaCarga {
@@ -61,6 +65,7 @@ function aVentanaCarga(registro: RegistroVentana): VentanaCarga {
     eliminadaPorNombre: registro.eliminadaPor ? nombreCompleto(registro.eliminadaPor) : null,
     createdAt: registro.createdAt,
     updatedAt: registro.updatedAt,
+    cantidadCargas: registro._count.cargas,
   };
 }
 

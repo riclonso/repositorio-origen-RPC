@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
+import { TableroSeguimientoVentanas } from "@/shared/components/TableroSeguimientoVentanas";
 
 export default async function RevisorPage() {
   // El proxy ya garantiza una sesión de perfil revisor antes de llegar aquí; estas comprobaciones
@@ -39,6 +40,8 @@ export default async function RevisorPage() {
           visto bueno.
         </p>
       </section>
+
+      <TableroSeguimientoVentanas />
     </div>
   );
 }

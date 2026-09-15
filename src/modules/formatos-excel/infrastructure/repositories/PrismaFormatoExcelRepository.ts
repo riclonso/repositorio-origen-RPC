@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
+import { CODIGO_PERFIL_NOTIFICADOR } from "@/modules/perfiles/domain/entities/Perfil";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import type {
   ColumnaFormatoExcel,
@@ -274,6 +275,24 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
   async buscarPorNombre(nombre) {
     const registro = await prisma.formatoExcel.findUnique({ where: { nombre }, select: SELECCION_DETALLE });
     return registro ? aFormatoExcel(registro) : null;
+  },
+
+  async contarNotificadoresAsignadosActivosPorFormato(formatoExcelIds) {
+    if (formatoExcelIds.length === 0) return {};
+
+    // `usuario_formato_excel` es única por `(usuarioId, formatoExcelId)`
+    // (`@@unique([usuarioId, formatoExcelId])`), así que contar FILAS del grupo equivale a contar
+    // usuarios DISTINTOS, sin necesidad de un `DISTINCT` adicional.
+    const grupos = await prisma.usuarioFormatoExcel.groupBy({
+      by: ["formatoExcelId"],
+      where: {
+        formatoExcelId: { in: formatoExcelIds },
+        usuario: { activo: true, perfilCodigo: CODIGO_PERFIL_NOTIFICADOR },
+      },
+      _count: true,
+    });
+
+    return Object.fromEntries(grupos.map((grupo) => [grupo.formatoExcelId, grupo._count]));
   },
 
   async obtenerPlantilla(id) {

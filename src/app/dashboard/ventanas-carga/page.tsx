@@ -23,7 +23,7 @@ export default async function VentanasCargaDashboardPage() {
         </p>
       </div>
 
-      <ListadoVentanasCarga />
+      <ListadoVentanasCarga rutaBase="/dashboard/ventanas-carga" />
     </div>
   );
 }

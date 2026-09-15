@@ -107,6 +107,10 @@ export type FiltroListadoCargasPropias = {
 
 export type FiltroListadoCargasAprobadas = {
   formatoExcelId?: string;
+  // Acota el listado a las cargas aprobadas de una ventana de carga puntual (detalle de
+  // `/dashboard/ventanas-carga/[id]` y `/revisor/ventanas-carga/[id]`). El repositorio aplica
+  // siempre `estado = APROBADA` junto a este filtro en el mismo `WHERE`, nunca por separado.
+  ventanaCargaId?: string;
   pagina: number;
   tamano: number;
 };

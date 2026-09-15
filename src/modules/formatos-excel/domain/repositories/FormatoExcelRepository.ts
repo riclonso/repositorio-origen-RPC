@@ -32,4 +32,11 @@ export interface FormatoExcelRepository {
   // Única operación que trae el binario de la plantilla. La usa exclusivamente el endpoint de
   // descarga.
   obtenerPlantilla(id: string): Promise<PlantillaFormatoExcel | null>;
+  // RF-16 (tablero de seguimiento): cuántos usuarios NOTIFICADOR_RPC ACTIVOS tienen cada formato
+  // asignado ("deben reportar"). Cuenta ESTRUCTURAL: no filtra por `FormatoExcel.activo` — si el
+  // formato de una ventana ya vigente fue dado de baja después de crearla, los notificadores
+  // asignados originalmente se siguen contando. Devuelve un mapa `formatoExcelId -> cantidad`; los
+  // ids sin ningún notificador asignado simplemente no aparecen como clave (el llamador debe
+  // hacer fallback a 0). Una sola consulta agrupada, nunca una por formato.
+  contarNotificadoresAsignadosActivosPorFormato(formatoExcelIds: string[]): Promise<Record<string, number>>;
 }

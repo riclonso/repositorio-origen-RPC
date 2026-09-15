@@ -28,4 +28,11 @@ export interface CargaArchivoRepository {
   darVistoBueno(id: string, usuarioId: string): Promise<CargaArchivo | null>;
   // Única operación que trae el binario. Solo devuelve datos si `estado = APROBADA`.
   obtenerParaDescarga(id: string): Promise<CargaArchivoParaDescarga | null>;
+  // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS tienen al menos una carga APROBADA
+  // en cada ventana ("ya reportaron"). `CargaArchivo` no tiene restricción de unicidad sobre
+  // `(usuarioId, ventanaCargaId)` — un notificador puede tener varias cargas APROBADA en la misma
+  // ventana (correcciones sucesivas) — así que la implementación debe deduplicar por usuario,
+  // nunca contar filas. Devuelve un mapa `ventanaCargaId -> cantidad`; los ids sin ningún
+  // notificador que haya reportado no aparecen como clave.
+  contarNotificadoresDistintosPorVentana(ventanaCargaIds: string[]): Promise<Record<string, number>>;
 }
