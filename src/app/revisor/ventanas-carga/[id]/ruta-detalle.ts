@@ -1,7 +1,14 @@
-// Construye la URL de paginación del detalle de una ventana, conservando solo la página (no hay
-// más filtros en esta pantalla de solo lectura). Un parámetro en su valor por defecto se omite,
-// mismo criterio que `construirRutaCargasRevisor`.
-export function construirRutaDetalleVentanaRevisor(id: string, pagina: number): string {
+// Construye la URL de paginación del detalle de una ventana, conservando la página y, si la
+// persona entró desde la tarjeta del tablero de seguimiento del inicio (`?origen=inicio`), ese
+// origen también — para que el enlace "volver" siga apuntando al inicio incluso después de
+// cambiar de página. Un parámetro en su valor por defecto se omite, mismo criterio que
+// `construirRutaCargasRevisor`.
+export function construirRutaDetalleVentanaRevisor(id: string, pagina: number, origen?: string): string {
   const base = `/revisor/ventanas-carga/${id}`;
-  return pagina <= 1 ? base : `${base}?page=${pagina}`;
+  const parametros = new URLSearchParams();
+  if (pagina > 1) parametros.set("page", String(pagina));
+  if (origen) parametros.set("origen", origen);
+
+  const query = parametros.toString();
+  return query ? `${base}?${query}` : base;
 }

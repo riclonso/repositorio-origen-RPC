@@ -36,13 +36,22 @@ export default async function DetalleVentanaCargaRevisorPage({
   const analisis = listadoCargasSchema.safeParse(parametros);
   const filtro = analisis.success ? analisis.data : { ...FILTRO_LISTADO_CARGAS_POR_DEFECTO };
 
+  // Segundo punto de entrada a esta misma página: la tarjeta del tablero de seguimiento en
+  // `/revisor` enlaza aquí con `?origen=inicio` (`TarjetaSeguimientoVentana`), para que "volver"
+  // regrese al inicio en vez de a la tabla de ventanas de carga, que es de donde entra la acción
+  // "Detalle" de esa tabla.
+  const vieneDeInicio = parametros.origen === "inicio";
+
   return (
     <DetalleVentanaCarga
       ventana={ventana}
-      rutaVolver="/revisor/ventanas-carga"
+      rutaVolver={vieneDeInicio ? "/revisor" : "/revisor/ventanas-carga"}
+      textoVolver={vieneDeInicio ? "← Inicio" : "← Ventanas de carga"}
       pagina={filtro.page}
       tamano={filtro.pageSize}
-      construirHref={(pagina) => construirRutaDetalleVentanaRevisor(id, pagina)}
+      construirHref={(pagina) =>
+        construirRutaDetalleVentanaRevisor(id, pagina, vieneDeInicio ? "inicio" : undefined)
+      }
     />
   );
 }

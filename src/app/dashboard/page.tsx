@@ -16,7 +16,7 @@ export default function DashboardPage() {
         <p className="mt-2 text-sm text-gob-gray-a">Bienvenido al dashboard.</p>
       </div>
 
-      <TableroSeguimientoVentanas />
+      <TableroSeguimientoVentanas rutaBase="/dashboard/ventanas-carga" />
     </div>
   );
 }

@@ -4,10 +4,17 @@ import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastru
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { TarjetaSeguimientoVentana } from "@/shared/components/TarjetaSeguimientoVentana";
 
+type TableroSeguimientoVentanasProps = {
+  // Base de la ruta de detalle de ventanas de carga; cada área aporta la suya
+  // (`/dashboard/ventanas-carga` o `/revisor/ventanas-carga`), mismo criterio que `rutaBase` en
+  // `ListadoVentanasCarga`.
+  rutaBase: string;
+};
+
 // Server Component compartido entre `/dashboard` y `/revisor` (RF-16, tablero de seguimiento):
 // mismo listado para ambos perfiles, mismo criterio que `ListadoVentanasCarga`/`TablaFormatosExcel`
 // entre ambas áreas. `ahora` se genera aquí, en el servidor, nunca recibido del cliente.
-export async function TableroSeguimientoVentanas() {
+export async function TableroSeguimientoVentanas({ rutaBase }: TableroSeguimientoVentanasProps) {
   const resumenes = await obtenerResumenSeguimientoVentanasAbiertas({
     repositorioVentanas: prismaVentanaCargaRepository,
     repositorioFormatos: prismaFormatoExcelRepository,
@@ -27,7 +34,11 @@ export async function TableroSeguimientoVentanas() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {resumenes.map((resumen) => (
-            <TarjetaSeguimientoVentana key={resumen.ventanaCargaId} resumen={resumen} />
+            <TarjetaSeguimientoVentana
+              key={resumen.ventanaCargaId}
+              resumen={resumen}
+              rutaBase={rutaBase}
+            />
           ))}
         </div>
       )}

@@ -41,7 +41,7 @@ export default async function RevisorPage() {
         </p>
       </section>
 
-      <TableroSeguimientoVentanas />
+      <TableroSeguimientoVentanas rutaBase="/revisor/ventanas-carga" />
     </div>
   );
 }

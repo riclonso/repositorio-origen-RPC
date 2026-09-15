@@ -36,13 +36,22 @@ export default async function DetalleVentanaCargaDashboardPage({
   const analisis = listadoCargasSchema.safeParse(parametros);
   const filtro = analisis.success ? analisis.data : { ...FILTRO_LISTADO_CARGAS_POR_DEFECTO };
 
+  // Segundo punto de entrada a esta misma página: la tarjeta del tablero de seguimiento en
+  // `/dashboard` enlaza aquí con `?origen=inicio` (`TarjetaSeguimientoVentana`), para que "volver"
+  // regrese al inicio en vez de a la tabla de ventanas de carga, que es de donde entra la acción
+  // "Detalle" de esa tabla.
+  const vieneDeInicio = parametros.origen === "inicio";
+
   return (
     <DetalleVentanaCarga
       ventana={ventana}
-      rutaVolver="/dashboard/ventanas-carga"
+      rutaVolver={vieneDeInicio ? "/dashboard" : "/dashboard/ventanas-carga"}
+      textoVolver={vieneDeInicio ? "← Inicio" : "← Ventanas de carga"}
       pagina={filtro.page}
       tamano={filtro.pageSize}
-      construirHref={(pagina) => construirRutaDetalleVentanaDashboard(id, pagina)}
+      construirHref={(pagina) =>
+        construirRutaDetalleVentanaDashboard(id, pagina, vieneDeInicio ? "inicio" : undefined)
+      }
     />
   );
 }

@@ -7,6 +7,9 @@ import { ListadoCargasVentana } from "@/shared/components/ListadoCargasVentana";
 type DetalleVentanaCargaProps = {
   ventana: VentanaCargaConEstado;
   rutaVolver: string;
+  // Texto del enlace de volver: depende de por dónde entró la persona (tabla de ventanas o tarjeta
+  // del tablero de seguimiento en el inicio), así que no puede quedar fijo en este componente.
+  textoVolver: string;
   pagina: number;
   tamano: number;
   construirHref: (pagina: number) => string;
@@ -21,6 +24,7 @@ type DetalleVentanaCargaProps = {
 export function DetalleVentanaCarga({
   ventana,
   rutaVolver,
+  textoVolver,
   pagina,
   tamano,
   construirHref,
@@ -33,7 +37,7 @@ export function DetalleVentanaCarga({
             href={rutaVolver}
             className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
           >
-            ← Ventanas de carga
+            {textoVolver}
           </Link>
           <h1 className="mt-2 text-xl font-semibold text-gob-black">
             Cargas aprobadas — Ventana {ventana.anio}
