@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Boton, type VarianteBoton } from "@/shared/components/Boton";
 
 type DialogoConfirmacionProps = {
@@ -30,6 +30,13 @@ export function DialogoConfirmacion({
   onCancelar,
 }: DialogoConfirmacionProps) {
   const referenciaDialogo = useRef<HTMLDialogElement>(null);
+  // Cada instancia necesita su propio id: dos `DialogoConfirmacion` en la misma página (p. ej.
+  // "Eliminar" y "Publicar" en `TablaVentanasCarga.tsx`) con un id fijo producían HTML inválido
+  // (id duplicado) y el navegador resolvía `aria-labelledby` contra el primer elemento del DOM,
+  // mostrando el título del otro diálogo.
+  const idBase = useId();
+  const idTitulo = `${idBase}-titulo`;
+  const idDescripcion = `${idBase}-descripcion`;
 
   useEffect(() => {
     const dialogo = referenciaDialogo.current;
@@ -45,8 +52,8 @@ export function DialogoConfirmacion({
   return (
     <dialog
       ref={referenciaDialogo}
-      aria-labelledby="dialogo-titulo"
-      aria-describedby="dialogo-descripcion"
+      aria-labelledby={idTitulo}
+      aria-describedby={idDescripcion}
       onClose={onCancelar}
       onCancel={(evento) => {
         if (procesando) {
@@ -55,11 +62,11 @@ export function DialogoConfirmacion({
       }}
       className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gob-accent bg-white p-6 text-gob-black shadow-lg backdrop:bg-gob-tertiary/50"
     >
-      <h2 id="dialogo-titulo" className="text-base font-semibold text-gob-black">
+      <h2 id={idTitulo} className="text-base font-semibold text-gob-black">
         {titulo}
       </h2>
 
-      <p id="dialogo-descripcion" className="mt-2 text-sm text-gob-gray-a">
+      <p id={idDescripcion} className="mt-2 text-sm text-gob-gray-a">
         {descripcion}
       </p>
 

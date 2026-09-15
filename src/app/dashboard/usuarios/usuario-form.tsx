@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ZodError } from "zod";
@@ -8,11 +8,13 @@ import {
   crearUsuarioFormSchema,
   editarUsuarioSchema,
 } from "@/modules/usuarios/schemas/usuario.schema";
+import { esPerfilNotificador } from "@/modules/perfiles/domain/entities/Perfil";
 import { Boton } from "@/shared/components/Boton";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
 import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
 import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
+import { CampoSeleccionMultiple, type OpcionSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { RUTA_USUARIOS } from "./ruta-usuarios";
 
@@ -24,6 +26,7 @@ export type ValoresUsuarioForm = {
   rut: string;
   email: string;
   perfilCodigo: string;
+  formatosExcelIds: string[];
 };
 
 type EstadoUsuarioForm = {
@@ -60,6 +63,8 @@ type UsuarioFormProps = {
   // Vienen de la base a través de la página. En el alta incluyen una opción vacía que el
   // esquema rechaza, para que el perfil sea una elección explícita del operador.
   opcionesPerfil: OpcionSelect[];
+  // Formatos activos + los que la persona ya tuviera asignados (ver `opciones-formato-excel.ts`).
+  opcionesFormatoExcel: OpcionSeleccionMultiple[];
 };
 
 export function UsuarioForm({
@@ -68,14 +73,14 @@ export function UsuarioForm({
   metodo,
   valoresIniciales,
   opcionesPerfil,
+  opcionesFormatoExcel,
 }: UsuarioFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
 
-  // Los campos van CONTROLADOS a propósito. React 19 resetea los campos no controlados de un
-  // `<form action={...}>` en cuanto la acción termina, también cuando devuelve errores de
-  // validación: el operador corregía un RUT mal escrito y encontraba el resto del formulario
-  // en blanco. Con el valor en estado, un error deja de costar volver a teclear todo.
+  // Los campos van CONTROLADOS a propósito: un error de validación no debe costarle al operador
+  // volver a teclear todo. (Además de mantener el valor en estado, el `<form>` de abajo evita
+  // `action={...}` puntualmente por esto mismo — ver el comentario junto al `<form>`.)
   const [valores, setValores] = useState(() => ({
     ...valoresIniciales,
     contrasena: "",
@@ -88,6 +93,9 @@ export function UsuarioForm({
 
   const [estado, enviarFormulario, enviando] = useActionState<EstadoUsuarioForm, FormData>(
     async (_estadoPrevio, formData) => {
+      // `formatosExcelIds` NO sale de `formData`: el multi-select controla su propio estado
+      // (`valores.formatosExcelIds`) y se lee directamente de ahí, igual que el resto de los
+      // campos controlados de este formulario.
       const bruto = {
         nombres: String(formData.get("nombres") ?? ""),
         apellidos: String(formData.get("apellidos") ?? ""),
@@ -96,9 +104,10 @@ export function UsuarioForm({
         rut: String(formData.get("rut") ?? ""),
         contrasena: String(formData.get("contrasena") ?? ""),
         confirmacionContrasena: String(formData.get("confirmacionContrasena") ?? ""),
+        formatosExcelIds: valores.formatosExcelIds,
       };
 
-      let cuerpo: Record<string, string>;
+      let cuerpo: Record<string, unknown>;
 
       if (esCreacion) {
         const analisis = crearUsuarioFormSchema.safeParse(bruto);
@@ -114,6 +123,7 @@ export function UsuarioForm({
           email: analisis.data.email,
           perfilCodigo: analisis.data.perfilCodigo,
           contrasena: analisis.data.contrasena,
+          formatosExcelIds: analisis.data.formatosExcelIds,
         };
       } else {
         const analisis = editarUsuarioSchema.safeParse(bruto);
@@ -154,7 +164,33 @@ export function UsuarioForm({
   );
 
   return (
-    <form action={enviarFormulario} className="mt-6 flex flex-col gap-5">
+    // NO se usa `action={enviarFormulario}`: React reconoce ese patrón como una "form action" y,
+    // al asentarse, llama al `.reset()` NATIVO del `<form>` (ver `TransitionAwareHostComponent` /
+    // el flag `Reset` en `react-dom-client`) para limpiar los campos no controlados. Ese reseteo
+    // nativo toca TODOS los controles del formulario, incluido un `<select>`/checkbox recién
+    // remontado con su valor correcto: pisa ese valor en el mismo commit. Ese mecanismo está
+    // gateado específicamente por la prop `action` del elemento `<form>` (una comprobación
+    // estática de `tagName`+nombre de prop en la fase de commit, ajena a `ReactSharedInternals.T`
+    // / `startTransition`), así que evitarla evita el reseteo por completo sin importar cómo se
+    // invoque la función después.
+    //
+    // `enviarFormulario` (el dispatch que devuelve `useActionState`) sigue pudiendo llamarse
+    // directamente, pero DEBE envolverse en `startTransition`: sin eso, React no marca la
+    // actualización como transición (`dispatchActionState` revisa `ReactSharedInternals.T`), y
+    // `enviando` (`isPending`) deja de reflejar la petición en curso — React lo advierte en
+    // consola ("called outside of a transition"). Con `startTransition`, `estado`/`enviando`
+    // vuelven a trackearse igual que con `action={...}`.
+    <form
+      onSubmit={(evento) => {
+        evento.preventDefault();
+        const formData = new FormData(evento.currentTarget);
+
+        startTransition(() => {
+          enviarFormulario(formData);
+        });
+      }}
+      className="mt-6 flex flex-col gap-5"
+    >
       <div className="grid gap-5 md:grid-cols-2">
         <CampoTexto
           id="nombres"
@@ -206,10 +242,34 @@ export function UsuarioForm({
           etiqueta="Perfil"
           opciones={opcionesPerfil}
           value={valores.perfilCodigo}
-          onChange={(evento) => actualizarCampo("perfilCodigo", evento.target.value)}
+          onChange={(evento) => {
+            const perfilCodigo = evento.target.value;
+
+            setValores((previos) => ({
+              ...previos,
+              perfilCodigo,
+              // Cambiar a un perfil que no sea Notificador RPC limpia la selección: conservarla
+              // en silencio dejaría formatos asignados a un perfil que el esquema los rechaza.
+              formatosExcelIds: esPerfilNotificador(perfilCodigo) ? previos.formatosExcelIds : [],
+            }));
+          }}
           error={estado.errores.perfilCodigo}
         />
       </div>
+
+      {esPerfilNotificador(valores.perfilCodigo) ? (
+        <CampoSeleccionMultiple
+          id="formatosExcelIds"
+          etiqueta="Formatos de archivo asignados"
+          opciones={opcionesFormatoExcel}
+          valoresSeleccionados={valores.formatosExcelIds}
+          onCambiar={(formatosExcelIds) =>
+            setValores((previos) => ({ ...previos, formatosExcelIds }))
+          }
+          ayuda="Un notificador debe tener al menos un formato asignado."
+          error={estado.errores.formatosExcelIds}
+        />
+      ) : null}
 
       {esCreacion ? (
         <div className="grid gap-5 md:grid-cols-2">

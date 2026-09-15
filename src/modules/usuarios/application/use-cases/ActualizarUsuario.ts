@@ -6,9 +6,11 @@ import {
 } from "@/modules/usuarios/domain/entities/Usuario";
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type { PerfilRepository } from "@/modules/perfiles/domain/repositories/PerfilRepository";
+import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
+import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
 
 export type ResultadoActualizarUsuario =
   | {
@@ -18,9 +20,13 @@ export type ResultadoActualizarUsuario =
       // Códigos, no nombres visibles: la auditoría debe apuntar a un identificador estable.
       perfilAnterior?: string;
       perfilNuevo?: string;
+      // Ids de formato agregados/quitados en esta edición, para la auditoría.
+      formatosAgregados: string[];
+      formatosQuitados: string[];
     }
   | { ok: false; motivo: "NO_ENCONTRADO" }
   | { ok: false; motivo: "PERFIL_INVALIDO" }
+  | { ok: false; motivo: "FORMATO_INVALIDO" }
   | { ok: false; motivo: "DUPLICADO"; campo: CampoUnico; rut: string }
   | { ok: false; motivo: "AUTO_OPERACION" | "ULTIMO_ADMIN"; rut: string };
 
@@ -34,7 +40,11 @@ export async function actualizarUsuario(
   id: string,
   datos: DatosEdicionUsuario,
   actorId: string,
-  dependencias: { repositorio: UsuarioRepository; repositorioPerfiles: PerfilRepository },
+  dependencias: {
+    repositorio: UsuarioRepository;
+    repositorioPerfiles: PerfilRepository;
+    repositorioFormatosExcel: FormatoExcelRepository;
+  },
 ): Promise<ResultadoActualizarUsuario> {
   const actual = await dependencias.repositorio.obtenerPorId(id);
 
@@ -80,15 +90,38 @@ export async function actualizarUsuario(
     }
   }
 
+  // Los formatos que la persona ya tenía se conservan aunque hayan sido dados de baja (mismo
+  // criterio que "conserva su perfil actual"); los nuevos deben existir y estar vigentes. Se
+  // resuelve con UNA sola consulta sobre los ids realmente nuevos, no sobre el conjunto completo.
+  const idsActuales = new Set(actual.formatosExcel.map((formato) => formato.id));
+  const idsSolicitadosSet = new Set(datos.formatosExcelIds);
+  const idsSolicitados = [...idsSolicitadosSet];
+  const idsNuevos = idsSolicitados.filter((formatoId) => !idsActuales.has(formatoId));
+
+  if (idsNuevos.length > 0) {
+    const activos = await dependencias.repositorioFormatosExcel.obtenerActivosEntre(idsNuevos);
+
+    if (activos.length !== idsNuevos.length) {
+      return { ok: false, motivo: "FORMATO_INVALIDO" };
+    }
+  }
+
   const camposModificados = detectarCamposModificados(actual, datos);
+  const formatosAgregados = idsNuevos;
+  const formatosQuitados = [...idsActuales].filter((formatoId) => !idsSolicitadosSet.has(formatoId));
 
   try {
-    const usuario = await dependencias.repositorio.actualizar(id, datos);
+    const usuario = await dependencias.repositorio.actualizar(id, {
+      ...datos,
+      formatosExcelIds: idsSolicitados,
+    });
 
     return {
       ok: true,
       usuario,
       camposModificados,
+      formatosAgregados,
+      formatosQuitados,
       ...(actual.perfilCodigo !== usuario.perfilCodigo
         ? { perfilAnterior: actual.perfilCodigo, perfilNuevo: usuario.perfilCodigo }
         : {}),
@@ -101,6 +134,11 @@ export async function actualizarUsuario(
     // El perfil pudo eliminarse entre la comprobación y el UPDATE.
     if (error instanceof PerfilInvalidoError) {
       return { ok: false, motivo: "PERFIL_INVALIDO" };
+    }
+
+    // Un formato nuevo pudo darse de baja entre la comprobación y el UPDATE.
+    if (error instanceof FormatoExcelInvalidoError) {
+      return { ok: false, motivo: "FORMATO_INVALIDO" };
     }
 
     throw error;

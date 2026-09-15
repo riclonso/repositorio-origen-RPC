@@ -4,6 +4,8 @@
 // El perfil viaja en dos campos PLANOS y no como objeto anidado: `perfilCodigo` es el
 // identificador estable con el que operan las reglas y la auditoría, `perfilNombre` es la
 // etiqueta que se muestra y que el mantenedor de perfiles podrá cambiar sin romper nada.
+export type FormatoExcelAsignado = { id: string; nombre: string };
+
 export type Usuario = {
   id: string;
   nombres: string;
@@ -15,16 +17,20 @@ export type Usuario = {
   perfilNombre: string;
   activo: boolean;
   createdAt: Date;
+  // Formatos de archivo asignados (N:M vía `usuario_formato_excel`). Solo tiene sentido para el
+  // perfil NOTIFICADOR_RPC; para cualquier otro perfil queda vacío.
+  formatosExcel: FormatoExcelAsignado[];
 };
 
-export type DatosNuevoUsuario = Omit<Usuario, "id" | "createdAt" | "perfilNombre"> & {
+export type DatosNuevoUsuario = Omit<Usuario, "id" | "createdAt" | "perfilNombre" | "formatosExcel"> & {
   contrasenaHash: string;
+  formatosExcelIds: string[];
 };
 
 export type DatosEdicionUsuario = Pick<
   Usuario,
   "nombres" | "apellidos" | "email" | "perfilCodigo"
->;
+> & { formatosExcelIds: string[] };
 
 // Campos con restricción UNIQUE en la tabla `usuario`.
 export type CampoUnico = "rut" | "email" | "username";

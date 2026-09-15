@@ -1,6 +1,6 @@
 # Resumen técnico
 
-Última actualización: 2026-09-04
+Última actualización: 2026-09-14 (RF-15 y su ampliación: tipo de archivo por ventana + publicación)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo cambia el stack, agrega un comando de proyecto o cambia una variable de entorno.
@@ -14,13 +14,15 @@
 | Arquitectura backend    | Onion simplificada + modular por dominio (ver [docs/arquitectura.md](arquitectura.md)) |
 | Autenticación           | jose (JWT, HS256, 8h) + bcrypt (12 rondas), vía Route Handler `POST /api/auth/login` |
 | Base de datos           | PostgreSQL + Prisma ORM (`@prisma/adapter-pg`) |
-| Logs                    | Winston, JSON, una instancia por archivo. `logs/errores.txt` (errores del sistema) y `logs/auditoria.txt` (operaciones sobre usuarios) implementados; `logs/accesos.txt` (login exitoso y fallido, RF-07) pendiente. `logs/` está en `.gitignore`: contienen RUT e IP. Rotación a cargo del sistema operativo |
+| Logs                    | Winston, JSON, una instancia por archivo. `logs/errores.txt` (errores del sistema) y `logs/auditoria.txt` (operaciones sobre usuarios, formatos de archivo y cargas de reporte) implementados; `logs/upload.txt` (`infrastructure/logging/logUpload.ts`, rotación NATIVA de Winston) preparado en RF-13 y conectado en RF-14 desde `POST /api/notificador/cargas`; `logs/accesos.txt` (login exitoso y fallido, RF-07) pendiente. `logs/` está en `.gitignore`: contienen RUT e IP. Rotación de `errores.txt`/`auditoria.txt` a cargo del sistema operativo |
 | Estado cliente          | Zustand (solo Client Components; sin stores creados aún) |
 | Validación              | Zod |
 | Estilos                 | Tailwind v4 (CSS-first, `@theme inline`), paleta oficial gob.cl (`gob-*`) |
 | Iconos                  | `@phosphor-icons/react`, familia única del proyecto, centralizada en `shared/components/iconos.tsx` con tamaño y peso estandarizados |
 | Cookies                 | cookies-next (`httpOnly`, `secure`, `sameSite`) |
 | Calidad React           | react-doctor (`npx react-doctor@latest`, ver `.agents/skills/react-doctor/`) |
+| Lectura de plantillas   | `exceljs` (RF-13), detrás del puerto `LectorPlantilla` en `modules/formatos-excel/application/ports.ts`; solo `.xlsx`/`.csv`, csv solo separador coma y UTF-8 |
+| Lectura de archivos de reporte | `exceljs` (RF-14), detrás del puerto `LectorArchivoReporte` en `modules/reporte-excel/application/ports.ts`; mismas restricciones de formato que `LectorPlantilla`, tope de 20.000 filas de datos procesadas |
 
 Aviso de versión: Next.js 16 y React 19.2 son más recientes que el conocimiento de entrenamiento
 habitual de los modelos — antes de escribir código de enrutamiento, data fetching o proxy, revisar
@@ -37,7 +39,9 @@ npm run db:seed   # prisma db seed -> scripts/seed-admin.ts
 npx prisma migrate dev   # crea/aplica migraciones desde prisma/schema.prisma
 ```
 
-No hay test runner configurado todavía en este repo.
+No hay test runner configurado todavía en este repo (sin Jest/Vitest). Sí existen scripts de
+integración ad-hoc en `tests/*.integration.ts`, ejecutados con `tsx` contra PostgreSQL local
+desechable — ver comando exacto en "Recuperación de contraseña (RF-10)" más abajo.
 
 ## Variables de entorno (`.env`, no versionado)
 
@@ -56,9 +60,11 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
 | Visor de registros    | Implementado | `/dashboard/logs` (solo ADMIN) lee `logs/errores.txt` y `logs/auditoria.txt` vía `infrastructure/logging/leerLogs.ts`, que lee solo la cola del archivo para acotar memoria. |
 | `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
-| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
-| Panel notificador     | Implementado (solo shell) | Panel del perfil NOTIFICADOR_RPC (RF-12) en `/notificador`, área separada de `/dashboard` (solo ADMIN). Login → despachador `/inicio` que redirige por perfil; proxy protege ambas áreas con chequeo positivo. Por ahora solo shell + bienvenida con nombre y placeholder "Próximamente"; sin el flujo de reporte. Ver [docs/arquitectura.md](arquitectura.md#panel-del-perfil-notificador_rpc-rf-12). |
-| Reporte Excel/CSV      | No iniciado | Objetivo central del sistema, aún sin especificar. Será una sección del panel notificador. Ver [docs/requerimientos.md](requerimientos.md#objetivo-del-sistema). |
+| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. Desde RF-13 también asigna formatos de archivo (N:M) a usuarios NOTIFICADOR_RPC. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
+| `modules/formatos-excel/` | Implementado | Mantenedor de formatos de archivo (RF-13): define columnas, cuáles son requeridas y su tipo de dato (8 valores desde RF-14: incluye RUT y EMAIL) a partir de una plantilla `.xlsx`/`.csv` subida por el administrador; conserva la plantilla para descarga. Extensión: reglas de validación por conjunto de columnas (`ALGUNA_COLUMNA_CON_VALOR`, hasta 100 por formato), gestionadas en la misma pantalla; el evaluador que las ejecuta contra un archivo real se construyó en RF-14. 6 endpoints bajo `app/api/formatos-excel/` con guard propio. Ver [docs/arquitectura.md](arquitectura.md#mantenedor-de-formatos-de-archivo-rf-13). |
+| Panel notificador     | Implementado | Panel del perfil NOTIFICADOR_RPC (RF-12) en `/notificador`, área separada de `/dashboard` (solo ADMIN). Login → despachador `/inicio` que redirige por perfil; proxy protege ambas áreas con chequeo positivo. Desde RF-14 incluye la sección de subida y validación de reportes. Desde RF-15 (y su ampliación posterior), ya no hay `<select>` manuales de formato ni de año: el home muestra una sección de subida automática por cada combinación (formato asignado al notificador, ventana publicada y abierta) cuyo tipo de archivo coincide. Ver [docs/arquitectura.md](arquitectura.md#panel-del-perfil-notificador_rpc-rf-12). |
+| `modules/reporte-excel/` | Implementado | Subida y validación de archivos de reporte por NOTIFICADOR_RPC (RF-14): valida estructura, tipo de dato por celda y reglas de RF-13 contra el archivo subido; resumen de errores por fila; visto bueno irreversible que hace la carga visible para ADMIN (`/dashboard/cargas`) y el nuevo perfil REVISOR_REPOSITORIO (`/revisor`, área top-level nueva). 8 endpoints (5 bajo `/api/notificador/`, 3 bajo `/api/dashboard/cargas/` + equivalentes de solo lectura en `/revisor`). Desde RF-15, cada carga queda asociada a una `VentanaCarga` (`ventanaCargaId`) y la subida exige que exista una ventana abierta para el año elegido. Ver [docs/arquitectura.md](arquitectura.md#subida-y-validación-de-archivos-de-reporte-rf-14). |
+| `modules/ventanas-carga/` | Implementado | Ventanas de tiempo por año que habilitan la subida de reportes (RF-15): ADMIN y REVISOR_REPOSITORIO crean, editan y eliminan ventanas (`fechaApertura`/`fechaVencimiento`; `(anio, formatoExcelId)` único como par solo mientras la ventana no esté eliminada, vía índice único parcial); "abierta" se calcula en cada lectura, sin cron. Eliminar es física sin cargas asociadas o lógica con alguna (decidido por el `ON DELETE RESTRICT`, no por conteo previo), y solo ADMIN puede eliminar cualquiera (REVISOR_REPOSITORIO solo las propias). Ampliación posterior: cada ventana nace como borrador (`publicada = false`) hasta que un ADMIN/REVISOR la publica con un switch dedicado (`PATCH .../publicacion`, sin restricción de ownership); una ventana no publicada o de otro formato queda excluida en el propio `WHERE` de Prisma de lo que ve el notificador, no solo oculta en la UI. **Corrección posterior:** el enum `tipoArchivo` (`EXCEL`/`CSV`) que originalmente declaraba cada ventana se reemplazó por `formatoExcelId`, una referencia directa (relación 1:1) a un `FormatoExcel` concreto — porque el tipo genérico no expresaba las reglas ni el número de columnas requeridas/opcionales reales del formato. `FormatoExcel.tipoArchivo` se mantiene intacto en `modules/formatos-excel/` como dato informativo, solo perdió a `VentanaCarga` como consumidor de matching. 6 endpoints bajo `app/api/dashboard/ventanas-carga/`, pantallas `/dashboard/ventanas-carga` y `/revisor/ventanas-carga` (primera escritura de REVISOR_REPOSITORIO). Nuevo tipo de regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` en `modules/formatos-excel/`. Ver [docs/arquitectura.md](arquitectura.md#formato-de-archivo-por-ventana-y-publicación-explícita-ampliación-de-rf-15). |
 
 ## Herramientas de calidad y agentes
 
@@ -106,6 +112,78 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 * **No puede haber despliegue rolling en RF-09.** Tras el `DROP COLUMN "rol"`, cualquier instancia con
   el código anterior falla al consultar `usuario`. Con el contenedor único de Coolify la ventana es el
   swap; si eso no fuera aceptable, detener el contenedor viejo antes de `prisma migrate deploy`.
+* **RF-13 (`20260911174909_formatos_excel`) es aditiva.** Crea el enum `TipoDatoColumna` y las tablas
+  `formato_excel`, `columna_formato_excel` y `usuario_formato_excel`; no toca ninguna tabla existente
+  ni requiere `pg_dump` previo ni backfill. Admite despliegue rolling.
+* **Extensión de RF-13 (`20260911200529_regla_validacion_formato_excel`) también es aditiva.** Crea
+  el enum `TipoReglaValidacionFormatoExcel` y la tabla `regla_validacion_formato_excel`
+  (`ON DELETE CASCADE` desde `formato_excel`); no toca ninguna tabla existente. Admite despliegue
+  rolling.
+* **RF-14 (`20260914124810_reporte_excel_rf14`) es aditiva, con un INSERT de datos incluido.**
+  Agrega `RUT`/`EMAIL` a `TipoDatoColumna` (`ALTER TYPE ... ADD VALUE`, no reversible en la misma
+  transacción si hiciera falta deshacerla, mismo caveat que cualquier `ADD VALUE` de Postgres),
+  inserta la fila `REVISOR_REPOSITORIO` en `perfil` (mismo mecanismo de datos que RF-09, editado a
+  mano antes del DDL generado por Prisma) y crea `carga_archivo`/`error_carga_archivo`
+  (`ON DELETE RESTRICT` desde `usuario`/`formato_excel`, `ON DELETE CASCADE` desde
+  `carga_archivo` hacia sus errores). No borra ni modifica ninguna tabla existente. Admite
+  despliegue rolling. **Después de aplicar esta migración, si el proceso de la aplicación ya estaba
+  corriendo, hace falta reiniciarlo** (no solo `prisma migrate deploy`): el cliente de Prisma en
+  memoria de un proceso ya arrancado no ve los valores nuevos del enum `TipoDatoColumna` hasta que
+  se reinicia con el cliente regenerado (`prisma generate` + restart), o falla con
+  `Invalid value for argument tipoDato` al intentar usarlos.
+* **RF-15 (`20260914180209_ventanas_carga_rf15`) es aditiva, con backfill de datos existentes.**
+  Agrega `FECHA_DENTRO_DE_VENTANA_VIGENTE` a `TipoReglaValidacionFormatoExcel`, crea
+  `ventana_carga` y agrega `carga_archivo.ventanaCargaId` (`NOT NULL`, `ON DELETE RESTRICT`). Como
+  ya existían filas en `carga_archivo` en la base de desarrollo al momento de crear esta migración,
+  el `desarrollador` reordenó el diff generado por Prisma a mano: crea `ventana_carga` primero,
+  agrega `ventanaCargaId` como columna *nullable*, hace un backfill (una `VentanaCarga` sintética
+  por cada año ya presente en `carga_archivo`) y recién entonces aplica `SET NOT NULL` + la FK. Ese
+  backfill es válido para una base de desarrollo/desechable, pero **no es una estrategia de
+  migración apta para un dataset de producción con cargas reales ya existentes** — si esta
+  migración llega a aplicarse contra datos reales, revisar antes la estrategia de backfill con el
+  equipo (qué fechas de apertura/vencimiento asignarle a la ventana sintética, quién figura como
+  `creadoPorId`). Mismo caveat de `ALTER TYPE ... ADD VALUE` que RF-14: no reversible en la misma
+  transacción si hiciera falta deshacerla. No requiere reinicio del proceso más allá del ya
+  documentado para cualquier `ADD VALUE` de enum (RF-14, arriba).
+* **Extensión de RF-15 (`20260914191128_eliminar_ventana_carga_rf15`) es aditiva.** Agrega
+  `ventana_carga.eliminadaEn`/`eliminadaPorId` (ambas nullable) y su FK a `usuario`; no toca
+  ninguna columna ni tabla existente y no requiere backfill (las ventanas ya creadas simplemente
+  quedan con `eliminadaEn = NULL`, es decir, no eliminadas). **Contiene una sentencia SQL agregada
+  a mano** fuera del diff generado por Prisma: `DROP INDEX "ventana_carga_anio_key"` (generado) se
+  complementa con un `CREATE UNIQUE INDEX ... WHERE "eliminadaEn" IS NULL` escrito a mano, porque
+  la unicidad de `anio` debe regir solo entre las ventanas no eliminadas y Prisma no expresa un
+  índice único parcial en su schema DSL — mismo mecanismo ya usado en RF-09/RF-14 para insertar
+  datos fuera del DDL generado. Admite despliegue rolling.
+* **Ampliación de RF-15 (`20260914200915_add_tipo_archivo_y_publicacion`) es aditiva, con backfill
+  manual de datos.** Crea el enum `TipoArchivo` y agrega `formato_excel.tipoArchivo` y
+  `ventana_carga.tipoArchivo`/`ventana_carga.publicada`; no borra ni modifica ninguna columna
+  existente. **Contiene backfill agregado a mano** fuera del diff generado por Prisma (mismo
+  mecanismo que RF-09/RF-14/RF-15): las columnas `tipoArchivo` nacen `NULL`, se backfillean y recién
+  entonces se fijan `NOT NULL`. El de `formato_excel.tipoArchivo` es determinista (derivado 1:1 de
+  `tipoContenidoPlantilla`, ya persistido); el de `ventana_carga.tipoArchivo` es **arbitrario por
+  decisión explícita del usuario** (`EXCEL` para todas las ventanas ya creadas en RF-15) — si esta
+  migración llega a aplicarse contra datos reales con ventanas de tipo CSV ya en uso, revisar el
+  backfill con el equipo antes de aplicarla. `ventana_carga.publicada` no tiene ese problema (nace
+  `false` con `DEFAULT`, sin ambigüedad). Admite despliegue rolling. **Requiere reiniciar el proceso
+  después de aplicarla** (mismo caveat de cliente de Prisma en memoria que RF-14/RF-15): `npx prisma
+  generate` + restart, o falla con `Unknown argument 'tipoArchivo'`/`'publicada'`.
+* **Corrección de RF-15 (`20260915140000_ventana_carga_formato_excel`) es aditiva, con backfill
+  dirigido de datos existentes.** Reemplaza `ventana_carga.tipoArchivo` (enum) por
+  `ventana_carga.formatoExcelId` (FK a `formato_excel`, `ON DELETE RESTRICT`, `ON UPDATE CASCADE`).
+  **Contiene backfill agregado a mano** fuera del diff generado por Prisma, mismo mecanismo que las
+  migraciones anteriores de este módulo: la columna nace `NULL`, se hizo una consulta previa contra
+  la base de desarrollo (`node --env-file=.env --import tsx`) que confirmó una sola fila en
+  `ventana_carga` con `eliminadaEn IS NULL` (año 2026, `tipoArchivo = EXCEL`) antes de escribir el
+  `UPDATE` dirigido a un id concreto de formato ("VARIABLES ENVIO DE HEMATOLOGIA", el único con
+  cargas reales asociadas a esa ventana), y recién entonces se fija `NOT NULL`. Este backfill **no
+  es una estrategia genérica para un dataset con más de una ventana sin eliminar**: si esta
+  migración llega a aplicarse contra una base con varias ventanas reales, hay que resolver el
+  backfill caso a caso antes de aplicarla, no reutilizar el mismo id a ciegas. También reemplaza el
+  índice único parcial de `anio` (de la migración `eliminar_ventana_carga_rf15`) por uno sobre
+  `(anio, "formatoExcelId")`, mismo `WHERE "eliminadaEn" IS NULL`. Admite despliegue rolling.
+  **Requiere reiniciar el proceso después de aplicarla** (mismo caveat de cliente de Prisma en
+  memoria que las migraciones anteriores): `npx prisma generate` + restart, o falla con
+  `Unknown argument 'formatoExcelId'`/`Unknown argument 'tipoArchivo'` según el sentido del desfase.
 
 
 ## Recuperación de contraseña (RF-10)

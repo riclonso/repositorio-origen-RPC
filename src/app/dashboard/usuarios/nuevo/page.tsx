@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
 import { aOpcionesPerfil } from "../opciones-perfil";
+import { aOpcionesFormatoExcel } from "../opciones-formato-excel";
 import { UsuarioForm } from "../usuario-form";
 
 export const metadata: Metadata = {
@@ -23,10 +26,10 @@ export default async function NuevoUsuarioPage() {
   await connection();
 
   // Solo perfiles vigentes: dar de alta a alguien en un perfil dado de baja no tiene sentido.
-  const perfiles = await listarPerfiles(
-    { soloActivos: true },
-    { repositorio: prismaPerfilRepository },
-  );
+  const [perfiles, formatosExcel] = await Promise.all([
+    listarPerfiles({ soloActivos: true }, { repositorio: prismaPerfilRepository }),
+    listarFormatosExcel({ repositorio: prismaFormatoExcelRepository }),
+  ]);
 
   return (
     <div className="max-w-3xl">
@@ -39,8 +42,16 @@ export default async function NuevoUsuarioPage() {
         modo="crear"
         endpoint="/api/usuarios"
         metodo="POST"
-        valoresIniciales={{ nombres: "", apellidos: "", rut: "", email: "", perfilCodigo: "" }}
+        valoresIniciales={{
+          nombres: "",
+          apellidos: "",
+          rut: "",
+          email: "",
+          perfilCodigo: "",
+          formatosExcelIds: [],
+        }}
         opcionesPerfil={[OPCION_SIN_ELEGIR, ...aOpcionesPerfil(perfiles)]}
+        opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel)}
       />
     </div>
   );

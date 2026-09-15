@@ -25,8 +25,14 @@ trabajar en él, que es lo que cubre este archivo):
 **Regla del proyecto:** cualquier cambio real al código (nuevo requerimiento, módulo, dependencia,
 comando, variable de entorno o decisión de arquitectura) debe reflejarse en el documento
 correspondiente de `docs/` como parte del mismo trabajo, no como tarea aparte pendiente. El flujo
-`/feature` (ver más abajo) lo hace automáticamente en su Fase 4; si el cambio se hace fuera de ese
+`/feature` (ver más abajo) lo hace automáticamente en su Fase 5; si el cambio se hace fuera de ese
 flujo, actualízalos tú mismo antes de dar el trabajo por terminado.
+
+**Regla adicional para `/init`:** si al correr `/init` detectas que este archivo estaba
+desactualizado frente al código (referencias a archivos movidos/renombrados, módulos marcados como
+"no implementado" que ya lo están, comandos o rutas que ya no existen), la causa casi siempre afecta
+también a `docs/` — revísalo y corrígelo en el mismo trabajo, no como tarea aparte pendiente para
+cuando el usuario lo note.
 
 ## Agentes de desarrollo
 
@@ -59,7 +65,15 @@ a nivel raíz es `proxy.ts` (exporta `proxy`), no `middleware.ts`. Ver
 - `npx prisma migrate dev` — crea/aplica migraciones a partir de `prisma/schema.prisma`
   (config en `prisma.config.ts`, no en `package.json#prisma`)
 
-Todavía no hay un test runner configurado en este repo.
+Todavía no hay un test runner configurado en este repo (sin Jest/Vitest). Lo que sí existe son
+scripts de integración sueltos en `tests/*.integration.ts`, ejecutados a mano con `tsx` contra una
+base de datos PostgreSQL **local y desechable** (nunca la de desarrollo compartida ni producción —
+el propio script aborta si `DATABASE_URL` no apunta a `localhost`/`127.0.0.1`):
+
+```bash
+RF10_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... npx tsx tests/recuperacion.integration.ts
+npx tsx tests/recuperacion-smtp.integration.ts   # levanta un SMTP fake en 127.0.0.1:55440
+```
 
 ### Variables de entorno (`.env`, no versionado)
 
@@ -87,15 +101,34 @@ en `src/infrastructure/` a nivel raíz.
 src/
 ├── app/                    — App Router: páginas, layouts, Route Handlers (app/api/**/route.ts)
 ├── modules/
-│   ├── auth/
-│   │   ├── domain/         — entities/User.ts, repositories/UserRepository.ts (interfaz)
-│   │   ├── application/    — ports.ts (interfaces técnicas), use-cases/LoginUser.ts
-│   │   ├── infrastructure/ — repositories/PrismaUserRepository.ts, auth/PasswordService.ts, auth/JwtService.ts
-│   │   └── schemas/        — login.schema.ts (Zod)
-│   └── usuarios/           — mismo patrón; CRUD de administración de usuarios (aún no implementado)
-├── infrastructure/         — database/prisma.ts, config/env.ts, logging/logger.ts (transversal, no de un módulo)
-└── shared/
-    └── utils/               — rut.ts (validación de RUT, usada por varios módulos)
+│   ├── auth/               — login, recuperación de contraseña (RF-10), sesión (nombres en inglés)
+│   │   ├── domain/         — entities/ (User.ts, PasswordResetToken.ts), repositories/ (interfaces)
+│   │   ├── application/    — ports.ts, use-cases/ (LoginUser, RequestPasswordReset, ResetPassword)
+│   │   ├── infrastructure/ — repositories/, auth/ (PasswordService, JwtService, SesionActual),
+│   │   │                     email/PasswordResetMailer.ts, tokens/TokenService.ts, auditoria/
+│   │   └── schemas/        — login.schema.ts, recuperacion.schema.ts (Zod)
+│   ├── perfiles/           — catálogo de perfiles (RF-09), solo lectura (se cargan por SQL)
+│   │   ├── domain/         — entities/Perfil.ts (esPerfilAdministrador, esPerfilNotificador)
+│   │   ├── application/    — use-cases/ListarPerfiles.ts
+│   │   └── infrastructure/ — repositories/PrismaPerfilRepository.ts
+│   └── usuarios/           — mantenedor de usuarios (RF-06), nombres en español; ver detalle abajo
+│       ├── domain/         — entities/Usuario.ts, errors/ (UsuarioDuplicadoError, PerfilInvalidoError)
+│       ├── application/    — ports.ts, use-cases/ (CrearUsuario, ActualizarUsuario, ListarUsuarios, ...)
+│       ├── infrastructure/ — repositories/PrismaUsuarioRepository.ts, auth/, auditoria/
+│       └── schemas/        — usuario.schema.ts, listado-usuarios.schema.ts
+├── infrastructure/         — transversal, no de un módulo
+│   ├── database/prisma.ts, config/env.ts
+│   ├── logging/            — logger.ts (Winston), auditoria.ts, leerLogs.ts
+│   ├── email/SmtpMailer.ts
+│   └── rate-limit/LimitadorMemoria.ts
+├── shared/
+│   ├── utils/              — rut.ts, peticion.ts (extraerIp)
+│   ├── schemas/            — contrasena.schema.ts (reglas de complejidad compartidas)
+│   ├── components/         — Boton, BotonIcono, CampoTexto, CampoSelect, CampoContrasena,
+│   │                         DialogoConfirmacion, Interruptor, EncabezadoPanel, NavegacionPanel,
+│   │                         MarcoPublico, iconos.tsx (única puerta a @phosphor-icons/react)
+│   └── acciones/           — cerrarSesion.ts (Server Action compartida entre paneles)
+└── proxy.ts                — guard único de navegación (ver flujo de autenticación abajo)
 ```
 
 El flujo de dependencia es de afuera hacia adentro **dentro de cada módulo**: `app/*` (páginas o Route
@@ -121,8 +154,8 @@ credencial de acceso; cambiarlo es cambiar la identidad de la persona en silenci
 
 Puntos que hay que respetar al tocarlo:
 
-* **Guard en cada Route Handler, no en el proxy.** `src/proxy.ts` tiene `matcher: "/dashboard/:path*"`
-  y **no cubre `/api/**`**. Los cuatro endpoints de `app/api/usuarios/` empiezan llamando a
+* **Guard en cada Route Handler, no en el proxy.** El `matcher` de `src/proxy.ts` cubre `/dashboard/**`
+  y `/notificador/**`, pero **no `/api/**`**. Los cuatro endpoints de `app/api/usuarios/` empiezan llamando a
   `exigirAdmin()` (`app/api/usuarios/_lib/http.ts`), que devuelve 401 sin sesión y 403 si el rol no es
   ADMIN. Cualquier endpoint nuevo bajo `/api/` debe hacer lo mismo: sin ese guard queda abierto.
 * **Reglas anti-autobloqueo en `application/`, nunca solo en la UI.** Un ADMIN no puede desactivarse ni
@@ -168,13 +201,25 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
    al panel) en vez de volver a pedir `/dashboard` con la cookie recién emitida, dejando al usuario
    atascado en `/login` sin mensaje de error. La petición nueva reevalúa el proxy con la sesión
    vigente. Mantener ese patrón en cualquier navegación posterior a un cambio de sesión.
-7. `src/proxy.ts` — protege `/dashboard/:path*`: lee la cookie `sesion`, la verifica con
-   `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) y exige
-   `esPerfilAdministrador(sesion.perfil)`; si no, redirige a `/login`. Rutas nuevas que deban protegerse van en el `matcher` de `config`. Debe
-   vivir dentro de `src/` (no en la raíz) porque el proyecto usa la convención `src`.
-8. `app/dashboard/actions.ts` (`cerrarSesionAction`, Server Action) — borra la cookie `sesion` y
-   redirige a `/login`. Se dejó como Server Action (no API Route) por ser una mutación trivial sin
-   lógica de negocio.
+7. `src/proxy.ts` — guard único de navegación, con `matcher: ["/dashboard/:path*", "/notificador/:path*"]`.
+   Lee la cookie `sesion`, la verifica con `verificarSesion()`
+   (`modules/auth/infrastructure/auth/JwtService.ts`) y aplica un chequeo **positivo por área**: cada
+   área top-level mapea 1:1 a un perfil (`/dashboard` exige `esPerfilAdministrador`, `/notificador`
+   exige `esPerfilNotificador`, ambas de `modules/perfiles/domain/entities/Perfil.ts`), no una lista de
+   exclusiones. Sin sesión redirige a `/login`; con sesión pero perfil equivocado para el área,
+   redirige a `/inicio` (no a `/login`, para no expulsar a alguien ya autenticado). Una ruta nueva que
+   deba protegerse agrega su prefijo al `matcher` y su propio chequeo positivo aquí. Debe vivir dentro
+   de `src/` (no en la raíz) porque el proyecto usa la convención `src`.
+   - `app/inicio/page.tsx` es el **despachador de sesión**: no está en el `matcher` del proxy (se
+     autoguarda leyendo `obtenerSesionActual()`), nunca renderiza contenido propio, y redirige según
+     perfil (`/dashboard` para ADMIN, `/notificador` para NOTIFICADOR, `/login` si el perfil no tiene
+     área conocida o no hay sesión). Es el destino al que el proxy reenvía cuando el perfil no calza
+     con el área pedida, y el punto al que un login exitoso debería apuntar en vez de asumir un panel
+     fijo.
+8. `shared/acciones/cerrarSesion.ts` (`cerrarSesionAction`, Server Action) — borra la cookie `sesion` y
+   redirige a `/login`. Vive en `shared/` (no en `app/dashboard/`) porque la usan tanto el layout de
+   `/dashboard` como el de `/notificador`. Se dejó como Server Action (no API Route) por ser una
+   mutación trivial sin lógica de negocio propia.
 
 Notar: el login es por **RUT**, no por email, aunque email/rut/username son todos únicos en el modelo
 `Usuario` (`prisma/schema.prisma`).
@@ -211,7 +256,7 @@ que el hash de relleno en `LoginUser.ts`).
 #### 2. Log de errores del sistema — `logs/errores.txt`
 
 `src/infrastructure/logging/logger.ts` usa Winston (nivel `error`, formato JSON) y escribe en
-`logs/errores.txt`. Ya está conectado en `app/api/auth/login/route.ts` y `app/dashboard/actions.ts` —
+`logs/errores.txt`. Ya está conectado en `app/api/auth/login/route.ts` y `shared/acciones/cerrarSesion.ts` —
 cualquier error atrapable en un caso de uso, Route Handler o Server Action debe loguearse ahí antes de
 devolver un mensaje genérico al usuario (ver `MENSAJE_ERROR_GENERICO` en `app/api/auth/login/route.ts`
 como ejemplo de no filtrar detalles internos en la respuesta).
@@ -279,10 +324,18 @@ funcionarios y no deben versionarse.
 - `app/layout.tsx` — layout raíz, carga las fuentes Geist y el CSS global.
 - `app/page.tsx` — la raíz (`/`) solo hace `redirect("/login")`; no renderiza contenido propio.
 - `app/login/page.tsx` + `app/login/login-form.tsx` — pantalla de login (RUT + contraseña), ver flujo
-  de autenticación arriba.
-- `app/dashboard/layout.tsx` + `app/dashboard/page.tsx` — shell del panel de administración (header,
-  botón de cerrar sesión, nav lateral placeholder); protegido por `proxy.ts`, no por lógica propia.
-  `app/dashboard/usuarios/page.tsx` es un placeholder ("Próximamente") a la espera del módulo real.
+  de autenticación arriba. `app/recuperar/` y `app/recuperar/confirmar/` — flujo de recuperación de
+  contraseña (RF-10), enlazado desde el login.
+- `app/inicio/page.tsx` — despachador de sesión por perfil (ver flujo de autenticación, paso 7); no
+  tiene UI propia.
+- `app/dashboard/` (solo perfil ADMIN) y `app/notificador/` (solo perfil NOTIFICADOR) — dos áreas
+  top-level hermanas, cada una con su propio `layout.tsx` que compone `shared/components/EncabezadoPanel`
+  + `shared/components/NavegacionPanel` con su propia lista de enlaces (`nav-enlaces.ts` en cada área).
+  Ambas están protegidas por `proxy.ts` con chequeo positivo, no por lógica propia. Bajo `/dashboard`
+  viven el mantenedor de usuarios (`usuarios/`, implementado — RF-06) y el visor de logs (`logs/`, lee
+  `errores.txt`/`auditoria.txt` vía `infrastructure/logging/leerLogs.ts`). `/notificador` es por ahora
+  solo shell + bienvenida (RF-12): el flujo de reporte Excel/CSV, objetivo central del sistema, todavía
+  no está especificado.
 - `app/globals.css` — Tailwind v4 vía `@import "tailwindcss"`, tokens de tema con `@theme inline` (sin
   `tailwind.config.js`, es la configuración CSS-first de Tailwind v4). Incluye la paleta oficial del
   gobierno de Chile como tokens `gob-*` (`gob-primary`, `gob-secondary`, `gob-tertiary`, `gob-accent`,

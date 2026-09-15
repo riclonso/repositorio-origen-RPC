@@ -40,7 +40,149 @@ model Usuario {
   // arrastraría los tokens de cada fila (mismo motivo ya anotado en Perfil.usuarios).
   tokensRecuperacion TokenRecuperacion[]
 
+  // Relación inversa exigida por Prisma. NUNCA usarla con `include` en el listado de usuarios,
+  // mismo motivo que `tokensRecuperacion`: el detalle (`obtenerPorId`) sí la trae con un JOIN
+  // acotado a esa única fila.
+  formatosAsignados UsuarioFormatoExcel[]
+
+  // Relaciones inversas de RF-14, exigidas por Prisma. NUNCA usarlas con `include` en el listado
+  // de usuarios, mismo motivo que `tokensRecuperacion`/`formatosAsignados`: arrastrarían el
+  // historial completo de cargas de cada fila.
+  cargasArchivo       CargaArchivo[] @relation("CargasSubidasPorUsuario")
+  cargasVistoBuenoPor CargaArchivo[] @relation("CargasConVistoBuenoDe")
+
+  // Relación inversa de RF-15, exigida por Prisma. NUNCA usarla con `include` en el listado de
+  // usuarios, mismo motivo que `cargasArchivo`: arrastraría el historial completo de ventanas
+  // creadas por cada fila.
+  ventanasCargaCreadas    VentanaCarga[] @relation("VentanasCargaCreadasPor")
+  // Relación inversa de la eliminación de ventanas (RF-15), exigida por Prisma. Mismo motivo que
+  // `ventanasCargaCreadas`: nunca usarla con `include` en el listado.
+  ventanasCargaEliminadas VentanaCarga[] @relation("VentanasCargaEliminadasPor")
+
   @@map("usuario")
+}
+
+// Ocho tipos fijos, no configurables: agregar uno nuevo es una decisión de producto que exige
+// código nuevo (un parser propio), así que vive en el enum y no en una tabla de catálogo.
+enum TipoDatoColumna {
+  TEXTO
+  ENTERO
+  DECIMAL
+  BOOLEANO
+  FECHA
+  FECHA_HORA
+  RUT
+  EMAIL
+}
+
+// RF-15 (ampliación): tipo de archivo que un `FormatoExcel`/`VentanaCarga` acepta. Dos valores
+// fijos, no configurables: agregar un tercero exigiría un lector nuevo en
+// `modules/reporte-excel/infrastructure/lectura-archivo/`, así que vive en el enum, mismo
+// criterio que `TipoDatoColumna`.
+enum TipoArchivo {
+  EXCEL
+  CSV
+}
+
+// Especifica la cantidad de columnas, sus nombres y cuáles son obligatorias para un archivo que
+// un NOTIFICADOR_RPC deberá subir. La plantilla original se conserva como binario para que el
+// administrador pueda descargarla y para dejar registro exacto de lo que se leyó.
+model FormatoExcel {
+  id                     String      @id @default(uuid())
+  nombre                 String      @unique
+  descripcion            String?
+  nombreArchivoPlantilla String
+  tipoContenidoPlantilla String
+  // Derivado del `tipoContenidoPlantilla` real detectado al crear (RF-15 ampliación), NUNCA
+  // recibido del cliente. Inmutable: no forma parte de `DatosEdicionFormatoExcel`.
+  tipoArchivo            TipoArchivo
+  contenidoPlantilla     Bytes
+  activo                 Boolean     @default(true)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  columnas          ColumnaFormatoExcel[]
+  usuariosAsignados UsuarioFormatoExcel[]
+  reglasValidacion  ReglaValidacionFormatoExcel[]
+  // Relación inversa de RF-14, exigida por Prisma. NUNCA usarla con `include` en `listar()`:
+  // mismo motivo que `usuariosAsignados`.
+  cargasArchivo     CargaArchivo[]
+  // Relación inversa de la corrección que reemplaza `VentanaCarga.tipoArchivo` por una referencia
+  // directa a un formato concreto, exigida por Prisma. NUNCA usarla con `include` en `listar()`:
+  // mismo motivo que `cargasArchivo`/`usuariosAsignados`.
+  ventanasCarga     VentanaCarga[]
+
+  @@map("formato_excel")
+}
+
+model ColumnaFormatoExcel {
+  id             String          @id @default(uuid())
+  formatoExcelId String
+  formatoExcel   FormatoExcel    @relation(fields: [formatoExcelId], references: [id], onDelete: Cascade)
+  // Posición detectada en la plantilla (1-based). La fija el servidor a partir del orden del
+  // arreglo recibido; nunca se confía en un valor de orden enviado por el cliente.
+  orden          Int
+  // Encabezado tal como se leyó de la primera fila de la plantilla.
+  nombre         String
+  requerida      Boolean         @default(false)
+  tipoDato       TipoDatoColumna
+
+  @@unique([formatoExcelId, orden])
+  @@unique([formatoExcelId, nombre])
+  @@map("columna_formato_excel")
+}
+
+// Un solo tipo por ahora: de un conjunto de columnas, al menos una debe traer valor; si todas
+// vienen vacías en el registro, se rechaza. Agregar un tipo nuevo exige código nuevo (el
+// evaluador que las ejecuta contra un archivo real, todavía sin construir), así que vive en el
+// enum, mismo criterio que `TipoDatoColumna`.
+// RF-15 agrega `FECHA_DENTRO_DE_VENTANA_VIGENTE`: exige que la fecha de una columna del archivo
+// caiga dentro del rango de la ventana de carga elegida por el notificador para esa subida.
+enum TipoReglaValidacionFormatoExcel {
+  ALGUNA_COLUMNA_CON_VALOR
+  FECHA_DENTRO_DE_VENTANA_VIGENTE
+}
+
+// Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de
+// `ColumnaFormatoExcel`: `actualizar()` regenera los ids de las columnas en cada edición
+// (`deleteMany` + `create`), así que una FK dura dejaría las reglas huérfanas en el primer
+// guardado posterior a su creación. La referencia se revalida en `application/` cada vez que se
+// guarda el formato completo.
+model ReglaValidacionFormatoExcel {
+  id             String                          @id @default(uuid())
+  formatoExcelId String
+  formatoExcel   FormatoExcel                    @relation(fields: [formatoExcelId], references: [id], onDelete: Cascade)
+  // Posición fijada por el servidor a partir del arreglo recibido, igual que en
+  // `ColumnaFormatoExcel.orden`.
+  orden          Int
+  tipo           TipoReglaValidacionFormatoExcel
+  columnas       String[]
+  mensaje        String
+
+  @@unique([formatoExcelId, orden])
+  @@map("regla_validacion_formato_excel")
+}
+
+// Asociación N:M explícita entre `Usuario` y `FormatoExcel`, con id propio: mismo patrón que
+// `TokenRecuperacion`, este proyecto evita el m2m implícito de Prisma. Un NOTIFICADOR_RPC puede
+// tener asignados varios formatos.
+//
+// La regla "todo NOTIFICADOR_RPC tiene al menos un formato asignado" NO es expresable como un
+// CHECK de esta tabla (haría falta un trigger, que el proyecto evita): queda enforced solo en
+// `application/`, igual que las reglas anti-autobloqueo de RF-06.
+model UsuarioFormatoExcel {
+  id             String       @id @default(uuid())
+  usuarioId      String
+  usuario        Usuario      @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
+  formatoExcelId String
+  // `Restrict` y no `Cascade`: protege contra el borrado físico de un formato con usuarios
+  // asignados. Hoy no hay borrado físico de nada (baja lógica vía `activo`), la protección queda
+  // como defensa en profundidad, igual que el resto del proyecto.
+  formatoExcel   FormatoExcel @relation(fields: [formatoExcelId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  createdAt      DateTime     @default(now())
+
+  @@unique([usuarioId, formatoExcelId])
+  @@map("usuario_formato_excel")
 }
 
 // Tokens de recuperación de contraseña (RF-10). En la base vive únicamente el SHA-256
@@ -72,4 +214,122 @@ model TokenRecuperacion {
   createdAt    DateTime  @default(now()) @db.Timestamp(3)
 
   @@map("token_recuperacion")
+}
+
+// RF-14: subida y validación de archivos de reporte (Excel/CSV) por un NOTIFICADOR_RPC, contra
+// uno de los formatos que el ADMIN le tiene asignados.
+
+enum EstadoCargaArchivo {
+  CON_ERRORES
+  PENDIENTE_VISTO_BUENO
+  APROBADA
+}
+
+enum TipoErrorCargaArchivo {
+  COLUMNA_FALTANTE
+  COLUMNA_INESPERADA
+  VALOR_REQUERIDO_VACIO
+  TIPO_DATO_INVALIDO
+  REGLA_VALIDACION
+}
+
+// El binario se persiste igual que `FormatoExcel.contenidoPlantilla` (`Bytes`, sin cifrado
+// adicional) — deuda técnica conocida, documentada en `docs/requerimientos.md`: es dato
+// potencialmente clínico y el proyecto no tiene hoy un mecanismo de cifrado de aplicación.
+model CargaArchivo {
+  id                    String             @id @default(uuid())
+  formatoExcelId        String
+  formatoExcel          FormatoExcel       @relation(fields: [formatoExcelId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  usuarioId             String
+  usuario               Usuario            @relation("CargasSubidasPorUsuario", fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // RF-15: año/ventana de carga elegida por el notificador para esta subida. `Restrict` porque
+  // este modelo no expone borrado de ventanas (tampoco hay borrado físico de nada en el sistema).
+  ventanaCargaId        String
+  ventanaCarga          VentanaCarga       @relation(fields: [ventanaCargaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  nombreArchivoOriginal String
+  tipoContenidoArchivo  String
+  contenidoArchivo      Bytes
+  cantidadFilasDatos    Int
+  cantidadErrores       Int
+  estado                EstadoCargaArchivo
+  // El visto bueno es irreversible y solo lo puede dar el mismo usuario que subió el archivo
+  // (regla enforced en `application/`, no aquí).
+  vistoBuenoEn          DateTime?
+  vistoBuenoPorId       String?
+  vistoBuenoPor         Usuario?           @relation("CargasConVistoBuenoDe", fields: [vistoBuenoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  errores ErrorCargaArchivo[]
+
+  @@map("carga_archivo")
+}
+
+// RF-15: ventana de tiempo (medida en año calendario) durante la cual un notificador puede subir
+// un archivo. "Abierta" NO es una columna persistida: se calcula siempre comparando
+// `fechaApertura`/`fechaVencimiento` contra un `ahora` que viaja como parámetro desde la
+// aplicación, mismo criterio ya usado en `TokenRecuperacion` (RF-10) — nunca contra `now()` de
+// PostgreSQL.
+// `(anio, formatoExcelId)` NO lleva `@@unique` de columna completa en el schema: la unicidad solo
+// debe regir mientras la ventana no esté eliminada (`eliminadaEn IS NULL`), para que se pueda
+// volver a crear una ventana para el mismo año/formato cuya ventana anterior ya fue eliminada.
+// Prisma no expresa un índice único parcial (`WHERE`) en su DSL, así que la restricción real vive
+// como una sentencia SQL agregada a mano en la migración —mismo mecanismo ya usado en RF-09/RF-14
+// para insertar datos fuera del DDL generado—, y `obtenerPorAnioYFormato()` filtra
+// `eliminadaEn: null` en el `WHERE` de Prisma para que el código de aplicación vea exactamente la
+// misma noción de "ese año y formato ya están tomados".
+model VentanaCarga {
+  id               String       @id @default(uuid())
+  anio             Int
+  // Timestamp sin zona, mismo criterio y mismo motivo documentado en `TokenRecuperacion.expiraEn`:
+  // el reloj de pared siempre viaja en UTC "de pared", nunca comparado contra `now()` ni casteado
+  // a la variante con zona.
+  fechaApertura    DateTime     @db.Timestamp(3)
+  fechaVencimiento DateTime     @db.Timestamp(3)
+  // Formato de archivo concreto que esta ventana acepta (corrección posterior a RF-15 ampliación:
+  // reemplaza el enum `tipoArchivo`, que solo distinguía EXCEL/CSV sin llegar a un formato real).
+  // Relación 1:1 desde `VentanaCarga` hacia `FormatoExcel` (una ventana referencia exactamente un
+  // formato; varias ventanas de años distintos pueden apuntar al mismo formato). `Restrict`, mismo
+  // criterio que `CargaArchivo.formatoExcelId`: protege contra el borrado físico de un formato con
+  // ventanas asociadas (hoy no hay borrado físico de formatos, la protección queda como defensa en
+  // profundidad). Editable después de creada (mismo endpoint PUT que las fechas): una
+  // `CargaArchivo` ya subida conserva su propio `formatoExcelId`, no derivado de la ventana.
+  formatoExcelId   String
+  formatoExcel     FormatoExcel @relation(fields: [formatoExcelId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Nace en `false` (borrador) y se activa/desactiva con el endpoint PATCH dedicado, nunca con el
+  // PUT de fechas/formato: mientras no esté publicada, el notificador no debe verla (exclusión real
+  // en el `WHERE` de `listarDisponibles`, no solo en la UI).
+  publicada        Boolean      @default(false)
+  creadoPorId      String
+  creadoPor        Usuario      @relation("VentanasCargaCreadasPor", fields: [creadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Eliminación: ADMIN puede eliminar cualquier ventana, REVISOR_REPOSITORIO solo las que él mismo
+  // creó (enforced en `application/`, no aquí). Física si no tiene cargas asociadas (el propio
+  // `ON DELETE RESTRICT` de `CargaArchivo.ventanaCargaId` lo impide y el repositorio traduce ese
+  // rechazo a una eliminación lógica); lógica (estos dos campos) si ya tiene cargas, para no
+  // perder a qué ventana perteneció una carga ya aprobada. `eliminadaEn` no nulo también apaga
+  // `estaAbierta()` sin importar las fechas: una ventana eliminada nunca vuelve a habilitar subidas.
+  eliminadaEn      DateTime?    @db.Timestamp(3)
+  eliminadaPorId   String?
+  eliminadaPor     Usuario?     @relation("VentanasCargaEliminadasPor", fields: [eliminadaPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  cargas CargaArchivo[]
+
+  @@map("ventana_carga")
+}
+
+// Tope de 500 filas por carga, aplicado en `application/`: evita miles de INSERTs con un
+// archivo mal formado. Si se excede, se corta ahí y se agrega una fila resumen con
+// `numeroFila = 0` y `columna = null`.
+model ErrorCargaArchivo {
+  id             String                @id @default(uuid())
+  cargaArchivoId String
+  cargaArchivo   CargaArchivo          @relation(fields: [cargaArchivoId], references: [id], onDelete: Cascade)
+  numeroFila     Int
+  columna        String?
+  tipoError      TipoErrorCargaArchivo
+  mensaje        String
+
+  @@map("error_carga_archivo")
 }

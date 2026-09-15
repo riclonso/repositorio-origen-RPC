@@ -12,6 +12,9 @@ import {
   Key,
   PencilSimple,
   Prohibit,
+  SealCheck,
+  Trash,
+  UploadSimple,
   X,
   type Icon,
 } from "@phosphor-icons/react";
@@ -36,6 +39,7 @@ export const IconoEditar = crearIcono(PencilSimple, TAMANO_ACCION);
 export const IconoContrasena = crearIcono(Key, TAMANO_ACCION);
 export const IconoDesactivar = crearIcono(Prohibit, TAMANO_ACCION);
 export const IconoActivar = crearIcono(CheckCircle, TAMANO_ACCION);
+export const IconoEliminar = crearIcono(Trash, TAMANO_ACCION);
 
 // Requisitos de contraseña: el icono cambia de forma, no solo de color, porque el color no
 // puede ser el único portador de la información.
@@ -45,3 +49,7 @@ export const IconoNoCumplido = crearIcono(X, 14);
 
 export const IconoOjo = crearIcono(Eye, TAMANO_CAMPO);
 export const IconoOjoTachado = crearIcono(EyeSlash, TAMANO_CAMPO);
+
+// RF-14: carga y validación de archivos de reporte.
+export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);
+export const IconoAprobado = crearIcono(SealCheck, TAMANO_ACCION);

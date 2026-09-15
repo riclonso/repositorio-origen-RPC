@@ -3,6 +3,7 @@ import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionAc
 import {
   esPerfilAdministrador,
   esPerfilNotificador,
+  esPerfilRevisorRepositorio,
 } from "@/modules/perfiles/domain/entities/Perfil";
 
 // Despachador de sesión. No está en el matcher del proxy a propósito: se autoguarda leyendo y
@@ -22,6 +23,10 @@ export default async function InicioPage(): Promise<never> {
 
   if (esPerfilNotificador(sesion.perfil)) {
     redirect("/notificador");
+  }
+
+  if (esPerfilRevisorRepositorio(sesion.perfil)) {
+    redirect("/revisor");
   }
 
   redirect("/login");

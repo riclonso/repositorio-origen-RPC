@@ -3,6 +3,7 @@ import { logger } from "@/infrastructure/logging/logger";
 import { actualizarUsuario } from "@/modules/usuarios/application/use-cases/ActualizarUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { editarUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
 import {
@@ -14,6 +15,7 @@ import {
   idUsuarioSchema,
   respuestaDuplicado,
   respuestaError,
+  respuestaFormatoExcelInvalido,
   respuestaPerfilInvalido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
@@ -62,13 +64,22 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       idValido.data,
       datos.data,
       acceso.sesion.sub,
-      { repositorio: prismaUsuarioRepository, repositorioPerfiles: prismaPerfilRepository },
+      {
+        repositorio: prismaUsuarioRepository,
+        repositorioPerfiles: prismaPerfilRepository,
+        repositorioFormatosExcel: prismaFormatoExcelRepository,
+      },
     );
 
     if (!resultado.ok) {
-      // Un perfil inválido es un error de validación: no se audita, como el resto de los 400.
+      // Un perfil o un formato inválidos son errores de validación: no se auditan, como el
+      // resto de los 400.
       if (resultado.motivo === "PERFIL_INVALIDO") {
         return respuestaPerfilInvalido();
+      }
+
+      if (resultado.motivo === "FORMATO_INVALIDO") {
+        return respuestaFormatoExcelInvalido();
       }
 
       auditarUsuario(acceso.sesion, request, {
@@ -100,6 +111,8 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       campos: resultado.camposModificados,
       perfilAnterior: resultado.perfilAnterior,
       perfilNuevo: resultado.perfilNuevo,
+      formatosAgregados: resultado.formatosAgregados,
+      formatosQuitados: resultado.formatosQuitados,
     });
 
     return NextResponse.json({ usuario: aUsuarioDTO(resultado.usuario) });

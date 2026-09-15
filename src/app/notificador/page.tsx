@@ -1,6 +1,12 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
+import { listarCargasPropias } from "@/modules/reporte-excel/application/use-cases/ListarCargasPropias";
+import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
+import { listarVentanasDisponiblesParaNotificador } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasDisponiblesParaNotificador";
+import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
+import { PanelCargaArchivo, type CargaResumenVista, type CombinacionCargaVista } from "./panel-carga-archivo";
 
 export default async function NotificadorPage() {
   // El proxy ya garantiza una sesión de perfil notificador antes de llegar aquí; estas comprobaciones
@@ -20,6 +26,40 @@ export default async function NotificadorPage() {
     redirect("/login");
   }
 
+  // Sin un formato asignado, el notificador no puede subir nada (RF-14). Sin ninguna ventana de
+  // carga publicada y abierta ahora mismo (RF-15 ampliación), tampoco. `PanelCargaArchivo` muestra
+  // un único mensaje genérico cuando el arreglo de combinaciones viene vacío, sin distinguir la
+  // causa.
+  const [formatos, cargasPropias, ventanasDisponibles] = await Promise.all([
+    prismaFormatoExcelRepository.listarAsignadosAUsuario(sesion.sub),
+    listarCargasPropias(
+      { usuarioId: sesion.sub, pagina: 1, tamano: 25 },
+      { repositorio: prismaCargaArchivoRepository },
+    ),
+    listarVentanasDisponiblesParaNotificador({ repositorio: prismaVentanaCargaRepository }),
+  ]);
+
+  // Una entrada por cada par (formato asignado, ventana disponible) cuyo formato coincide
+  // exactamente: el notificador solo debe ver la ventana para subir el archivo que le corresponde
+  // (RF-15 ampliación; corrección posterior reemplaza la comparación por tipo de archivo genérico
+  // por una comparación de id exacta).
+  const combinaciones: CombinacionCargaVista[] = formatos.flatMap((formato) =>
+    ventanasDisponibles
+      .filter((ventana) => ventana.formatoExcelId === formato.id)
+      .map((ventana) => ({
+        formatoExcelId: formato.id,
+        formatoNombre: formato.nombre,
+        anio: ventana.anio,
+        ventanaCargaId: ventana.id,
+      })),
+  );
+
+  const cargasIniciales: CargaResumenVista[] = cargasPropias.filas.map((carga) => ({
+    ...carga,
+    createdAt: carga.createdAt.toISOString(),
+    vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
+  }));
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -31,17 +71,7 @@ export default async function NotificadorPage() {
         </p>
       </div>
 
-      <section
-        aria-labelledby="titulo-reporte"
-        className="rounded-lg border border-dashed border-gob-accent bg-white p-6"
-      >
-        <h2 id="titulo-reporte" className="text-base font-semibold text-gob-tertiary">
-          Reporte de datos (Excel/CSV)
-        </h2>
-        <p className="mt-2 text-sm text-gob-gray-a">
-          Próximamente: aquí podrá cargar y reportar los datos del Registro Poblacional de Cáncer.
-        </p>
-      </section>
+      <PanelCargaArchivo combinaciones={combinaciones} cargasIniciales={cargasIniciales} />
     </div>
   );
 }

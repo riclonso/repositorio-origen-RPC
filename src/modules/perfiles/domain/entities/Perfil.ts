@@ -31,6 +31,15 @@ export function esPerfilNotificador(codigo: string): boolean {
   return codigo === CODIGO_PERFIL_NOTIFICADOR;
 }
 
+// Perfil de quien revisa las cargas de archivo ya aprobadas por un notificador (RF-14). Mismo
+// criterio que `CODIGO_PERFIL_NOTIFICADOR`: tiene área propia (`/revisor`), así que el sistema lo
+// conoce por su código.
+export const CODIGO_PERFIL_REVISOR_REPOSITORIO = "REVISOR_REPOSITORIO";
+
+export function esPerfilRevisorRepositorio(codigo: string): boolean {
+  return codigo === CODIGO_PERFIL_REVISOR_REPOSITORIO;
+}
+
 // Forma válida de un código de perfil. Vive aquí, en TypeScript puro, porque la usan tanto el
 // esquema Zod como la verificación del JWT: una sola definición impide que las dos deriven.
 export const FORMA_CODIGO_PERFIL = /^[A-Z][A-Z0-9_]{0,39}$/;

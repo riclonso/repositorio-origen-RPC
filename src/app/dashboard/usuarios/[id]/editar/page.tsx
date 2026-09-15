@@ -5,7 +5,10 @@ import { obtenerUsuario } from "@/modules/usuarios/application/use-cases/Obtener
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { aOpcionesPerfil } from "../../opciones-perfil";
+import { aOpcionesFormatoExcel } from "../../opciones-formato-excel";
 import { UsuarioForm } from "../../usuario-form";
 
 export const metadata: Metadata = {
@@ -35,10 +38,15 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
   // El perfil vigente de la persona se incluye aunque esté dado de baja. Sin esto, editar el
   // email de alguien cuyo perfil fue desactivado mostraría un select sin su valor actual: el
   // navegador elegiría otra opción y guardar le cambiaría el perfil en silencio.
-  const perfiles = await listarPerfiles(
-    { soloActivos: true, incluirCodigos: [usuario.perfilCodigo] },
-    { repositorio: prismaPerfilRepository },
-  );
+  const idsFormatosAsignados = usuario.formatosExcel.map((formato) => formato.id);
+
+  const [perfiles, formatosExcel] = await Promise.all([
+    listarPerfiles(
+      { soloActivos: true, incluirCodigos: [usuario.perfilCodigo] },
+      { repositorio: prismaPerfilRepository },
+    ),
+    listarFormatosExcel({ repositorio: prismaFormatoExcelRepository }),
+  ]);
 
   return (
     <div className="max-w-3xl">
@@ -69,8 +77,10 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
           rut: usuario.rut,
           email: usuario.email,
           perfilCodigo: usuario.perfilCodigo,
+          formatosExcelIds: idsFormatosAsignados,
         }}
         opcionesPerfil={aOpcionesPerfil(perfiles)}
+        opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel, idsFormatosAsignados)}
       />
     </div>
   );

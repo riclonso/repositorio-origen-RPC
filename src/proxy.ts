@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import {
   esPerfilAdministrador,
   esPerfilNotificador,
+  esPerfilRevisorRepositorio,
 } from "@/modules/perfiles/domain/entities/Perfil";
 import { verificarSesion } from "@/modules/auth/infrastructure/auth/JwtService";
 
@@ -28,9 +29,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/inicio", request.url));
   }
 
+  if (ruta.startsWith("/revisor") && !esPerfilRevisorRepositorio(sesion.perfil)) {
+    return NextResponse.redirect(new URL("/inicio", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/notificador/:path*"],
+  matcher: ["/dashboard/:path*", "/notificador/:path*", "/revisor/:path*"],
 };

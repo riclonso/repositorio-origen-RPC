@@ -4,14 +4,17 @@ import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/U
 import type {
   CampoUnico,
   FiltroListadoUsuarios,
+  FormatoExcelAsignado,
   Usuario,
 } from "@/modules/usuarios/domain/entities/Usuario";
 import { CODIGO_PERFIL_ADMIN } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
+import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
 
 // Selección explícita: `contrasenaHash` nunca sale del repositorio en este módulo. El nombre del
-// perfil se trae en la misma consulta (lectura de UNA fila con su perfil, no hay N+1).
+// perfil y los formatos asignados se traen en la misma consulta (lectura de UNA fila con sus
+// relaciones, no hay N+1).
 const SELECCION_USUARIO = {
   id: true,
   nombres: true,
@@ -23,6 +26,10 @@ const SELECCION_USUARIO = {
   perfil: { select: { nombre: true } },
   activo: true,
   createdAt: true,
+  formatosAsignados: {
+    select: { formatoExcel: { select: { id: true, nombre: true } } },
+    orderBy: { formatoExcel: { nombre: "asc" } },
+  },
 } as const;
 
 type RegistroUsuario = {
@@ -36,9 +43,12 @@ type RegistroUsuario = {
   perfil: { nombre: string };
   activo: boolean;
   createdAt: Date;
+  formatosAsignados: { formatoExcel: FormatoExcelAsignado }[];
 };
 
-// Aplana el perfil anidado que devuelve Prisma a los dos campos planos del dominio.
+// Aplana el perfil anidado que devuelve Prisma a los dos campos planos del dominio, e igual con
+// los formatos asignados (la fila intermedia de `usuario_formato_excel` no le interesa a nadie
+// fuera de este repositorio).
 function aUsuario(registro: RegistroUsuario): Usuario {
   return {
     id: registro.id,
@@ -51,6 +61,7 @@ function aUsuario(registro: RegistroUsuario): Usuario {
     perfilNombre: registro.perfil.nombre,
     activo: registro.activo,
     createdAt: registro.createdAt,
+    formatosExcel: registro.formatosAsignados.map((asignacion) => asignacion.formatoExcel),
   };
 }
 
@@ -67,9 +78,10 @@ function campoDesdeConflicto(error: Prisma.PrismaClientKnownRequestError): Campo
   return "rut";
 }
 
-// El perfil enviado se valida antes de escribir, así que llegar aquí significa que el perfil
-// desapareció entre la comprobación y el INSERT. Se traduce igual que el duplicado, para que el
-// borde responda 400 y no un 500 por violación de clave foránea.
+// El perfil y los formatos enviados se validan antes de escribir, así que llegar aquí significa
+// que alguno desapareció entre la comprobación y el INSERT/UPDATE. Se traduce a un error de
+// dominio, distinguiendo cuál de las dos claves foráneas fue, para que el borde responda 400 y
+// no un 500 por violación de clave foránea.
 function traducirConflicto(error: unknown, perfilCodigo: string): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === CODIGO_UNIQUE_VIOLADO) {
@@ -77,6 +89,12 @@ function traducirConflicto(error: unknown, perfilCodigo: string): never {
     }
 
     if (error.code === CODIGO_FK_VIOLADA) {
+      const campoFk = String(error.meta?.field_name ?? error.meta?.constraint ?? "").toLowerCase();
+
+      if (campoFk.includes("formatoexcelid")) {
+        throw new FormatoExcelInvalidoError();
+      }
+
       throw new PerfilInvalidoError(perfilCodigo);
     }
   }
@@ -140,8 +158,12 @@ type FilaListado = {
   createdAt: Date;
 };
 
+// El listado (búsqueda + paginación) no muestra los formatos asignados en su tabla, así que este
+// mapeo deliberadamente NO los trae: agregarlos aquí sería una consulta más por página (o un JOIN
+// que multiplicaría filas) para un dato que la pantalla no usa. `obtenerPorId` sí los trae
+// completos para el detalle/edición.
 function aUsuarioDesdeFila(fila: FilaListado): Usuario {
-  return aUsuario({
+  return {
     id: String(fila.id),
     nombres: String(fila.nombres),
     apellidos: String(fila.apellidos),
@@ -149,10 +171,11 @@ function aUsuarioDesdeFila(fila: FilaListado): Usuario {
     email: String(fila.email),
     username: String(fila.username),
     perfilCodigo: String(fila.perfilCodigo),
-    perfil: { nombre: String(fila.perfilNombre) },
+    perfilNombre: String(fila.perfilNombre),
     activo: Boolean(fila.activo),
     createdAt: fila.createdAt instanceof Date ? fila.createdAt : new Date(fila.createdAt),
-  });
+    formatosExcel: [],
+  };
 }
 
 export const prismaUsuarioRepository: UsuarioRepository = {
@@ -232,6 +255,8 @@ export const prismaUsuarioRepository: UsuarioRepository = {
 
   async crear(datos) {
     try {
+      // Nido de una sola escritura: Prisma crea el usuario y sus filas de
+      // `usuario_formato_excel` como una única operación atómica.
       const registro = await prisma.usuario.create({
         data: {
           nombres: datos.nombres,
@@ -242,6 +267,9 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           contrasenaHash: datos.contrasenaHash,
           perfilCodigo: datos.perfilCodigo,
           activo: datos.activo,
+          formatosAsignados: {
+            create: datos.formatosExcelIds.map((formatoExcelId) => ({ formatoExcelId })),
+          },
         },
         select: SELECCION_USUARIO,
       });
@@ -254,6 +282,9 @@ export const prismaUsuarioRepository: UsuarioRepository = {
 
   async actualizar(id, datos) {
     try {
+      // `deleteMany` + `create` sobre la misma relación, dentro de la misma llamada a `update`:
+      // Prisma lo ejecuta como una única operación atómica, así que el reemplazo del conjunto
+      // completo de formatos asignados nunca queda a medio aplicar.
       const registro = await prisma.usuario.update({
         where: { id },
         data: {
@@ -261,6 +292,10 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           apellidos: datos.apellidos,
           email: datos.email,
           perfilCodigo: datos.perfilCodigo,
+          formatosAsignados: {
+            deleteMany: {},
+            create: datos.formatosExcelIds.map((formatoExcelId) => ({ formatoExcelId })),
+          },
         },
         select: SELECCION_USUARIO,
       });

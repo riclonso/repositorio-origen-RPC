@@ -19,6 +19,8 @@ export type DesenlaceAuditoria = {
   campos?: string[];
   perfilAnterior?: string;
   perfilNuevo?: string;
+  formatosAgregados?: string[];
+  formatosQuitados?: string[];
 };
 
 // El RUT del actor no viaja en el JWT (solo `sub` y `perfil`), así que se resuelve aquí. La
@@ -46,6 +48,8 @@ async function construirYRegistrar(
     ...(desenlace.campos ? { campos: desenlace.campos } : {}),
     ...(desenlace.perfilAnterior ? { perfilAnterior: desenlace.perfilAnterior } : {}),
     ...(desenlace.perfilNuevo ? { perfilNuevo: desenlace.perfilNuevo } : {}),
+    ...(desenlace.formatosAgregados?.length ? { formatosAgregados: desenlace.formatosAgregados } : {}),
+    ...(desenlace.formatosQuitados?.length ? { formatosQuitados: desenlace.formatosQuitados } : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

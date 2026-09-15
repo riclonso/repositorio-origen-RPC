@@ -4,6 +4,7 @@ import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarU
 import { crearUsuario } from "@/modules/usuarios/application/use-cases/CrearUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { hasheadorContrasenaBcrypt } from "@/modules/usuarios/infrastructure/auth/HasheadorContrasenaBcrypt";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { listadoUsuariosSchema } from "@/modules/usuarios/schemas/listado-usuarios.schema";
@@ -15,6 +16,7 @@ import {
   exigirAdmin,
   respuestaDuplicado,
   respuestaError,
+  respuestaFormatoExcelInvalido,
   respuestaPerfilInvalido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
@@ -79,13 +81,19 @@ export async function POST(request: Request) {
     const resultado = await crearUsuario(datos.data, {
       repositorio: prismaUsuarioRepository,
       repositorioPerfiles: prismaPerfilRepository,
+      repositorioFormatosExcel: prismaFormatoExcelRepository,
       hasheadorContrasena: hasheadorContrasenaBcrypt,
     });
 
     if (!resultado.ok) {
-      // Un perfil inválido es un error de validación: no se audita, como el resto de los 400.
+      // Un perfil o un formato inválidos son errores de validación: no se auditan, como el
+      // resto de los 400.
       if (resultado.motivo === "PERFIL_INVALIDO") {
         return respuestaPerfilInvalido();
+      }
+
+      if (resultado.motivo === "FORMATO_INVALIDO") {
+        return respuestaFormatoExcelInvalido();
       }
 
       auditarUsuario(acceso.sesion, request, {

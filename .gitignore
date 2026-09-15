@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Respaldos de base de datos: contienen RUT, email y hashes
 respaldo_*.sql
+
+# Artefactos de verificación en navegador (Playwright MCP): snapshots y logs de consola
+/.playwright-mcp/
