@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-14 (RF-15 y su ampliación: tipo de archivo por ventana + publicación)
+Última actualización: 2026-09-15 (RF-13: acceso completo y simétrico de REVISOR_REPOSITORIO al mantenedor de formatos de archivo)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -396,6 +396,23 @@ traducción de errores propios: `respuestaDuplicado`, `respuestaPerfilInvalido`,
 `respuestaFormatoExcelInvalido`, `respuestaArchivoInvalido`). Regla para módulos nuevos: los
 helpers verdaderamente genéricos van en `app/api/_lib/`; lo que conoce el dominio se queda en el
 `_lib/http.ts` de esa carpeta.
+
+### Acceso extendido a REVISOR_REPOSITORIO (posterior a RF-15)
+
+Los 6 endpoints bajo `app/api/formatos-excel/` (`formatos-excel/_lib/http.ts` reexporta
+`exigirAdminORevisor` en vez de `exigirAdmin`) y las pantallas de listar/crear/editar pasaron de
+ser solo-ADMIN a acceso completo y simétrico para ADMIN y REVISOR_REPOSITORIO (crear, editar,
+activar/desactivar, descargar plantilla, leer-plantilla), sin restricción de autoría — cualquiera
+de los dos perfiles puede operar sobre cualquier formato, igual que ya operaba ADMIN. Ninguna regla
+de negocio en `application/` ni en `infrastructure/auditoria/auditarFormatoExcel.ts` distinguía
+entre perfiles, así que el cambio fue puramente de guard (mismo patrón ya usado por
+`ventanas-carga`, ver más abajo). Los 5 componentes de UI que antes vivían dentro de
+`app/dashboard/formatos-excel/` (`TablaFormatosExcel`, `TablaColumnasFormatoExcel`,
+`EditorReglasValidacionFormatoExcel`, `AsistenteFormatoExcel`, `FormularioEdicionFormatoExcel`) se
+extrajeron a `shared/components/` (convención plana, sin subcarpeta) para que `/revisor/formatos-excel`
+los reutilice; la constante fija `RUTA_FORMATOS_EXCEL` se reemplazó por una prop `rutaBase: string`
+que cada página (`/dashboard/formatos-excel` o `/revisor/formatos-excel`) resuelve, ya que el mismo
+componente ahora sirve a dos rutas distintas.
 
 ### `contenidoPlantilla` nunca sale del repositorio salvo en `obtenerPlantilla()`
 

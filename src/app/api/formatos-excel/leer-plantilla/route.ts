@@ -5,7 +5,7 @@ import { lectorPlantillaExcelJs } from "@/modules/formatos-excel/infrastructure/
 import {
   MENSAJE_ERROR_INTERNO,
   TAMANO_MAXIMO_PLANTILLA,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaArchivoInvalido,
   respuestaError,
   respuestaSinAcceso,
@@ -14,10 +14,10 @@ import {
 } from "@/app/api/formatos-excel/_lib/http";
 
 // No persiste nada: solo lee la primera fila de la plantilla y devuelve las columnas detectadas,
-// para que el asistente de creación las muestre antes de que el administrador decida cuáles son
-// requeridas y su tipo de dato.
+// para que el asistente de creación las muestre antes de que quien lo crea (ADMIN o
+// REVISOR_REPOSITORIO) decida cuáles son requeridas y su tipo de dato.
 export async function POST(request: Request) {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);

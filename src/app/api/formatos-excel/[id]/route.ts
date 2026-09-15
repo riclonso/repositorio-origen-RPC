@@ -10,7 +10,7 @@ import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
   aFormatoExcelDTO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idFormatoExcelSchema,
   respuestaDuplicado,
   respuestaError,
@@ -18,7 +18,7 @@ import {
 } from "@/app/api/formatos-excel/_lib/http";
 
 export async function GET(_request: Request, contexto: { params: Promise<{ id: string }> }) {
-  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdmin()]);
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);
@@ -51,7 +51,7 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 

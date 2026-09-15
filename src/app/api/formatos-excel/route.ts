@@ -11,7 +11,7 @@ import {
   TAMANO_MAXIMO_PLANTILLA,
   aFormatoExcelDTO,
   aFormatoExcelResumenDTO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaArchivoInvalido,
   respuestaDuplicado,
   respuestaError,
@@ -24,7 +24,7 @@ import {
 // Las lecturas no se auditan: llenarían el archivo sin aportar trazabilidad de cambios (mismo
 // criterio que el mantenedor de usuarios).
 export async function GET() {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);
@@ -45,7 +45,7 @@ export async function GET() {
 // asistente): `archivo` es el binario, `nombre`/`descripcion`/`columnas` son el resto del
 // formulario, `columnas` viaja como JSON dentro del campo multipart.
 export async function POST(request: Request) {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     if (acceso.estado === 403) {

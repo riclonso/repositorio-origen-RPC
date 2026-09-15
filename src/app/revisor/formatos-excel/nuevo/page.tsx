@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "Nuevo formato de archivo - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
-export default function NuevoFormatoExcelPage() {
+export default function NuevoFormatoExcelRevisorPage() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-xl font-semibold text-gob-black">Nuevo formato de archivo</h1>
@@ -13,7 +13,7 @@ export default function NuevoFormatoExcelPage() {
         Define la estructura que deben cumplir los archivos que suban los notificadores.
       </p>
 
-      <AsistenteFormatoExcel rutaBase="/dashboard/formatos-excel" />
+      <AsistenteFormatoExcel rutaBase="/revisor/formatos-excel" />
     </div>
   );
 }

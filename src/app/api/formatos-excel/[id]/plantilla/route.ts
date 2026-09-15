@@ -5,7 +5,7 @@ import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastru
 import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idFormatoExcelSchema,
   respuestaError,
   respuestaSinAcceso,
@@ -20,7 +20,7 @@ function nombreParaDescarga(nombreArchivo: string): string {
 
 // Único endpoint de todo el módulo que consulta `contenidoPlantilla`.
 export async function GET(_request: Request, contexto: { params: Promise<{ id: string }> }) {
-  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdmin()]);
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);

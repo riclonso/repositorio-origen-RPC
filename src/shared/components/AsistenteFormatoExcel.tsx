@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { TablaColumnasFormatoExcel, type ColumnaEditable } from "../tabla-columnas-formato-excel";
+import { TablaColumnasFormatoExcel, type ColumnaEditable } from "@/shared/components/TablaColumnasFormatoExcel";
 import {
   EditorReglasValidacionFormatoExcel,
   type ReglaValidacionEditable,
-} from "../editor-reglas-validacion-formato-excel";
-import { RUTA_FORMATOS_EXCEL } from "../ruta-formatos-excel";
+} from "@/shared/components/EditorReglasValidacionFormatoExcel";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
 const EXTENSIONES_ACEPTADAS = ".xlsx,.csv";
@@ -20,14 +19,24 @@ type ColumnaDetectada = { orden: number; nombre: string };
 
 type PasoAsistente = "subir" | "configurar";
 
+type AsistenteFormatoExcelProps = {
+  // Ruta base de la pantalla que aloja este asistente ("/dashboard/formatos-excel" o
+  // "/revisor/formatos-excel"): el componente es compartido entre ambos paneles, así que no
+  // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras crear.
+  rutaBase: string;
+};
+
 // Asistente de dos pasos: (1) sube una plantilla y detecta sus columnas sin persistir nada, (2)
 // permite marcar cuáles son requeridas y su tipo de dato antes de enviarlo todo junto —el
 // archivo original incluido— a `POST /api/formatos-excel`. No se mantiene estado de sesión entre
 // pasos: si se recarga la página hay que volver a subir el archivo.
-export function AsistenteFormatoExcel() {
+export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) {
   const router = useRouter();
   const [paso, setPaso] = useState<PasoAsistente>("subir");
-  const [archivo, setArchivo] = useState<File | null>(null);
+  // `archivo` solo se lee dentro de `enviarFormulario` (nunca en el JSX), así que se guarda en un
+  // ref y no en estado: un `useState` aquí forzaría un re-render extra en cada selección de
+  // archivo que no cambia nada visible en pantalla.
+  const archivoRef = useRef<File | null>(null);
   const [columnas, setColumnas] = useState<ColumnaEditable[]>([]);
   const [reglasValidacion, setReglasValidacion] = useState<ReglaValidacionEditable[]>([]);
   const [nombre, setNombre] = useState("");
@@ -64,7 +73,7 @@ export function AsistenteFormatoExcel() {
 
       const columnasDetectadas = datos?.columnas as ColumnaDetectada[] | undefined;
 
-      setArchivo(seleccionado);
+      archivoRef.current = seleccionado;
       setColumnas(
         (columnasDetectadas ?? []).map((columna) => ({
           ...columna,
@@ -82,6 +91,7 @@ export function AsistenteFormatoExcel() {
   }
 
   async function enviarFormulario() {
+    const archivo = archivoRef.current;
     if (!archivo) return;
 
     setEnviando(true);
@@ -129,7 +139,7 @@ export function AsistenteFormatoExcel() {
         return;
       }
 
-      router.push(RUTA_FORMATOS_EXCEL);
+      router.push(rutaBase);
       router.refresh();
     } catch {
       setErrorGeneral(MENSAJE_ERROR_GENERICO);
@@ -164,7 +174,7 @@ export function AsistenteFormatoExcel() {
         ) : null}
 
         <Link
-          href={RUTA_FORMATOS_EXCEL}
+          href={rutaBase}
           className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
         >
           Cancelar
@@ -221,7 +231,7 @@ export function AsistenteFormatoExcel() {
           Volver
         </Boton>
         <Link
-          href={RUTA_FORMATOS_EXCEL}
+          href={rutaBase}
           className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar

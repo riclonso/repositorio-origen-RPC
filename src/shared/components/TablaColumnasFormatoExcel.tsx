@@ -29,8 +29,8 @@ type TablaColumnasFormatoExcelProps = {
 };
 
 // El NOMBRE de cada columna es de solo lectura: viene de la primera fila de la plantilla subida
-// (o de la que ya se guardó, al editar). Lo único que el administrador decide aquí es cuáles son
-// requeridas y su tipo de dato.
+// (o de la que ya se guardó, al editar). Lo único que quien lo configura (ADMIN o
+// REVISOR_REPOSITORIO) decide aquí es cuáles son requeridas y su tipo de dato.
 export function TablaColumnasFormatoExcel({ columnas, onCambiar, error }: TablaColumnasFormatoExcelProps) {
   function actualizarColumna(indice: number, cambios: Partial<ColumnaEditable>) {
     onCambiar(columnas.map((columna, i) => (i === indice ? { ...columna, ...cambios } : columna)));

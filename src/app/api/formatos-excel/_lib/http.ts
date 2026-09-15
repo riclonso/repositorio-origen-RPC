@@ -5,14 +5,14 @@ import type {
   TipoArchivo,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import {
-  exigirAdmin,
+  exigirAdminORevisor,
   idRutaSchema,
   respuestaError,
   respuestaSinAcceso,
-  type AccesoAdmin,
+  type AccesoAdminORevisor,
 } from "@/app/api/_lib/http";
 
-export { exigirAdmin, respuestaError, respuestaSinAcceso, type AccesoAdmin };
+export { exigirAdminORevisor, respuestaError, respuestaSinAcceso, type AccesoAdminORevisor };
 
 export const MENSAJE_ERROR_INTERNO = "No se pudo completar la operación. Intenta nuevamente.";
 export const MENSAJE_NO_ENCONTRADO = "El formato de archivo no existe";

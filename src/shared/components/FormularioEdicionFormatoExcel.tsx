@@ -6,20 +6,23 @@ import Link from "next/link";
 import type { FormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { TablaColumnasFormatoExcel, type ColumnaEditable } from "../../tabla-columnas-formato-excel";
+import { TablaColumnasFormatoExcel, type ColumnaEditable } from "@/shared/components/TablaColumnasFormatoExcel";
 import {
   EditorReglasValidacionFormatoExcel,
   type ReglaValidacionEditable,
-} from "../../editor-reglas-validacion-formato-excel";
-import { RUTA_FORMATOS_EXCEL } from "../../ruta-formatos-excel";
+} from "@/shared/components/EditorReglasValidacionFormatoExcel";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el formato. Intenta nuevamente.";
 
 type FormularioEdicionFormatoExcelProps = {
   formato: FormatoExcel;
+  // Ruta base de la pantalla que aloja este formulario ("/dashboard/formatos-excel" o
+  // "/revisor/formatos-excel"): el componente es compartido entre ambos paneles, así que no
+  // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras guardar.
+  rutaBase: string;
 };
 
-export function FormularioEdicionFormatoExcel({ formato }: FormularioEdicionFormatoExcelProps) {
+export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioEdicionFormatoExcelProps) {
   const router = useRouter();
   const [nombre, setNombre] = useState(formato.nombre);
   const [descripcion, setDescripcion] = useState(formato.descripcion ?? "");
@@ -82,7 +85,7 @@ export function FormularioEdicionFormatoExcel({ formato }: FormularioEdicionForm
         return;
       }
 
-      router.push(RUTA_FORMATOS_EXCEL);
+      router.push(rutaBase);
       router.refresh();
     } catch {
       setErrorGeneral(MENSAJE_ERROR_GENERICO);
@@ -136,7 +139,7 @@ export function FormularioEdicionFormatoExcel({ formato }: FormularioEdicionForm
           Guardar cambios
         </Boton>
         <Link
-          href={RUTA_FORMATOS_EXCEL}
+          href={rutaBase}
           className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar

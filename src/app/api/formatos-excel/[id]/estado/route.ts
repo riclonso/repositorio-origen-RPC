@@ -9,7 +9,7 @@ import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
   aFormatoExcelDTO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idFormatoExcelSchema,
   respuestaError,
   respuestaSinAcceso,
@@ -22,7 +22,7 @@ const ACCION = "FORMATO_EXCEL_ESTADO_CAMBIADO" as const;
 export async function PATCH(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 

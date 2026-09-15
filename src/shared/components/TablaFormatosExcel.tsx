@@ -7,7 +7,6 @@ import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoEditar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
-import { RUTA_FORMATOS_EXCEL } from "./ruta-formatos-excel";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del formato. Intenta nuevamente.";
 
@@ -18,9 +17,13 @@ const ETIQUETAS_TIPO_ARCHIVO: Record<TipoArchivo, string> = {
 
 type TablaFormatosExcelProps = {
   filas: FormatoExcelResumen[];
+  // Ruta base de la pantalla que renderiza esta tabla ("/dashboard/formatos-excel" o
+  // "/revisor/formatos-excel"): el componente es compartido entre ambos paneles, así que no
+  // puede asumir una de las dos rutas.
+  rutaBase: string;
 };
 
-export function TablaFormatosExcel({ filas }: TablaFormatosExcelProps) {
+export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps) {
   const router = useRouter();
   const [objetivo, setObjetivo] = useState<FormatoExcelResumen | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -95,7 +98,7 @@ export function TablaFormatosExcel({ filas }: TablaFormatosExcelProps) {
                     <BotonIcono
                       etiqueta={`Editar ${fila.nombre}`}
                       Icono={IconoEditar}
-                      href={`${RUTA_FORMATOS_EXCEL}/${fila.id}/editar`}
+                      href={`${rutaBase}/${fila.id}/editar`}
                     />
 
                     <a

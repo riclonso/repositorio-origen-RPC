@@ -9,12 +9,17 @@ export const metadata: Metadata = {
   title: "Formatos de archivo - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
-const RUTA_FORMATOS_EXCEL = "/dashboard/formatos-excel";
+const RUTA_FORMATOS_EXCEL = "/revisor/formatos-excel";
 
 const CLASES_BOTON_PRIMARIO =
   "inline-flex items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary";
 
-export default async function FormatosExcelPage() {
+// Mismo listado que `/dashboard/formatos-excel` (RF-06 extendido a REVISOR_REPOSITORIO): acceso
+// completo y simétrico al mantenedor de formatos de archivo, sin restricción de autoría. La
+// pantalla comparte componentes con `shared/components/`, y los endpoints bajo
+// `/api/formatos-excel/**` (guardados con `exigirAdminORevisor()`) son los mismos para ambos
+// paneles.
+export default async function FormatosExcelRevisorPage() {
   // Esta pantalla no lee cookies ni parámetros: sin `connection()`, Next la prerenderizaría en
   // el build y dejaría el listado congelado en esa foto (mismo motivo que en
   // `usuarios/nuevo/page.tsx`).
