@@ -56,6 +56,9 @@ async function probarAltaSinContrasena() {
         cambiarEstado: async () => {
           throw new Error("No esperado");
         },
+        actualizarContrasena: async () => {
+          throw new Error("No esperado");
+        },
       },
     },
   );

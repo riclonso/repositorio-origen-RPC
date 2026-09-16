@@ -27,6 +27,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
   const parametros = await searchParams;
   const usuarioCreado = parametros.creado === "1";
   const enlaceEnviado = parametros.enlace === "enviado";
+  const contrasenaDefinida = parametros.contrasena === "definida";
 
   // Modo tolerante: una URL editada a mano por el operador cae a los valores por defecto
   // en vez de romper la pantalla. El Route Handler, en cambio, responde 400.
@@ -72,14 +73,16 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         opcionesPerfil={aOpcionesPerfil(perfiles)}
       />
 
-      {usuarioCreado || enlaceEnviado ? (
+      {usuarioCreado || enlaceEnviado || contrasenaDefinida ? (
         <p
           role="status"
           className="mt-5 rounded-lg border border-gob-success/30 bg-gob-success/10 px-4 py-3 text-sm font-medium text-gob-gray-a"
         >
           {usuarioCreado
             ? "Usuario creado. El enlace para crear su contraseña se está enviando al correo registrado."
-            : "Enlace enviado al correo registrado."}
+            : contrasenaDefinida
+              ? "Contraseña definida. La persona ya puede iniciar sesión con ella."
+              : "Enlace enviado al correo registrado."}
         </p>
       ) : null}
 

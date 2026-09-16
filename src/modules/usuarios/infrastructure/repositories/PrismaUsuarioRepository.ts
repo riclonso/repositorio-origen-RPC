@@ -293,4 +293,23 @@ export const prismaUsuarioRepository: UsuarioRepository = {
 
     return aUsuario(registro);
   },
+
+  // Invariante del proyecto: TODO cambio de `usuario.contrasenaHash` invalida los enlaces de
+  // contraseña vigentes de esa cuenta. Se hace cumplir aquí, en la misma transacción que escribe
+  // el hash, para el camino del fijado manual por el administrador. El otro punto que escribe el
+  // hash es `PrismaPasswordResetTokenRepository.consumir` (cuando la persona usa el enlace); si se
+  // cambia una, revisar la otra.
+  async actualizarContrasena(id, contrasenaHash) {
+    await prisma.$transaction([
+      prisma.usuario.update({
+        where: { id },
+        data: { contrasenaHash },
+        select: { id: true },
+      }),
+      prisma.tokenRecuperacion.updateMany({
+        where: { usuarioId: id, usadoEn: null, invalidadoEn: null },
+        data: { invalidadoEn: new Date() },
+      }),
+    ]);
+  },
 };

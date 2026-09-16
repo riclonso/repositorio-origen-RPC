@@ -115,7 +115,7 @@ convención en inglés de `auth/` a módulos nuevos sin que se pida explícitame
 ### `modules/usuarios/` (mantenedor de usuarios, RF-06)
 
 Módulo implementado. Cubre listar (con búsqueda y paginación en servidor), crear sin contraseña,
-editar, activar o desactivar, y enviar enlaces para activar o restablecer. Fuera de alcance por decisión explícita: borrado físico (la baja
+editar, activar o desactivar, y definir la contraseña por dos vías (enviar un enlace o fijarla manualmente el propio admin, ver RF-16). Fuera de alcance por decisión explícita: borrado físico (la baja
 lógica con `activo=false` preserva la trazabilidad) y edición de `rut` / `username` (el RUT es la
 credencial de acceso; cambiarlo es cambiar la identidad de la persona en silencio).
 
@@ -358,7 +358,18 @@ Consultar `docs/resumen-tecnico.md` para SMTP y TRUST_PROXY. Nunca loguear token
 SQL con parámetros. El cupo por cuenta debe seguir siendo transaccional.
 
 ### RF-13
-Las cuentas nuevas nacen con `contrasenaHash = NULL` y no pueden iniciar sesión hasta consumir un
-enlace. El administrador nunca fija la contraseña de otra persona: crea, restablece o reenvía mediante
-un enlace ADMIN de 8 horas. Mantener separados el cupo AUTOSERVICIO y el camino ADMIN, y conservar el
-alta aunque falle el envío SMTP.
+Las cuentas nuevas nacen con `contrasenaHash = NULL` y no pueden iniciar sesión hasta que se les fije
+una contraseña. Al **crear** nunca se pide contraseña: se envía un enlace ADMIN de 8 horas para que la
+persona la cree. Mantener separados el cupo AUTOSERVICIO y el camino ADMIN, y conservar el alta aunque
+falle el envío SMTP.
+
+### RF-16 (dos vías para la contraseña desde el mantenedor)
+En la pantalla `/dashboard/usuarios/[id]/contrasena` el administrador tiene **dos opciones** para la
+contraseña de una cuenta: (1) **enviar un enlace** por correo para que la persona la fije
+(`POST /api/usuarios/[id]/enlace-contrasena`, camino de RF-13), o (2) **fijarla manualmente** él mismo
+(`PUT /api/usuarios/[id]/contrasena`, caso de uso `restablecerContrasena` + `HasheadorContrasena`).
+Ambas invalidan los enlaces vigentes de esa cuenta y activan una cuenta pendiente. El fijado manual
+audita `CONTRASENA_RESTABLECIDA`; el envío de enlace audita `ENLACE_CONTRASENA_ENVIADO`. La
+invariante "todo cambio de `contrasenaHash` invalida enlaces vigentes" vive en dos puntos: el fijado
+manual (`PrismaUsuarioRepository.actualizarContrasena`) y el consumo del enlace
+(`PrismaPasswordResetTokenRepository.consumir`).

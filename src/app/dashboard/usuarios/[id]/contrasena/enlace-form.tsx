@@ -2,7 +2,6 @@
 
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Boton } from "@/shared/components/Boton";
 import { RUTA_USUARIOS } from "../../ruta-usuarios";
 
@@ -12,6 +11,8 @@ type EstadoFormulario = { error: string | null };
 
 const ESTADO_INICIAL: EstadoFormulario = { error: null };
 
+// Opción 1: la persona fija su propia contraseña con un enlace de un solo uso. No sale contraseña
+// alguna de este formulario; solo dispara el envío.
 export function EnlaceContrasenaForm({ usuarioId }: { usuarioId: string }) {
   const router = useRouter();
 
@@ -38,30 +39,16 @@ export function EnlaceContrasenaForm({ usuarioId }: { usuarioId: string }) {
   );
 
   return (
-    <form action={enviarFormulario} className="mt-6 flex flex-col gap-5">
+    <form action={enviarFormulario} className="mt-4">
       {estado.error ? (
-        <p role="alert" className="text-sm font-medium text-gob-danger">
+        <p role="alert" className="mb-3 text-sm font-medium text-gob-danger">
           {estado.error}
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-3">
-        <Boton
-          type="submit"
-          variante="primario"
-          cargando={enviando}
-          textoCargando="Enviando..."
-        >
-          Enviar enlace
-        </Boton>
-
-        <Link
-          href={RUTA_USUARIOS}
-          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-        >
-          Cancelar
-        </Link>
-      </div>
+      <Boton type="submit" variante="primario" cargando={enviando} textoCargando="Enviando...">
+        Enviar enlace
+      </Boton>
     </form>
   );
 }

@@ -1,12 +1,17 @@
 import { z } from "zod";
 import { esRutValido, normalizarRut } from "@/shared/utils/rut";
 import { codigoPerfilSchema } from "@/modules/perfiles/schemas/perfil.schema";
-import { emailSchema } from "@/shared/schemas/contrasena.schema";
+import {
+  contrasenaSchema,
+  emailSchema,
+  MENSAJE_CONFIRMACION_CONTRASENA,
+} from "@/shared/schemas/contrasena.schema";
 
 // La regla de email vive en `shared/schemas/` porque también la usan `modules/auth/`
 // (recuperación) y los componentes de `shared/components/`. Se re-exporta aquí para no cambiar
-// los imports existentes del mantenedor. El mantenedor ya NO valida contraseñas al crear ni al
-// restablecer: la cuenta nace pendiente y la persona fija su contraseña por el enlace.
+// los imports existentes del mantenedor. Al CREAR no se pide contraseña (la cuenta nace pendiente
+// y la persona la fija por el enlace); el fijado MANUAL por el administrador —opción alternativa
+// al enlace— sí valida la contraseña con `restablecerContrasenaSchema` (abajo).
 export { emailSchema } from "@/shared/schemas/contrasena.schema";
 
 export const usuarioSchema = z.object({
@@ -49,6 +54,21 @@ export type CambiarEstadoInput = z.infer<typeof cambiarEstadoSchema>;
 // El formulario de alta ya no pide contraseña, así que su esquema de formulario coincide con el
 // de creación: no hay confirmación de contraseña que validar en el cliente.
 export const crearUsuarioFormSchema = crearUsuarioSchema;
+
+// Fijado MANUAL de la contraseña por el administrador (opción alternativa al envío de enlace).
+// Al servidor solo viaja la contraseña definitiva; la confirmación se valida en el cliente.
+export const restablecerContrasenaSchema = z.object({
+  contrasena: contrasenaSchema,
+});
+
+export type RestablecerContrasenaInput = z.infer<typeof restablecerContrasenaSchema>;
+
+export const restablecerContrasenaFormSchema = restablecerContrasenaSchema
+  .extend({ confirmacionContrasena: z.string() })
+  .refine((datos) => datos.contrasena === datos.confirmacionContrasena, {
+    message: MENSAJE_CONFIRMACION_CONTRASENA,
+    path: ["confirmacionContrasena"],
+  });
 
 // El username no se ingresa: siempre es el RUT normalizado de la persona
 // (regla de negocio, ver CLAUDE.md). Derivarlo con esta función al crear un usuario.

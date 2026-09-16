@@ -49,11 +49,11 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
       <BotonIcono
         etiqueta={
           fila.tieneContrasena
-            ? `Enviar enlace para restablecer la contraseña de ${persona}`
-            : `Reenviar enlace de activación a ${persona}`
+            ? `Cambiar la contraseña de ${persona}`
+            : `Definir la contraseña de ${persona}`
         }
         Icono={IconoContrasena}
-        href={`${RUTA_USUARIOS}/${fila.id}/enlace-contrasena`}
+        href={`${RUTA_USUARIOS}/${fila.id}/contrasena`}
       />
 
       {/* El interruptor reemplaza al botón de desactivar y además muestra el estado, así que la
