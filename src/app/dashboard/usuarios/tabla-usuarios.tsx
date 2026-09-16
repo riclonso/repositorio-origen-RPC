@@ -55,21 +55,32 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
           interruptor: mostrarlo bloqueado invitaba a intentarlo. En su lugar, una etiqueta neutra
           indica que es la cuenta en uso. El interruptor reemplaza a la columna Estado (muestra y
           cambia el estado a la vez); el texto al lado mantiene el estado legible sin depender del
-          color. */}
-      {esPropia ? (
-        <span className="text-sm text-gob-gray-a">Tu cuenta</span>
-      ) : (
-        <span className="flex items-center gap-2">
-          <Interruptor
-            activado={fila.activo}
-            etiqueta={`Cuenta de ${persona} activa`}
-            onCambiar={onCambiarEstado}
-          />
-          <span className="w-16 text-sm text-gob-gray-a">
-            {fila.activo ? "Activo" : "Inactivo"}
-          </span>
-        </span>
-      )}
+          color.
+
+          La zona de estado tiene ancho fijo (`w-28`) tanto para el interruptor+etiqueta como para
+          "Tu cuenta": así los iconos de la izquierda quedan alineados en la misma columna en todas
+          las filas, sin correrse según el largo del texto de estado. */}
+      <span className="flex w-28 items-center justify-start gap-2">
+        {esPropia ? (
+          // Separador del ancho exacto del interruptor (`w-9`) para que "Tu cuenta" quede alineado
+          // con la etiqueta "Activo/Inactivo" de las demás filas, no bajo el interruptor.
+          <>
+            <span aria-hidden="true" className="h-5 w-9 shrink-0" />
+            <span className="text-sm text-gob-gray-a">Tu cuenta</span>
+          </>
+        ) : (
+          <>
+            <Interruptor
+              activado={fila.activo}
+              etiqueta={`Cuenta de ${persona} activa`}
+              onCambiar={onCambiarEstado}
+            />
+            <span className="text-sm text-gob-gray-a">
+              {fila.activo ? "Activo" : "Inactivo"}
+            </span>
+          </>
+        )}
+      </span>
     </div>
   );
 }
