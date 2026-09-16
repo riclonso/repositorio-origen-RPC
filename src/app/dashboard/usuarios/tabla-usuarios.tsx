@@ -32,12 +32,7 @@ type AccionesFilaProps = {
 };
 
 function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
-  const bloqueada = esPropia && fila.activo;
-  const idMotivo = `motivo-${fila.id}`;
   const persona = nombreCompleto(fila);
-  // Un solo texto para el tooltip del puntero y la descripción del lector de pantalla, para que
-  // ambos digan exactamente lo mismo.
-  const MOTIVO_BLOQUEO = "No puedes desactivar tu propia cuenta";
 
   return (
     <div className="flex items-center justify-end gap-2">
@@ -56,28 +51,25 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
         href={`${RUTA_USUARIOS}/${fila.id}/contrasena`}
       />
 
-      {/* El interruptor reemplaza al botón de desactivar y además muestra el estado, así que la
-          columna Estado desaparece: repetir el mismo dato dos veces en la misma fila solo
-          agrega ruido. El texto al lado mantiene el estado legible sin depender del color. */}
-      <span className="flex items-center gap-2">
-        <Interruptor
-          activado={fila.activo}
-          etiqueta={`Cuenta de ${persona} activa`}
-          onCambiar={onCambiarEstado}
-          bloqueado={bloqueada}
-          idDescripcion={bloqueada ? idMotivo : undefined}
-          tooltip={bloqueada ? MOTIVO_BLOQUEO : undefined}
-        />
-        <span className="w-16 text-sm text-gob-gray-a">
-          {fila.activo ? "Activo" : "Inactivo"}
+      {/* Una cuenta no puede desactivarse a sí misma, así que en la fila propia NO se muestra el
+          interruptor: mostrarlo bloqueado invitaba a intentarlo. En su lugar, una etiqueta neutra
+          indica que es la cuenta en uso. El interruptor reemplaza a la columna Estado (muestra y
+          cambia el estado a la vez); el texto al lado mantiene el estado legible sin depender del
+          color. */}
+      {esPropia ? (
+        <span className="text-sm text-gob-gray-a">Tu cuenta</span>
+      ) : (
+        <span className="flex items-center gap-2">
+          <Interruptor
+            activado={fila.activo}
+            etiqueta={`Cuenta de ${persona} activa`}
+            onCambiar={onCambiarEstado}
+          />
+          <span className="w-16 text-sm text-gob-gray-a">
+            {fila.activo ? "Activo" : "Inactivo"}
+          </span>
         </span>
-      </span>
-
-      {bloqueada ? (
-        <span id={idMotivo} className="sr-only">
-          {MOTIVO_BLOQUEO}
-        </span>
-      ) : null}
+      )}
     </div>
   );
 }
