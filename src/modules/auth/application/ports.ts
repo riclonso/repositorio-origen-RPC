@@ -1,4 +1,5 @@
 import type { User } from "@/modules/auth/domain/entities/User";
+import type { ContextoEnlace } from "@/modules/auth/domain/entities/PasswordResetToken";
 
 export interface VerificadorContrasena {
   verificar(contrasena: string, hash: string): Promise<boolean>;
@@ -23,9 +24,20 @@ export interface GeneradorTokenRecuperacion {
   hashear(token: string): string;
 }
 
+// Opciones del correo del enlace. Solo afectan el texto (título/copy y la vigencia mostrada) y
+// el parámetro `?contexto` de la URL: el comportamiento de seguridad es idéntico en ambos casos.
+export type OpcionesEnlaceContrasena = {
+  horasVigencia: number;
+  contexto: ContextoEnlace;
+};
+
 export interface EnviadorCorreoRecuperacion {
   // `false` cuando el relay SMTP no está configurado. Es el único punto donde el caso de uso
   // pregunta por la disponibilidad del correo, sin saber nada de SMTP.
   disponible(): boolean;
-  enviar(destinatario: { email: string; nombres: string }, token: string): Promise<void>;
+  enviar(
+    destinatario: { email: string; nombres: string },
+    token: string,
+    opciones: OpcionesEnlaceContrasena,
+  ): Promise<void>;
 }

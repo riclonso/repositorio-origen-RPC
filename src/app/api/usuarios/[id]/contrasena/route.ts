@@ -15,6 +15,10 @@ import {
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
+// Fijado MANUAL de la contraseña por el administrador. Es la segunda opción del mantenedor, junto
+// al envío de enlace (`POST .../enlace-contrasena`): aquí el admin escribe la contraseña y se fija
+// directamente. Escribir el hash invalida los enlaces vigentes de la cuenta (ver
+// `PrismaUsuarioRepository.actualizarContrasena`) y activa una cuenta pendiente.
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
   // Independientes entre sí: se resuelven en paralelo para no encadenar latencias.
   const [{ id }, acceso, cuerpo] = await Promise.all([
@@ -65,7 +69,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
 
-    // Solo queda registrado quién restableció la contraseña de quién y cuándo.
+    // Solo queda registrado quién fijó la contraseña de quién y cuándo, nunca la contraseña.
     auditarUsuario(acceso.sesion, request, {
       accion: "CONTRASENA_RESTABLECIDA",
       resultado: "EXITO",
@@ -75,7 +79,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    logger.error("Error al restablecer la contraseña de un usuario", {
+    logger.error("Error al fijar manualmente la contraseña de un usuario", {
       error: error instanceof Error ? error.message : String(error),
     });
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);

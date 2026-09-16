@@ -30,7 +30,10 @@ model Usuario {
   rut            String   @unique
   email          String   @unique
   username       String   @unique
-  contrasenaHash String
+  // NULL = cuenta pendiente de activación: se creó sin contraseña y no puede iniciar sesión
+  // hasta fijarla con un enlace de un solo uso. No-nulo = cuenta con contraseña. Esta columna
+  // es la autoridad ÚNICA del estado "pendiente" (sin flag paralelo que pueda desincronizarse).
+  contrasenaHash String?
   perfilCodigo   String   @db.VarChar(40)
   perfil         Perfil   @relation(fields: [perfilCodigo], references: [codigo], onUpdate: Cascade, onDelete: Restrict)
   activo         Boolean  @default(true)
@@ -197,6 +200,43 @@ model UsuarioFormatoExcel {
   @@map("usuario_formato_excel")
 }
 
+// Catálogo de tipos de establecimiento. Igual que `Perfil`, es un catálogo de datos: agregar un
+// tipo nuevo no exige migración ni despliegue. `activo` gobierna la ASIGNABILIDAD (sale del
+// selector para nuevos establecimientos), no la autorización; desactivar un tipo no toca los
+// establecimientos que ya lo usan.
+model TipoEstablecimiento {
+  id        String   @id @default(uuid())
+  // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
+  nombre    String
+  // Clave de unicidad DERIVADA de `nombre` (sin tildes, minúsculas, espacios colapsados). La
+  // constraint @unique vive aquí y no en `nombre` para que "Clínica" y "clinica" no coexistan.
+  nombreNormalizado String @unique
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Relación inversa exigida por Prisma. NUNCA usarla con `include` en el listado de
+  // establecimientos: cargaría los establecimientos de cada tipo (N+1). El nombre del tipo se
+  // trae con un JOIN explícito en la consulta del listado.
+  establecimientos Establecimiento[]
+
+  @@map("tipo_establecimiento")
+}
+
+// Establecimiento de salud que reporta al RPC. El RUT (de empresa) es el único identificador
+// único: dos establecimientos pueden compartir nombre. El tipo viaja por clave foránea.
+model Establecimiento {
+  id        String   @id @default(uuid())
+  rut       String   @unique
+  nombre    String
+  direccion String
+  tipoId    String
+  tipo      TipoEstablecimiento @relation(fields: [tipoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("establecimiento")
+}
+
 // Tokens de recuperación de contraseña (RF-10). En la base vive únicamente el SHA-256
 // hexadecimal del token: el valor en claro existe solo en memoria durante la petición que lo
 // emite y dentro del correo enviado.
@@ -205,6 +245,12 @@ model TokenRecuperacion {
   usuarioId    String
   usuario      Usuario   @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   tokenHash    String    @unique @db.VarChar(64)
+  // Quién disparó la emisión: AUTOSERVICIO (formulario público "¿olvidó su contraseña?") o
+  // ADMIN (creación / restablecimiento / reenvío desde el mantenedor). El cupo por cuenta solo
+  // acota el camino AUTOSERVICIO, así que el conteo del cupo filtra por este valor; el camino
+  // ADMIN es una acción autenticada y no lleva cupo. El detalle fino del disparador admin
+  // (CREACION/REESTABLECIMIENTO/REENVIO) vive en `logs/auditoria.txt`, no aquí.
+  origen       String    @default("AUTOSERVICIO") @db.VarChar(20)
   // Las cuatro fechas son `timestamp` SIN zona y guardan siempre el reloj de pared en UTC, la
   // misma convención que `usuario` y `perfil`. Se evaluó y se MIDIÓ la variante con zona, que es
   // lo que corresponde conceptualmente a un instante absoluto, y no es utilizable con este

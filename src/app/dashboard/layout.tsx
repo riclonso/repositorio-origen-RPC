@@ -1,29 +1,34 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
-import { NavegacionPanel } from "@/shared/components/NavegacionPanel";
+import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
+import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
 import { ENLACES_ADMIN } from "./nav-enlaces";
 
 export const metadata: Metadata = {
   title: "Dashboard administrador - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  const identidad = await obtenerIdentidadPanel();
+
   return (
-    <div className="flex flex-1 flex-col">
-      <EncabezadoPanel />
-
-      {/* Bajo md el shell se apila: la navegación pasa a una barra horizontal sobre el contenido.
-          Con la barra lateral fija, en 375px se comía más de la mitad del ancho y la vista de
-          tarjetas de la tabla nunca llegaba a verse. Se prefiere una barra a un menú lateral
-          desplegable: dos secciones no justifican el foco atrapado ni el JavaScript de un cajón. */}
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="shrink-0 border-b border-gob-accent bg-white md:w-52 md:border-b-0 md:border-r">
-          <NavegacionPanel enlaces={ENLACES_ADMIN} titulo="Administración" />
-        </aside>
-
-        <main className="min-w-0 flex-1 bg-gob-neutral p-4 md:p-6">{children}</main>
+    <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
+      <div className="md:col-start-2 md:row-start-1">
+        <EncabezadoPanel />
       </div>
+      {/* En escritorio la navegación es la primera columna para que llegue al borde superior,
+          como el shell analítico de referencia. Bajo md vuelve a ser una barra horizontal bajo
+          el encabezado y no resta ancho al contenido. */}
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
+        <BarraLateralPanel
+          enlaces={ENLACES_ADMIN}
+          titulo="Administración"
+          nombreCompleto={identidad ? `${identidad.nombres} ${identidad.apellidos}` : undefined}
+          perfil={identidad?.perfilNombre}
+        />
+      </aside>
+      <main className="min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:p-7">{children}</main>
     </div>
   );
 }

@@ -47,7 +47,7 @@ export function FiltrosLogs({ tipo, desdeInicial, hastaInicial }: FiltrosLogsPro
   return (
     <form
       onSubmit={manejarEnvio}
-      className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-gob-accent bg-white p-4"
+      className="card-sistema mt-4 flex flex-wrap items-end gap-3 p-4"
     >
       <div className="flex flex-col gap-1.5">
         <label htmlFor="desde" className="text-sm font-medium text-gob-black">

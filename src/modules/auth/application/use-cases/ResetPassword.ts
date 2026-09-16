@@ -5,7 +5,9 @@ import type {
 } from "@/modules/auth/application/ports";
 
 export type ResultadoRestablecerPorToken =
-  | { ok: true; usuarioId: string; usuarioRut: string }
+  // `activacion` es `true` cuando el hash previo era nulo (una cuenta pendiente que fija su
+  // primera contraseña): alimenta el motivo de auditoría sin devolver el hash.
+  | { ok: true; usuarioId: string; usuarioRut: string; activacion: boolean }
   | { ok: false; motivo: "TOKEN_INVALIDO" | "CUENTA_INACTIVA" };
 
 export type DependenciasRestablecerPorToken = {

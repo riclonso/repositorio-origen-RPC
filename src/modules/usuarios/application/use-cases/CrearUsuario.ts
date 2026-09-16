@@ -5,16 +5,16 @@ import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/rep
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
-import type { HasheadorContrasena } from "@/modules/usuarios/application/ports";
 import { derivarUsername } from "@/modules/usuarios/schemas/usuario.schema";
 
+// La creación ya NO recibe contraseña: la cuenta nace pendiente de activación y la persona fija
+// su primera contraseña con el enlace de un solo uso que se le envía al correo.
 export type DatosCreacionUsuario = {
   nombres: string;
   apellidos: string;
   rut: string;
   email: string;
   perfilCodigo: string;
-  contrasena: string;
   formatosExcelIds: string[];
 };
 
@@ -30,7 +30,6 @@ export async function crearUsuario(
     repositorio: UsuarioRepository;
     repositorioPerfiles: PerfilRepository;
     repositorioFormatosExcel: FormatoExcelRepository;
-    hasheadorContrasena: HasheadorContrasena;
   },
 ): Promise<ResultadoCrearUsuario> {
   // El esquema solo valida la FORMA del código: que el perfil exista y esté vigente se
@@ -62,8 +61,6 @@ export async function crearUsuario(
     return { ok: false, motivo: "DUPLICADO", campo: conflicto, rut: datos.rut };
   }
 
-  const contrasenaHash = await dependencias.hasheadorContrasena.hashear(datos.contrasena);
-
   try {
     const usuario = await dependencias.repositorio.crear({
       nombres: datos.nombres,
@@ -72,8 +69,10 @@ export async function crearUsuario(
       email: datos.email,
       username,
       perfilCodigo: datos.perfilCodigo,
+      // Se crea ACTIVA pero PENDIENTE: `contrasenaHash` nulo bloquea el login hasta que la
+      // persona fije su contraseña con el enlace. No hay flag paralelo de "pendiente".
       activo: true,
-      contrasenaHash,
+      contrasenaHash: null,
       formatosExcelIds: datos.formatosExcelIds,
     });
 

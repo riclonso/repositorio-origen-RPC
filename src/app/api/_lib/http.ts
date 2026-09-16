@@ -11,14 +11,24 @@ import {
 // Helpers genéricos, reutilizables por cualquier Route Handler bajo `app/api/**`. Los helpers
 // específicos de un dominio (mensajes, DTOs, traducción de errores propios de ese módulo) viven
 // en el `_lib/http.ts` de cada carpeta de API, que reexporta e importa de aquí.
+//
+// NOTA: `app/api/usuarios/_lib/http.ts` mantiene su propia copia de estos helpers a propósito, para
+// no arriesgar una regresión en el mantenedor de usuarios ya en producción; no se refactorizó.
 
 // Identificador de ruta genérico: cualquier recurso identificado por UUID lo reutiliza.
 export const idRutaSchema = z.uuid();
 
+export const MENSAJE_ERROR_INTERNO = "No se pudo completar la operación. Intenta nuevamente.";
+export const MENSAJE_DATOS_INVALIDOS = "Los datos enviados no son válidos";
+
 type DetalleError = { campo?: string; codigo?: string };
 
 // Formato de error uniforme para toda la API: { error, campo?, codigo? }.
-export function respuestaError(mensaje: string, estado: number, detalle: DetalleError = {}): NextResponse {
+export function respuestaError(
+  mensaje: string,
+  estado: number,
+  detalle: DetalleError = {},
+): NextResponse {
   return NextResponse.json({ error: mensaje, ...detalle }, { status: estado });
 }
 
@@ -55,8 +65,8 @@ export type AccesoNotificador =
   | { ok: false; estado: 401 }
   | { ok: false; estado: 403; sesion: SesionPayload };
 
-// Guard para `/api/notificador/**` (RF-14), mismo criterio que `exigirAdmin`: vive en cada Route
-// Handler, no en el matcher de `src/proxy.ts`.
+// Guard para `/api/notificador/**`, mismo criterio que `exigirAdmin`: vive en cada Route Handler,
+// no en el matcher de `src/proxy.ts`.
 export async function exigirNotificador(): Promise<AccesoNotificador> {
   const sesion = await obtenerSesionActual();
 
@@ -76,8 +86,8 @@ export type AccesoAdminORevisor =
   | { ok: false; estado: 401 }
   | { ok: false; estado: 403; sesion: SesionPayload };
 
-// Guard para `/api/dashboard/cargas/**` (RF-14): visible tanto para ADMIN como para el perfil
-// nuevo REVISOR_REPOSITORIO.
+// Guard para las cargas del tablero de seguimiento: visible tanto para ADMIN como para el perfil
+// REVISOR_REPOSITORIO.
 export async function exigirAdminORevisor(): Promise<AccesoAdminORevisor> {
   const sesion = await obtenerSesionActual();
 

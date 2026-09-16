@@ -15,8 +15,7 @@ export const passwordService: VerificadorContrasena = {
 };
 
 // Envuelve la política de hasheo del proyecto tras un puerto, para que ningún caso de uso
-// importe bcrypt. `modules/usuarios/` hace lo mismo en `HasheadorContrasenaBcrypt.ts`, contra
-// su propio puerto homónimo.
+// importe bcrypt. Toda escritura de contraseñas vive ahora en `modules/auth/`.
 export const hasheadorContrasena: HasheadorContrasena = {
   hashear: (contrasena) => hashearContrasena(contrasena),
 };

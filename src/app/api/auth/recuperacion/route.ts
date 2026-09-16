@@ -6,7 +6,7 @@ import { requestPasswordReset } from "@/modules/auth/application/use-cases/Reque
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaPasswordResetTokenRepository } from "@/modules/auth/infrastructure/repositories/PrismaPasswordResetTokenRepository";
 import { tokenService } from "@/modules/auth/infrastructure/tokens/TokenService";
-import { passwordResetMailer } from "@/modules/auth/infrastructure/email/PasswordResetMailer";
+import { enlaceContrasenaMailer } from "@/modules/auth/infrastructure/email/EnlaceContrasenaMailer";
 import {
   auditarRecuperacion,
   contextoDePeticion,
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
         repositorioUsuarios: prismaUserRepository,
         repositorioTokens: prismaPasswordResetTokenRepository,
         generadorToken: tokenService,
-        enviadorCorreo: passwordResetMailer,
+        enviadorCorreo: enlaceContrasenaMailer,
       });
 
       auditarDesenlace(contexto, resultado);

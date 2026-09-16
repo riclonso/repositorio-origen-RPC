@@ -51,4 +51,11 @@ export const prismaPerfilRepository: PerfilRepository = {
 
     return registro !== null;
   },
+
+  async buscarPorCodigo(codigo): Promise<Perfil | null> {
+    return prisma.perfil.findUnique({
+      where: { codigo },
+      select: SELECCION_PERFIL,
+    });
+  },
 };

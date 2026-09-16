@@ -8,17 +8,12 @@ import {
   MENSAJE_CONFIRMACION_CONTRASENA,
 } from "@/shared/schemas/contrasena.schema";
 
-// Las reglas de contraseña y de email viven en `shared/schemas/` porque también las usan
-// `modules/auth/` (recuperación) y los componentes de `shared/components/`. Se re-exportan aquí
-// para no cambiar los imports existentes del mantenedor.
-export {
-  contrasenaSchema,
-  emailSchema,
-  REGLAS_CONTRASENA,
-  MENSAJE_COMPLEJIDAD_CONTRASENA,
-  MENSAJE_CONFIRMACION_CONTRASENA,
-  MENSAJE_COINCIDENCIA_CONTRASENA,
-} from "@/shared/schemas/contrasena.schema";
+// La regla de email vive en `shared/schemas/` porque también la usan `modules/auth/`
+// (recuperación) y los componentes de `shared/components/`. Se re-exporta aquí para no cambiar
+// los imports existentes del mantenedor. Al CREAR no se pide contraseña (la cuenta nace pendiente
+// y la persona la fija por el enlace); el fijado MANUAL por el administrador —opción alternativa
+// al enlace— sí valida la contraseña con `restablecerContrasenaSchema` (abajo).
+export { emailSchema } from "@/shared/schemas/contrasena.schema";
 
 export const usuarioSchema = z.object({
   nombres: z.string().trim().min(1, "Ingresa el nombre"),
@@ -69,11 +64,11 @@ function validarFormatosExcelSegunPerfil(
   }
 }
 
-// Objeto "plano" (sin `superRefine`), para poder seguir usando `.extend()` en
-// `crearUsuarioFormSchema` (Zod no permite `.extend()` sobre el resultado de `.superRefine()`).
+// Al CREAR no se pide contraseña: la cuenta nace pendiente de activación y la persona la fija por
+// el enlace. Objeto "plano" (sin `superRefine`) para reutilizarlo; el perfil NOTIFICADOR_RPC sí
+// lleva sus formatos de archivo asignados.
 const crearUsuarioObjectSchema = usuarioSchema.extend({
   perfilCodigo: codigoPerfilSchema,
-  contrasena: contrasenaSchema,
   formatosExcelIds: formatosExcelIdsSchema,
 });
 
@@ -100,27 +95,17 @@ export const cambiarEstadoSchema = z.object({
 
 export type CambiarEstadoInput = z.infer<typeof cambiarEstadoSchema>;
 
+// El formulario de alta ya no pide contraseña, así que su esquema de formulario coincide con el
+// de creación: no hay confirmación de contraseña que validar en el cliente.
+export const crearUsuarioFormSchema = crearUsuarioSchema;
+
+// Fijado MANUAL de la contraseña por el administrador (opción alternativa al envío de enlace).
+// Al servidor solo viaja la contraseña definitiva; la confirmación se valida en el cliente.
 export const restablecerContrasenaSchema = z.object({
   contrasena: contrasenaSchema,
 });
 
 export type RestablecerContrasenaInput = z.infer<typeof restablecerContrasenaSchema>;
-
-// Esquemas de formulario: la confirmación se valida en el cliente y NO se envía al servidor.
-
-export const crearUsuarioFormSchema = crearUsuarioObjectSchema
-  .extend({ confirmacionContrasena: z.string() })
-  .superRefine((datos, contexto) => {
-    validarFormatosExcelSegunPerfil(datos, contexto);
-
-    if (datos.contrasena !== datos.confirmacionContrasena) {
-      contexto.addIssue({
-        code: "custom",
-        path: ["confirmacionContrasena"],
-        message: MENSAJE_CONFIRMACION_CONTRASENA,
-      });
-    }
-  });
 
 export const restablecerContrasenaFormSchema = restablecerContrasenaSchema
   .extend({ confirmacionContrasena: z.string() })

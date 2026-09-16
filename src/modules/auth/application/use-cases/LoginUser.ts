@@ -20,7 +20,11 @@ export async function loginUser(
 ): Promise<ResultadoLogin> {
   const usuario = await dependencias.repositorio.buscarPorRut(rut);
 
-  if (!usuario || !puedeIniciarSesion(usuario)) {
+  // `contrasenaHash === null` (cuenta pendiente) ya lo cubre `puedeIniciarSesion`; se repite en
+  // la guarda porque además ESTRECHA el tipo `string | null` a `string` para el `verificar()` de
+  // abajo. Una cuenta pendiente cae por la rama del HASH_RELLENO: mismo tiempo y mismo fallo
+  // genérico que un RUT inexistente, sin regalar que la cuenta existe pero está sin activar.
+  if (!usuario || !puedeIniciarSesion(usuario) || usuario.contrasenaHash === null) {
     await dependencias.verificadorContrasena.verificar(contrasena, HASH_RELLENO);
     return { ok: false };
   }

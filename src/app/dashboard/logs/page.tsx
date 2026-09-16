@@ -128,7 +128,7 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
       </p>
 
       {total === 0 ? (
-        <div className="mt-4 rounded-lg border border-gob-accent bg-white p-8 text-center text-sm text-gob-gray-a">
+        <div className="card-sistema mt-4 p-8 text-center text-sm text-gob-gray-a">
           {hayFiltro
             ? "No hay registros en el rango de fechas seleccionado."
             : "No hay registros para mostrar todavía."}
@@ -186,7 +186,7 @@ function EntradaLogItem({
   const tieneDetalle = entrada.crudo !== null || Object.keys(entrada.campos).length > 0;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-gob-accent bg-white">
+    <div className="card-sistema overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
         <span
           className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${

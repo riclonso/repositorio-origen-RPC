@@ -17,7 +17,7 @@ export function MarcoPublico({ titulo, subtitulo, children }: MarcoPublicoProps)
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm rounded-lg border border-gob-accent bg-white p-8 shadow-sm">
+        <div className="card-sistema w-full max-w-sm p-8">
           <div className="mb-6 text-center">
             <h1 className="text-xl font-semibold text-gob-black">{titulo}</h1>
             {subtitulo ? <p className="mt-1 text-sm text-gob-gray-a">{subtitulo}</p> : null}

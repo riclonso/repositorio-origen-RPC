@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
@@ -72,15 +73,18 @@ export default async function NotificadorPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gob-black">
-          Bienvenido/a, {usuario.nombres}
-        </h1>
-        <p className="mt-2 text-sm text-gob-gray-a">
-          Panel de notificación del Registro Poblacional de Cáncer.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-7xl pb-8">
+      <section className="flex flex-col justify-between gap-5 border-b border-[#dce5ef] pb-6 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-sm font-medium text-[#3973a6]">Registro Poblacional de Cáncer</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.045em] text-[#172b4d]">Hola, {usuario.nombres}</h1>
+          <p className="mt-2 text-sm text-[#617388]">Centro de notificación y reporte de información del RPC.</p>
+        </div>
+        <div className="flex items-center gap-2 self-start rounded-xl border border-[#dce5ef] bg-white px-3 py-2 text-sm font-medium text-[#496176] sm:self-auto">
+          <ShieldCheck size={17} weight="duotone" aria-hidden="true" className="text-[#3973a6]" />
+          Acceso autorizado
+        </div>
+      </section>
 
       <PanelCargaArchivo combinaciones={combinacionesVisibles} cargasIniciales={cargasIniciales} />
     </div>

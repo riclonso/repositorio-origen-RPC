@@ -16,14 +16,25 @@ export type Usuario = {
   perfilCodigo: string;
   perfilNombre: string;
   activo: boolean;
+  // `true` = la cuenta ya tiene contraseña; `false` = pendiente de activación. Se deriva de si
+  // `contrasenaHash` es nulo SIN exponer el hash: el hash nunca sale del repositorio (misma
+  // razón por la que `Usuario` no lo declara). Es lo que el mantenedor usa para el chip
+  // "Pendiente de activación" y para decidir entre "enviar" y "reenviar" el enlace.
+  tieneContrasena: boolean;
   createdAt: Date;
   // Formatos de archivo asignados (N:M vía `usuario_formato_excel`). Solo tiene sentido para el
   // perfil NOTIFICADOR_RPC; para cualquier otro perfil queda vacío.
   formatosExcel: FormatoExcelAsignado[];
 };
 
-export type DatosNuevoUsuario = Omit<Usuario, "id" | "createdAt" | "perfilNombre" | "formatosExcel"> & {
-  contrasenaHash: string;
+// Al crear, la cuenta nace SIN contraseña (pendiente de activación): `contrasenaHash` es `null`
+// y la persona la fija por enlace. `tieneContrasena` se deriva del hash (se omite). Los formatos
+// se asignan por sus ids (N:M), no como objetos; solo tienen sentido para NOTIFICADOR_RPC.
+export type DatosNuevoUsuario = Omit<
+  Usuario,
+  "id" | "createdAt" | "perfilNombre" | "tieneContrasena" | "formatosExcel"
+> & {
+  contrasenaHash: string | null;
   formatosExcelIds: string[];
 };
 

@@ -9,7 +9,9 @@ function aUser(registro: {
   rut: string;
   email: string;
   username: string;
-  contrasenaHash: string;
+  // Nullable: una cuenta pendiente de activación todavía no tiene hash. `aUser` solo ensancha el
+  // tipo; el hash sigue sin salir por ningún camino distinto del login.
+  contrasenaHash: string | null;
   perfilCodigo: string;
   activo: boolean;
   createdAt: Date;

@@ -56,7 +56,7 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
         el RUT es la credencial con la que la persona ingresa al sistema.
       </p>
 
-      <dl className="mt-6 grid gap-4 rounded-lg border border-gob-accent bg-white p-4 sm:grid-cols-2">
+      <dl className="card-sistema mt-6 grid gap-4 p-4 sm:grid-cols-2">
         <div>
           <dt className="text-sm font-medium text-gob-black">RUT</dt>
           <dd className="mt-1 text-sm text-gob-gray-a">{usuario.rut}</dd>

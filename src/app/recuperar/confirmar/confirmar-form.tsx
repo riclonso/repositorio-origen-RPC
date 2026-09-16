@@ -43,10 +43,9 @@ function aErroresPorCampo(error: ZodError): Record<string, string> {
 
 export function ConfirmarForm({ token }: { token: string }) {
   const router = useRouter();
-  // Campos controlados a propósito, por el mismo motivo ya documentado en
-  // `dashboard/usuarios/[id]/contrasena/contrasena-form.tsx`: React 19 resetea los no
-  // controlados de un `<form action={...}>` en cuanto la acción termina, también al devolver
-  // errores de validación.
+  // Campos controlados a propósito: React 19 resetea los no controlados de un
+  // `<form action={...}>` en cuanto la acción termina, también al devolver errores de
+  // validación.
   const [contrasena, setContrasena] = useState("");
   const [confirmacion, setConfirmacion] = useState("");
 

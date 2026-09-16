@@ -5,8 +5,13 @@ export type ResultadoRestablecerContrasena =
   | { ok: true; id: string; rut: string }
   | { ok: false; motivo: "NO_ENCONTRADO" };
 
-// Restablecer la propia contraseña SÍ está permitido: de lo contrario el único administrador
-// del sistema no tendría forma de cambiar su clave desde la aplicación.
+// Fijado MANUAL de la contraseña por el administrador (convive con el envío de enlace, que la
+// fija la propia persona). Restablecer la propia contraseña SÍ está permitido: de lo contrario el
+// único administrador del sistema no tendría forma de cambiar su clave desde la aplicación.
+//
+// Fijar el hash aquí ACTIVA una cuenta pendiente (deja de tener `contrasenaHash = null`) e
+// invalida cualquier enlace de contraseña vigente de esa cuenta: esa invariante la hace cumplir
+// `repositorio.actualizarContrasena`, en la misma transacción que escribe el hash.
 export async function restablecerContrasena(
   id: string,
   contrasena: string,

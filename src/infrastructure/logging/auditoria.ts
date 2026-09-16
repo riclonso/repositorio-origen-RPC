@@ -5,6 +5,11 @@ export type AccionAuditoria =
   | "USUARIO_ACTUALIZADO"
   | "USUARIO_ACTIVADO"
   | "USUARIO_DESACTIVADO"
+  // El administrador emitió un enlace de contraseña (al crear, al restablecer o al reenviar).
+  // Reemplaza a la fijación directa de contraseña por el admin, que ya no ocurre.
+  | "ENLACE_CONTRASENA_ENVIADO"
+  // Se conserva SOLO para poder leer el histórico anterior a esta entrega: ya no se emite (el
+  // admin dejó de fijar contraseñas de terceros). No usar en eventos nuevos.
   | "CONTRASENA_RESTABLECIDA"
   | "RECUPERACION_SOLICITADA"
   | "RECUPERACION_COMPLETADA"
@@ -37,6 +42,13 @@ export type AccionAuditoria =
 // forma de dejar registro de un camino que hacia fuera es indistinguible del exitoso.
 export type ResultadoAuditoria = "EXITO" | "RECHAZADO" | "SIN_EFECTO";
 
+// El `motivo` de `ENLACE_CONTRASENA_ENVIADO` tiene DOBLE SENTIDO según el `resultado`:
+//  - en EXITO nombra el DISPARADOR: CREACION (alta), REESTABLECIMIENTO (la cuenta ya tenía
+//    contraseña) o REENVIO (cuenta pendiente a la que se le reenvía el enlace);
+//  - en RECHAZADO / SIN_EFECTO nombra la CAUSA: SIN_CONFIGURACION, ENVIO_FALLIDO,
+//    CUENTA_INACTIVA, NO_ENCONTRADO o SIN_PERMISO.
+// El `motivo` de `RECUPERACION_COMPLETADA` en EXITO es ACTIVACION cuando el hash previo era nulo
+// (una cuenta pendiente que se activó); una recuperación normal va sin motivo, como antes.
 export type MotivoAuditoria =
   | "DUPLICADO"
   | "NO_ENCONTRADO"
@@ -87,7 +99,13 @@ export type MotivoAuditoria =
   | "SIN_PENDIENTES"
   // De `VENTANA_CARGA_ALERTA_INDIVIDUAL_ENVIADA`: el `usuarioId` recibido ya no está en la lista
   // real de pendientes de esa ventana al momento de revalidar en el servidor.
-  | "DESTINATARIO_NO_PENDIENTE";
+  | "DESTINATARIO_NO_PENDIENTE"
+  // Doble sentido (ver comentario arriba): en EXITO son disparadores de `ENLACE_CONTRASENA_ENVIADO`
+  // y `ACTIVACION` el de `RECUPERACION_COMPLETADA` sobre una cuenta pendiente.
+  | "CREACION"
+  | "REESTABLECIMIENTO"
+  | "REENVIO"
+  | "ACTIVACION";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.

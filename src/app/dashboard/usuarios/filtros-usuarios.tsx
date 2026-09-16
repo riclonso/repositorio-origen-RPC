@@ -68,7 +68,7 @@ export function FiltrosUsuarios({
     <form
       onSubmit={manejarEnvio}
       aria-busy={buscando || undefined}
-      className="mt-6 rounded-lg border border-gob-accent bg-white p-4"
+      className="card-sistema mt-6 p-4"
     >
       <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
         <CampoTexto

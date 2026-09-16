@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { prisma } from '../src/infrastructure/database/prisma';
 import { prismaPasswordResetTokenRepository as tokens } from '../src/modules/auth/infrastructure/repositories/PrismaPasswordResetTokenRepository';
-import { prismaUsuarioRepository as usuarios } from '../src/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository';
 import { extraerIp } from '../src/shared/utils/peticion';
 
 async function main() {
@@ -30,14 +29,16 @@ async function main() {
     assert.equal(consumo.filter(r=>r.ok).length,1);
     const hermano=digest();
     await prisma.tokenRecuperacion.create({data:{usuarioId:id,tokenHash:hermano,expiraEn:new Date(Date.now()+7200000)}});
-    await usuarios.actualizarContrasena(id,'admin-nueva');
+    const enlaceAdmin=digest();
+    await tokens.emitirParaAdmin({usuarioId:id,tokenHash:enlaceAdmin,expiraEn:new Date(Date.now()+28800000)});
     assert.equal((await tokens.consumir(hermano,'no')).ok,false);
+    assert.equal((await tokens.consumir(enlaceAdmin,'admin-nueva')).ok,true);
     const inactivo=digest();
     await prisma.tokenRecuperacion.create({data:{usuarioId:id,tokenHash:inactivo,expiraEn:new Date(Date.now()+7200000)}});
     await prisma.usuario.update({where:{id},data:{activo:false}});
     assert.equal((await tokens.consumir(inactivo,'no')).ok,false);
     assert.equal((await prisma.usuario.findUniqueOrThrow({where:{id}})).contrasenaHash,'admin-nueva');
-    console.log('OK: uso único, invalidación por administrador y cuenta inactiva');
+    console.log('OK: uso único, reemplazo por enlace de administrador y cuenta inactiva');
     process.env.TRUST_PROXY='false';
     assert.equal(extraerIp(new Request('http://localhost',{headers:{'x-forwarded-for':'9.9.9.9'}})),null);
     process.env.TRUST_PROXY='true';

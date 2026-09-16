@@ -1,5 +1,6 @@
-import { puedeIniciarSesion } from "@/modules/auth/domain/entities/User";
+import { puedeRecibirEnlaceContrasena } from "@/modules/auth/domain/entities/User";
 import {
+  HORAS_VIGENCIA_TOKEN_AUTOSERVICIO,
   MAXIMO_SOLICITUDES_POR_CUENTA,
   VENTANA_SOLICITUDES_MINUTOS,
   calcularVencimiento,
@@ -10,7 +11,7 @@ import type {
   EnviadorCorreoRecuperacion,
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
-import { describirFalloEnvio } from "@/shared/utils/describirFalloEnvio";
+import { describirFalloEnvio } from "@/modules/auth/application/describirFalloEnvio";
 
 export type ResultadoSolicitudRecuperacion =
   | { enlace: "ENVIADO"; usuarioId: string; usuarioRut: string }
@@ -61,11 +62,12 @@ export async function requestPasswordReset(
     return { enlace: "SIN_CUENTA" };
   }
 
-  // Misma regla de dominio que usa `LoginUser`, no una copia de la condición. Una cuenta
-  // desactivada no recibe ningún correo, ni siquiera uno avisando que está inhabilitada: sería
-  // un vector de bombardeo dirigido y la persona debe hablar con un administrador de todos
-  // modos.
-  if (!puedeIniciarSesion(usuario)) {
+  // Elegibilidad para recibir el enlace: basta con que la cuenta esté activa. Una cuenta
+  // PENDIENTE (sin contraseña) sí puede usar el autoservicio para fijar la primera y activarse.
+  // Una cuenta DESACTIVADA no recibe ningún correo, ni siquiera uno avisando que está
+  // inhabilitada: sería un vector de bombardeo dirigido y la persona debe hablar con un
+  // administrador de todos modos.
+  if (!puedeRecibirEnlaceContrasena(usuario)) {
     return { enlace: "CUENTA_INACTIVA", usuarioId: usuario.id, usuarioRut: usuario.rut };
   }
 
@@ -87,7 +89,7 @@ export async function requestPasswordReset(
   const tokenCreado = await dependencias.repositorioTokens.crear({
     usuarioId: usuario.id,
     tokenHash,
-    expiraEn: calcularVencimiento(ahora),
+    expiraEn: calcularVencimiento(ahora, HORAS_VIGENCIA_TOKEN_AUTOSERVICIO),
     inicioVentana: new Date(ahora.getTime() - VENTANA_SOLICITUDES_MINUTOS * 60 * 1000),
     maximoPorCuenta: MAXIMO_SOLICITUDES_POR_CUENTA,
   });
@@ -99,9 +101,13 @@ export async function requestPasswordReset(
   }
 
   try {
+    // El autoservicio siempre es un enlace de recuperación (la persona ya conoce su cuenta).
+    // Una cuenta pendiente que se autoactiva por esta vía recibe igual el copy de recuperación:
+    // la asimetría de textos es cosmética y no vale ramificar el camino público por ella.
     await dependencias.enviadorCorreo.enviar(
       { email: usuario.email, nombres: usuario.nombres },
       token,
+      { horasVigencia: HORAS_VIGENCIA_TOKEN_AUTOSERVICIO, contexto: "recuperacion" },
     );
   } catch (error) {
     // Nadie recibió una copia, así que dejar el token vigente dos horas no aporta nada y ensucia

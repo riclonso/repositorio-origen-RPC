@@ -20,5 +20,7 @@ export interface UsuarioRepository {
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;
   cambiarEstado(id: string, activo: boolean): Promise<Usuario>;
+  // Fija el hash de la contraseña de forma directa (fijado manual por el administrador). Debe
+  // invalidar, en la misma transacción, los enlaces de contraseña vigentes de esa cuenta.
   actualizarContrasena(id: string, contrasenaHash: string): Promise<void>;
 }

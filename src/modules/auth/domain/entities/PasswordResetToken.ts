@@ -13,9 +13,22 @@ export type PasswordResetToken = {
   createdAt: Date;
 };
 
-// Vigencia del enlace. Suficiente para abrir el correo en el teléfono o el escritorio, y acotada
-// para un secreto que queda escrito en un buzón.
-export const HORAS_VIGENCIA_TOKEN = 2;
+// Quién disparó la emisión del token. Distingue SOLO el camino, no el subtipo: el detalle del
+// disparador admin (creación / restablecimiento / reenvío) vive en la auditoría, no en la base.
+export type OrigenToken = "AUTOSERVICIO" | "ADMIN";
+
+// Para qué se envía el enlace. Es puramente cosmético (título y copy del correo y de la pantalla
+// de confirmación): el comportamiento con relevancia de seguridad es idéntico en ambos casos.
+export type ContextoEnlace = "activacion" | "recuperacion";
+
+// Dos vigencias, según quién pide el enlace:
+//  - AUTOSERVICIO (formulario público "¿olvidó su contraseña?"): 2 horas. Un secreto que queda
+//    escrito en un buzón se acota lo más posible.
+//  - ADMIN (creación / restablecimiento / reenvío desde el mantenedor): 8 horas. Un enlace de
+//    activación que emite el administrador suele coordinarse con la persona (que quizá aún no
+//    tiene la casilla a mano), así que se le da margen de una jornada.
+export const HORAS_VIGENCIA_TOKEN_AUTOSERVICIO = 2;
+export const HORAS_VIGENCIA_TOKEN_ADMIN = 8;
 
 // Cupo por cuenta: es el límite que de verdad protege una casilla del bombardeo, porque acota
 // cuántos correos se le pueden mandar a una persona sin importar desde cuántas IPs se pida.
@@ -42,8 +55,10 @@ export const LARGO_TOKEN_RECUPERACION = Math.ceil((BYTES_TOKEN_RECUPERACION * 4)
 
 const MILISEGUNDOS_POR_HORA = 60 * 60 * 1000;
 
-export function calcularVencimiento(desde: Date): Date {
-  return new Date(desde.getTime() + HORAS_VIGENCIA_TOKEN * MILISEGUNDOS_POR_HORA);
+// Cada llamador pasa la vigencia que le corresponde (autoservicio u admin): no hay una única
+// constante porque las dos rutas tienen plazos distintos por decisión de negocio.
+export function calcularVencimiento(desde: Date, horasVigencia: number): Date {
+  return new Date(desde.getTime() + horasVigencia * MILISEGUNDOS_POR_HORA);
 }
 
 // Regla pura. El consumo real no la usa para decidir: lo hace PostgreSQL en una única sentencia
