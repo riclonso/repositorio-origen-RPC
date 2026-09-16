@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartBar, FileText, House, UsersThree } from "@phosphor-icons/react";
+import { Buildings, FileText, House, Tag, UsersThree } from "@phosphor-icons/react";
 
 export type EnlacePanel = {
   href: string;
@@ -40,8 +40,10 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
   const hrefActivo = calcularHrefActivo(rutaActual, enlaces);
   const iconos = {
     Inicio: House,
-    Panel: ChartBar,
+    Panel: House,
     Usuarios: UsersThree,
+    Establecimientos: Buildings,
+    "Tipos de establecimiento": Tag,
     Logs: FileText,
   } as const;
 
