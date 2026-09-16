@@ -46,6 +46,43 @@ model Usuario {
   @@map("usuario")
 }
 
+// Catálogo de tipos de establecimiento. Igual que `Perfil`, es un catálogo de datos: agregar un
+// tipo nuevo no exige migración ni despliegue. `activo` gobierna la ASIGNABILIDAD (sale del
+// selector para nuevos establecimientos), no la autorización; desactivar un tipo no toca los
+// establecimientos que ya lo usan.
+model TipoEstablecimiento {
+  id        String   @id @default(uuid())
+  // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
+  nombre    String
+  // Clave de unicidad DERIVADA de `nombre` (sin tildes, minúsculas, espacios colapsados). La
+  // constraint @unique vive aquí y no en `nombre` para que "Clínica" y "clinica" no coexistan.
+  nombreNormalizado String @unique
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Relación inversa exigida por Prisma. NUNCA usarla con `include` en el listado de
+  // establecimientos: cargaría los establecimientos de cada tipo (N+1). El nombre del tipo se
+  // trae con un JOIN explícito en la consulta del listado.
+  establecimientos Establecimiento[]
+
+  @@map("tipo_establecimiento")
+}
+
+// Establecimiento de salud que reporta al RPC. El RUT (de empresa) es el único identificador
+// único: dos establecimientos pueden compartir nombre. El tipo viaja por clave foránea.
+model Establecimiento {
+  id        String   @id @default(uuid())
+  rut       String   @unique
+  nombre    String
+  direccion String
+  tipoId    String
+  tipo      TipoEstablecimiento @relation(fields: [tipoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("establecimiento")
+}
+
 // Tokens de recuperación de contraseña (RF-10). En la base vive únicamente el SHA-256
 // hexadecimal del token: el valor en claro existe solo en memoria durante la petición que lo
 // emite y dentro del correo enviado.

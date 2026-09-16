@@ -7,6 +7,7 @@ import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoContrasena, IconoEditar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
+import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
 import { RUTA_USUARIOS } from "./ruta-usuarios";
 
 export type FilaUsuarioVista = {
@@ -81,6 +82,48 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
   );
 }
 
+function ChipPendiente() {
+  return (
+    <span className="mt-1 block w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
+      Pendiente de activación
+    </span>
+  );
+}
+
+const COLUMNAS: ColumnaTabla<FilaUsuarioVista>[] = [
+  {
+    encabezado: "Nombre",
+    encabezadoFila: true,
+    className: "min-w-36 px-3 py-2 font-medium text-gob-black",
+    contenido: (fila) => (
+      <>
+        <span>{nombreCompleto(fila)}</span>
+        {!fila.tieneContrasena ? <ChipPendiente /> : null}
+      </>
+    ),
+  },
+  {
+    encabezado: "RUT",
+    className: "whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a",
+    contenido: (fila) => fila.rut,
+  },
+  {
+    encabezado: "Email",
+    className: "px-3 py-2 text-gob-gray-a",
+    contenido: (fila) => fila.email,
+  },
+  {
+    encabezado: "Perfil",
+    className: "whitespace-nowrap px-3 py-2 text-gob-gray-a",
+    contenido: (fila) => fila.perfilNombre,
+  },
+  {
+    encabezado: "Creado",
+    className: "whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a",
+    contenido: (fila) => fila.creadoEl,
+  },
+];
+
 type TablaUsuariosProps = {
   filas: FilaUsuarioVista[];
   actorId: string;
@@ -130,69 +173,23 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
 
   return (
     <>
-      <div className="mt-6 hidden overflow-x-auto rounded-lg border border-gob-accent bg-white md:block">
-        <table className="w-full min-w-3xl border-collapse text-left text-sm">
-          <caption className="sr-only">{descripcion}</caption>
-          <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
-            <tr>
-              <th scope="col" className="px-3 py-3 font-semibold">Nombre</th>
-              <th scope="col" className="px-3 py-3 font-semibold">RUT</th>
-              <th scope="col" className="px-3 py-3 font-semibold">Email</th>
-              <th scope="col" className="px-3 py-3 font-semibold">Perfil</th>
-              <th scope="col" className="px-3 py-3 font-semibold">Creado</th>
-              {/* `w-px` encoge la columna al ancho de sus acciones, así el título alineado a la
-                  izquierda empieza justo donde empieza el botón de editar de cada fila. */}
-              <th scope="col" className="w-px whitespace-nowrap px-3 py-3 text-left font-semibold">
-                Acciones
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gob-accent/60">
-            {filas.map((fila) => (
-              <tr key={fila.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
-                <th scope="row" className="min-w-36 px-3 py-2 font-medium text-gob-black">
-                  <span>{nombreCompleto(fila)}</span>
-                  {!fila.tieneContrasena ? (
-                    <span className="mt-1 block w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
-                      Pendiente de activación
-                    </span>
-                  ) : null}
-                </th>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                  {fila.rut}
-                </td>
-                <td className="px-3 py-2 text-gob-gray-a">{fila.email}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-gob-gray-a">
-                  {fila.perfilNombre}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                  {fila.creadoEl}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  <AccionesFila
-                    fila={fila}
-                    esPropia={fila.id === actorId}
-                    onCambiarEstado={() => setObjetivo(fila)}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <ul className="mt-6 flex flex-col gap-3 md:hidden">
-        {filas.map((fila) => (
-          <li
-            key={fila.id}
-            className="rounded-lg border border-gob-accent bg-white p-4 text-sm text-gob-gray-a"
-          >
+      <TablaPanel
+        descripcion={descripcion}
+        columnas={COLUMNAS}
+        filas={filas}
+        claveFila={(fila) => fila.id}
+        anchoMinimo="min-w-3xl"
+        acciones={(fila) => (
+          <AccionesFila
+            fila={fila}
+            esPropia={fila.id === actorId}
+            onCambiarEstado={() => setObjetivo(fila)}
+          />
+        )}
+        tarjeta={(fila) => (
+          <>
             <p className="font-semibold text-gob-black">{nombreCompleto(fila)}</p>
-            {!fila.tieneContrasena ? (
-              <p className="mt-1 w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
-                Pendiente de activación
-              </p>
-            ) : null}
+            {!fila.tieneContrasena ? <ChipPendiente /> : null}
             <p className="mt-1 tabular-nums">{fila.rut}</p>
             <p className="break-all">{fila.email}</p>
             <p className="mt-1">
@@ -205,9 +202,9 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
                 onCambiarEstado={() => setObjetivo(fila)}
               />
             </div>
-          </li>
-        ))}
-      </ul>
+          </>
+        )}
+      />
 
       <DialogoConfirmacion
         abierto={objetivo !== null}

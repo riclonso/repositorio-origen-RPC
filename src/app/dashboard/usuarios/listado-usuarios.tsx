@@ -35,7 +35,7 @@ function aFilaVista(usuario: Usuario): FilaUsuarioVista {
 
 function EstadoVacio({ titulo, detalle, accion }: { titulo: string; detalle: string; accion: React.ReactNode }) {
   return (
-    <div className="mt-6 rounded-lg border border-gob-accent bg-white p-8 text-center">
+    <div className="card-sistema mt-6 p-8 text-center">
       <p className="text-base font-semibold text-gob-black">{titulo}</p>
       <p className="mt-2 text-sm text-gob-gray-a">{detalle}</p>
       <div className="mt-4 flex justify-center">{accion}</div>

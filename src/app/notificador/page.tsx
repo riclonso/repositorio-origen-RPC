@@ -36,7 +36,7 @@ export default async function NotificadorPage() {
       </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.85fr)]">
-        <article aria-labelledby="titulo-reporte" className="rounded-2xl border border-[#e6edf5] bg-white p-6 shadow-[0_10px_30px_rgba(27,57,92,0.04)] sm:p-8">
+        <article aria-labelledby="titulo-reporte" className="card-sistema p-6 sm:p-8">
           <div className="flex size-12 items-center justify-center rounded-xl bg-[#e9f3fb] text-[#17699d]">
             <FileArrowUp size={25} weight="duotone" aria-hidden="true" />
           </div>
@@ -60,7 +60,7 @@ export default async function NotificadorPage() {
           </div>
         </article>
 
-        <aside className="rounded-2xl border border-[#e6edf5] bg-white p-6 shadow-[0_10px_30px_rgba(27,57,92,0.04)]">
+        <aside className="card-sistema p-6">
           <ChartBar size={23} weight="duotone" aria-hidden="true" className="text-[#3973a6]" />
           <h2 className="mt-5 text-lg font-semibold text-[#1d3657]">Estado del servicio</h2>
           <p className="mt-2 text-sm leading-6 text-[#617388]">Este perfil está habilitado para trabajar con reportes del Registro Poblacional de Cáncer.</p>

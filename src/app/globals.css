@@ -43,3 +43,12 @@ body {
      fuente descargada no llegaba a usarse nunca. */
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 }
+
+/* Superficie común para todas las cards del sistema. El borde, radio y sombra reproducen la
+   tarjeta de indicadores del panel y evitan pequeñas variaciones entre módulos. */
+.card-sistema {
+  border: 1px solid #e6edf5;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(27, 57, 92, 0.04);
+}

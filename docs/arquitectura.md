@@ -95,7 +95,10 @@ Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no 
 
 * PostgreSQL vía `@prisma/adapter-pg` (`src/infrastructure/database/prisma.ts` reutiliza el
   `PrismaClient` en `globalThis` para evitar múltiples conexiones en dev).
-* `prisma/schema.prisma` define por ahora solo el modelo `Usuario`, mapeado a la tabla `usuario`.
+* `prisma/schema.prisma` define los modelos `Usuario`, `Perfil`, `TokenRecuperacion`,
+  `TipoEstablecimiento` (tabla `tipo_establecimiento`) y `Establecimiento` (tabla `establecimiento`).
+  `establecimiento.tipoId` es FK a `tipo_establecimiento.id` con `ON UPDATE CASCADE ON DELETE
+  RESTRICT` (la baja de un tipo es lógica con `activo = false`, nunca `DELETE`).
 
 ## Agentes de desarrollo
 
@@ -363,3 +366,52 @@ la cuenta permanece pendiente y el error queda registrado. El endpoint autentica
 `POST /api/usuarios/[id]/enlace-contrasena` espera el resultado para informar al administrador y
 sirve tanto para reenviar la activación como para restablecer una cuenta ya activada. Ambos contextos
 reutilizan `EnlaceContrasenaMailer` y `/recuperar/confirmar`; solo cambia el texto presentado.
+
+## Mantenedores de establecimientos y tipos (RF-14)
+
+Dos módulos onion nuevos que replican el patrón de `usuarios/` y `perfiles/`:
+`modules/tipoEstablecimiento/` (catálogo, en la relación de FK) y `modules/establecimiento/`.
+Nombres en español (el inglés es exclusivo de `auth/`).
+
+### Unicidad normalizada del nombre del tipo
+
+`tipo_establecimiento` guarda el `nombre` original (con tildes y mayúsculas) y una columna derivada
+`nombreNormalizado` con la restricción `@unique`. `normalizarNombre()` (`shared/utils/texto.ts`)
+quita diacríticos, colapsa espacios y pasa a minúsculas de forma determinista, sin depender de
+`unaccent()`. La unicidad se comprueba en dos capas, igual que en usuarios: chequeo previo en
+`application/` sobre `nombreNormalizado` más la constraint, cuya violación `P2002` el repositorio
+traduce a `TipoEstablecimientoDuplicadoError`. Los mensajes de duplicado no exponen datos del
+registro en conflicto.
+
+### El `activo` del tipo gobierna asignabilidad, no autorización
+
+Idéntico a `perfil.activo`: un tipo inactivo sale del selector de alta pero no toca los
+establecimientos que ya lo usan; desactivar un tipo con establecimientos asociados se permite. En la
+edición de un establecimiento, conservar el tipo vigente es válido aunque esté inactivo
+(`conservaSuTipo = datos.tipoId === actual.tipoId`); asignar un tipo inactivo distinto se rechaza. El
+formulario de edición carga el tipo vigente con `incluirIds` para no cambiarlo en silencio. La FK
+inexistente (`P2003`) se traduce a `TipoInvalidoError` → 400 sobre `tipoId`, nunca un 500.
+
+### Listados
+
+El de tipos es un `findMany` simple (activos e inactivos, orden por nombre) porque es un catálogo
+chico y debe permitir reactivar. El de establecimientos replica el molde de usuarios:
+`$transaction([$queryRaw filas, $queryRaw conteo])` con `unaccent` sobre `nombre`/`direccion` y
+`rut ILIKE`, JOIN a `tipo_establecimiento` en la misma consulta para traer `tipoNombre` sin N+1,
+mismo predicado en filas y conteo, desempate por `id`, escape de comodines LIKE y término siempre
+parametrizado. El RUT del establecimiento se valida con dígito verificador y es editable tras crear
+(revalidando unicidad con exclusión del propio id).
+
+### Helpers HTTP compartidos
+
+`app/api/_lib/http.ts` centraliza `exigirAdmin()`, `respuestaSinAcceso()`, `respuestaError()` y los
+mensajes genéricos; los recursos nuevos lo importan. La copia previa en
+`app/api/usuarios/_lib/http.ts` se dejó intacta para no arriesgar una regresión en el mantenedor ya
+en producción. Cada recurso mantiene su `_lib` local (DTO, `idSchema` uuid, mensajes de duplicado).
+Cada handler llama a `exigirAdmin()` (el proxy no cubre `/api/**`). `/estado` usa `PATCH`.
+
+### Componentes de tabla compartidos
+
+`shared/components/TablaPanel.tsx` (armazón genérico de tabla escritorio + tarjetas móvil),
+`EsqueletoTabla.tsx` y `PanelError.tsx` se extrajeron para que los tres mantenedores (usuarios,
+tipos, establecimientos) no dupliquen el marcado; el mantenedor de usuarios se migró a ellos.

@@ -34,7 +34,7 @@ function TarjetaMetrica({ etiqueta, valor, detalle, icono, tono }: TarjetaMetric
   };
 
   return (
-    <article className="rounded-2xl border border-[#e6edf5] bg-white p-5 shadow-[0_10px_30px_rgba(27,57,92,0.04)]">
+    <article className="card-sistema p-5">
       <div className="flex items-start justify-between gap-3">
         <span className={`flex size-10 items-center justify-center rounded-xl ${tonos[tono]}`}>
           {icono}
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.85fr)]">
-        <article className="rounded-2xl border border-[#e6edf5] bg-white p-5 shadow-[0_10px_30px_rgba(27,57,92,0.04)] sm:p-6">
+        <article className="card-sistema p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-[#1d3657]">Estado de accesos</h2>
@@ -129,7 +129,7 @@ export default async function DashboardPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-[#e6edf5] bg-white p-5 shadow-[0_10px_30px_rgba(27,57,92,0.04)] sm:p-6">
+        <article className="card-sistema p-5 sm:p-6">
           <FileText size={22} weight="duotone" aria-hidden="true" className="text-[#3973a6]" />
           <h2 className="mt-5 text-lg font-semibold text-[#1d3657]">Actividad administrativa</h2>
           <p className="mt-2 text-sm leading-6 text-[#617388]">Consulta los registros de auditoría para revisar las acciones realizadas en el repositorio.</p>
