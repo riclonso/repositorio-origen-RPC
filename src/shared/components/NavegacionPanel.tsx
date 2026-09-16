@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Buildings, FileText, House, Tag, UsersThree } from "@phosphor-icons/react";
+import {
+  Buildings,
+  CalendarBlank,
+  CheckCircle,
+  FileText,
+  House,
+  Table,
+  Tag,
+  Tray,
+  UsersThree,
+} from "@phosphor-icons/react";
 
 export type EnlacePanel = {
   href: string;
@@ -42,6 +52,10 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
     Inicio: House,
     Panel: House,
     Usuarios: UsersThree,
+    "Formatos de archivo": Table,
+    "Ventanas de carga": CalendarBlank,
+    "Cargas aprobadas": CheckCircle,
+    "Mis cargas": Tray,
     Establecimientos: Buildings,
     "Tipos de establecimiento": Tag,
     Logs: FileText,
