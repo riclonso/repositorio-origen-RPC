@@ -10,32 +10,7 @@ import type {
   EnviadorCorreoRecuperacion,
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
-
-// Los errores de un relay SMTP suelen citar la dirección de destino en su respuesta, y esa
-// dirección no puede terminar en `errores.txt`. Se conservan los campos estructurados, que son
-// los que permiten diagnosticar, y del texto se borra cualquier cosa con forma de correo.
-function describirFalloEnvio(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return "error desconocido";
-  }
-
-  const detalle = error as Error & {
-    code?: string;
-    responseCode?: number;
-    command?: string;
-  };
-
-  const partes = [
-    detalle.code ? `code=${detalle.code}` : null,
-    detalle.responseCode ? `responseCode=${detalle.responseCode}` : null,
-    detalle.command ? `command=${detalle.command}` : null,
-    detalle.message
-      ? `mensaje=${detalle.message.replace(/[^\s<>@]+@[^\s<>@]+/g, "[correo]").slice(0, 300)}`
-      : null,
-  ];
-
-  return partes.filter(Boolean).join(" | ") || "sin detalle";
-}
+import { describirFalloEnvio } from "@/shared/utils/describirFalloEnvio";
 
 export type ResultadoSolicitudRecuperacion =
   | { enlace: "ENVIADO"; usuarioId: string; usuarioRut: string }

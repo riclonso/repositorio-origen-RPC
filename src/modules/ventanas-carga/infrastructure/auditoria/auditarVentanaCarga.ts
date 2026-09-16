@@ -20,7 +20,14 @@ export type DesenlaceAuditoriaVentanaCarga = {
   fechaVencimiento?: Date | null;
   tipoEliminacionVentana?: "HARD" | "SOFT" | null;
   publicada?: boolean | null;
+  archivada?: boolean | null;
   formatoExcelId?: string | null;
+  diasAnticipacionInicio?: number | null;
+  intervaloRepeticionDias?: number | null;
+  loteId?: string | null;
+  destinatarioId?: string | null;
+  cantidadExitos?: number | null;
+  cantidadErrores?: number | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
@@ -51,7 +58,14 @@ async function construirYRegistrar(
     fechaVencimiento: desenlace.fechaVencimiento ? desenlace.fechaVencimiento.toISOString() : null,
     tipoEliminacionVentana: desenlace.tipoEliminacionVentana ?? null,
     publicada: desenlace.publicada ?? null,
+    archivada: desenlace.archivada ?? null,
     formatoExcelId: desenlace.formatoExcelId ?? null,
+    diasAnticipacionInicio: desenlace.diasAnticipacionInicio ?? null,
+    intervaloRepeticionDias: desenlace.intervaloRepeticionDias ?? null,
+    loteId: desenlace.loteId ?? null,
+    destinatarioId: desenlace.destinatarioId ?? null,
+    cantidadExitos: desenlace.cantidadExitos ?? null,
+    cantidadErrores: desenlace.cantidadErrores ?? null,
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

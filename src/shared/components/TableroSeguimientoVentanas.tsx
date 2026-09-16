@@ -1,5 +1,6 @@
 import { obtenerResumenSeguimientoVentanasAbiertas } from "@/modules/ventanas-carga/application/use-cases/ObtenerResumenSeguimientoVentanasAbiertas";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
+import { prismaAlertaNotificacionRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaAlertaNotificacionRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { TarjetaSeguimientoVentana } from "@/shared/components/TarjetaSeguimientoVentana";
@@ -19,6 +20,9 @@ export async function TableroSeguimientoVentanas({ rutaBase }: TableroSeguimient
     repositorioVentanas: prismaVentanaCargaRepository,
     repositorioFormatos: prismaFormatoExcelRepository,
     repositorioCargas: prismaCargaArchivoRepository,
+    // RF-17: badge de alertas de cada tarjeta, resuelto con 2 `groupBy` adicionales dentro de
+    // `obtenerResumenPorVentanas` (nunca una consulta por tarjeta).
+    repositorioAlertas: prismaAlertaNotificacionRepository,
   });
 
   return (

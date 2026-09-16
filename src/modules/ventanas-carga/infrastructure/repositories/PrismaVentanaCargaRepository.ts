@@ -1,12 +1,15 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
+import { CODIGO_PERFIL_NOTIFICADOR } from "@/modules/perfiles/domain/entities/Perfil";
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type {
   DatosEdicionVentanaCarga,
   DatosNuevaVentanaCarga,
   VentanaCarga,
 } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import type { NotificadorPendiente } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
+import { PLANTILLA_ALERTA_POR_DEFECTO_HTML } from "@/modules/ventanas-carga/domain/entities/PlantillaAlerta";
 import { VentanaCargaDuplicadaError } from "@/modules/ventanas-carga/domain/errors/VentanaCargaDuplicadaError";
 import { FormatoInvalidoVentanaCargaError } from "@/modules/ventanas-carga/domain/errors/FormatoInvalidoVentanaCargaError";
 
@@ -19,6 +22,7 @@ const SELECCION_VENTANA = {
   formatoExcelId: true,
   formatoExcel: { select: { nombre: true } },
   publicada: true,
+  archivada: true,
   creadoPorId: true,
   creadoPor: { select: { nombres: true, apellidos: true } },
   eliminadaEn: true,
@@ -26,6 +30,9 @@ const SELECCION_VENTANA = {
   eliminadaPor: { select: { nombres: true, apellidos: true } },
   createdAt: true,
   updatedAt: true,
+  diasAnticipacionInicio: true,
+  intervaloRepeticionDias: true,
+  plantillaAlerta: true,
   // Cuenta solo las cargas APROBADAS de esta ventana, filtrando dentro del propio `_count`: nunca
   // trae las filas completas, evitando el N+1 de contar en JS por cada ventana del listado.
   _count: { select: { cargas: { where: { estado: "APROBADA" } } } },
@@ -39,6 +46,7 @@ type RegistroVentana = {
   formatoExcelId: string;
   formatoExcel: { nombre: string };
   publicada: boolean;
+  archivada: boolean;
   creadoPorId: string;
   creadoPor: { nombres: string; apellidos: string };
   eliminadaEn: Date | null;
@@ -46,6 +54,9 @@ type RegistroVentana = {
   eliminadaPor: { nombres: string; apellidos: string } | null;
   createdAt: Date;
   updatedAt: Date;
+  diasAnticipacionInicio: number | null;
+  intervaloRepeticionDias: number | null;
+  plantillaAlerta: string;
   _count: { cargas: number };
 };
 
@@ -58,6 +69,7 @@ function aVentanaCarga(registro: RegistroVentana): VentanaCarga {
     formatoExcelId: registro.formatoExcelId,
     formatoExcelNombre: registro.formatoExcel.nombre,
     publicada: registro.publicada,
+    archivada: registro.archivada,
     creadoPorId: registro.creadoPorId,
     creadoPorNombre: nombreCompleto(registro.creadoPor),
     eliminadaEn: registro.eliminadaEn,
@@ -66,6 +78,9 @@ function aVentanaCarga(registro: RegistroVentana): VentanaCarga {
     createdAt: registro.createdAt,
     updatedAt: registro.updatedAt,
     cantidadCargas: registro._count.cargas,
+    diasAnticipacionInicio: registro.diasAnticipacionInicio,
+    intervaloRepeticionDias: registro.intervaloRepeticionDias,
+    plantillaAlerta: registro.plantillaAlerta,
   };
 }
 
@@ -101,6 +116,9 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
           // sin importar lo que el cliente haya enviado (nunca viaja en la creación).
           publicada: false,
           creadoPorId: datos.creadoPorId,
+          // RF-17: nace como copia de la plantilla por defecto. No es un campo del formulario de
+          // creación; se edita después con su propio endpoint PUT.
+          plantillaAlerta: PLANTILLA_ALERTA_POR_DEFECTO_HTML,
         },
         select: SELECCION_VENTANA,
       });
@@ -200,6 +218,24 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
     }
   },
 
+  async cambiarArchivado(id, datos) {
+    try {
+      const registro = await prisma.ventanaCarga.update({
+        where: { id },
+        data: { archivada: datos.archivada, publicada: datos.publicada },
+        select: SELECCION_VENTANA,
+      });
+
+      return aVentanaCarga(registro);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return null;
+      }
+
+      throw error;
+    }
+  },
+
   async eliminar(id, eliminadoPorId) {
     try {
       // Se intenta el `DELETE` físico directamente, sin contar cargas asociadas antes: dejar que
@@ -232,5 +268,68 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
 
       throw error;
     }
+  },
+
+  async configurarAlertas(id, datos) {
+    try {
+      const registro = await prisma.ventanaCarga.update({
+        where: { id },
+        data: {
+          diasAnticipacionInicio: datos.diasAnticipacionInicio,
+          intervaloRepeticionDias: datos.intervaloRepeticionDias,
+        },
+        select: SELECCION_VENTANA,
+      });
+
+      return aVentanaCarga(registro);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return null;
+      }
+
+      throw error;
+    }
+  },
+
+  async actualizarPlantillaAlerta(id, plantillaAlertaSanitizada) {
+    try {
+      const registro = await prisma.ventanaCarga.update({
+        where: { id },
+        data: { plantillaAlerta: plantillaAlertaSanitizada },
+        select: SELECCION_VENTANA,
+      });
+
+      return aVentanaCarga(registro);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return null;
+      }
+
+      throw error;
+    }
+  },
+
+  async listarNotificadoresPendientes(ventanaCargaId): Promise<NotificadorPendiente[]> {
+    const ventana = await prisma.ventanaCarga.findUnique({
+      where: { id: ventanaCargaId },
+      select: { formatoExcelId: true },
+    });
+
+    if (!ventana) return [];
+
+    // Una sola consulta: NOTIFICADOR_RPC activos, asignados al formato de esta ventana, sin
+    // ninguna `CargaArchivo` APROBADA en ella todavía.
+    const registros = await prisma.usuario.findMany({
+      where: {
+        activo: true,
+        perfilCodigo: CODIGO_PERFIL_NOTIFICADOR,
+        formatosAsignados: { some: { formatoExcelId: ventana.formatoExcelId } },
+        cargasArchivo: { none: { ventanaCargaId, estado: "APROBADA" } },
+      },
+      select: { id: true, nombres: true, apellidos: true, email: true },
+      orderBy: { apellidos: "asc" },
+    });
+
+    return registros;
   },
 };

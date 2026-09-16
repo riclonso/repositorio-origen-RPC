@@ -59,6 +59,12 @@ model Usuario {
   // `ventanasCargaCreadas`: nunca usarla con `include` en el listado.
   ventanasCargaEliminadas VentanaCarga[] @relation("VentanasCargaEliminadasPor")
 
+  // Relaciones inversas de las alertas por email a notificadores, exigidas por Prisma. NUNCA
+  // usarlas con `include` en el listado de usuarios, mismo motivo que `cargasArchivo`: arrastrarían
+  // el historial completo de alertas de cada fila.
+  alertasRecibidas  AlertaNotificacionVentana[] @relation("AlertasNotificacionRecibidasPor")
+  alertasDisparadas AlertaNotificacionVentana[] @relation("AlertasNotificacionDisparadasPor")
+
   @@map("usuario")
 }
 
@@ -306,6 +312,11 @@ model VentanaCarga {
   // PUT de fechas/formato: mientras no esté publicada, el notificador no debe verla (exclusión real
   // en el `WHERE` de `listarDisponibles`, no solo en la UI).
   publicada        Boolean      @default(false)
+  // Oculta la ventana de la vista por defecto del panel administrativo (recuperable por búsqueda,
+  // ver "Mostrar archivadas" en la UI), sin relación con `eliminadaEn` (irreversible, atado al
+  // `RESTRICT` de `CargaArchivo`) ni con `publicada` (es el efecto, no la causa: archivar apaga
+  // `publicada` en la misma escritura; desarchivar NO la vuelve a publicar automáticamente).
+  archivada        Boolean      @default(false)
   creadoPorId      String
   creadoPor        Usuario      @relation("VentanasCargaCreadasPor", fields: [creadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   // Eliminación: ADMIN puede eliminar cualquier ventana, REVISOR_REPOSITORIO solo las que él mismo
@@ -320,9 +331,65 @@ model VentanaCarga {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  cargas CargaArchivo[]
+  // Alertas por email a notificadores que no han reportado (RF-17). Ambos nulos a la vez o
+  // ninguno: `application/ConfigurarAlertasVentanaCargaSchema` exige que vengan juntos o ninguno.
+  // `null` desactiva el envío automático de esta ventana, sin afectar el envío manual.
+  diasAnticipacionInicio  Int?
+  intervaloRepeticionDias Int?
+  // HTML sanitizado (ver `sanitizarPlantillaAlertaHtml`). NUNCA nulo: nace como copia de
+  // `PLANTILLA_ALERTA_POR_DEFECTO_HTML` al crearse la ventana (no es un campo del formulario de
+  // creación), editable después con su propio endpoint PUT.
+  plantillaAlerta         String
+
+  cargas              CargaArchivo[]
+  alertasNotificacion AlertaNotificacionVentana[]
 
   @@map("ventana_carga")
+}
+
+// RF-17: alertas por email a notificadores (NOTIFICADOR_RPC) que no han reportado su archivo en
+// una ventana de carga.
+enum TipoAlertaNotificacion {
+  AUTOMATICA
+  MANUAL_MASIVA
+  MANUAL_INDIVIDUAL
+}
+
+enum ResultadoAlertaNotificacion {
+  EXITO
+  ERROR
+}
+
+// Historial de envíos, agrupado por lote (`loteId`): todas las filas de una misma operación (un
+// ciclo automático de UNA ventana, un clic de "enviar masivo", un clic de "enviar individual" —
+// lote de tamaño 1) comparten el mismo `loteId`. Generado en `application/`, nunca en este
+// repositorio.
+model AlertaNotificacionVentana {
+  id             String                      @id @default(uuid())
+  loteId         String
+  ventanaCargaId String
+  ventanaCarga   VentanaCarga                @relation(fields: [ventanaCargaId], references: [id], onDelete: Restrict)
+  usuarioId      String
+  usuario        Usuario                     @relation("AlertasNotificacionRecibidasPor", fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  tipo           TipoAlertaNotificacion
+  resultado      ResultadoAlertaNotificacion
+  asunto         String
+  // HTML final REALMENTE enviado (placeholders ya resueltos, enlace ya resuelto a la URL real,
+  // sanitizado dos veces: `sanitizarPlantillaAlertaHtml` al guardar la plantilla/mensaje editado,
+  // `sanitizarMensajeResueltoHtml` al enviar). No es la plantilla genérica de la ventana.
+  mensaje        String
+  // Solo si `resultado = ERROR`, del ÚLTIMO intento. Saneado con el mismo criterio que
+  // `describirFalloEnvio` de RF-10: nunca contiene una dirección de correo.
+  detalleError   String?
+  disparadoPorId String?
+  disparadoPor   Usuario?                    @relation("AlertasNotificacionDisparadasPor", fields: [disparadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Solo para `tipo = AUTOMATICA`: día calendario en UTC "de pared" (mismo criterio que el resto
+  // del esquema). Clave de deduplicación junto a `ventanaCargaId`/`usuarioId` (ver índice único
+  // parcial agregado a mano en la migración).
+  fechaProgramada DateTime?                  @db.Timestamp(3)
+  createdAt       DateTime                   @default(now())
+
+  @@map("alerta_notificacion_ventana")
 }
 
 // Tope de 500 filas por carga, aplicado en `application/`: evita miles de INSERTs con un

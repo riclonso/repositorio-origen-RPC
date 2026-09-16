@@ -45,6 +45,7 @@ export async function ListadoVentanasCarga({ rutaBase }: ListadoVentanasCargaPro
     formatoExcelId: ventana.formatoExcelId,
     formatoExcelNombre: ventana.formatoExcelNombre,
     publicada: ventana.publicada,
+    archivada: ventana.archivada,
     creadoPorId: ventana.creadoPorId,
     creadoPorNombre: ventana.creadoPorNombre,
     eliminadaEn: ventana.eliminadaEn ? ventana.eliminadaEn.toISOString() : null,

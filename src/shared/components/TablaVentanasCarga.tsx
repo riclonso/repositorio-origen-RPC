@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, ViewTransition } from "react";
+import { useMemo, useState, ViewTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Boton } from "@/shared/components/Boton";
+import { Boton, type VarianteBoton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoEliminar } from "@/shared/components/iconos";
+import { IconoArchivar, IconoEliminar } from "@/shared/components/iconos";
 import { formatearFechaCalendario } from "@/shared/utils/fecha";
+import { useAccionConfirmable } from "@/shared/hooks/useAccionConfirmable";
+
+// Opción sintética que representa "sin filtro" en el `<select>` de formato de archivo del
+// buscador: no es un formato real, así que no puede viajar como uno de `opcionesFormatoExcel`.
+const OPCION_TODOS_LOS_FORMATOS: OpcionSelect = { valor: "", etiqueta: "Todos" };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
 
@@ -27,6 +32,10 @@ export type VentanaCargaVista = {
   // `publicada` sí es un campo persistido (a diferencia de `abierta`): nace en `false` y se
   // cambia con su propio endpoint PATCH, nunca junto a fechas/formato.
   publicada: boolean;
+  // Oculta la ventana de la vista por defecto (recuperable con "Mostrar archivadas"). Archivar
+  // despublica automáticamente en el servidor, así que nunca se observa `archivada: true` junto a
+  // `publicada: true`.
+  archivada: boolean;
   creadoPorId: string;
   creadoPorNombre: string;
   // No nulo si la ventana ya fue eliminada (lógicamente, porque tenía cargas asociadas). Una
@@ -67,6 +76,407 @@ function formularioCreacionVacio(opcionesFormatoExcel: OpcionSelect[]): Formular
 
 type FormularioEdicion = { fechaApertura: string; fechaVencimiento: string; formatoExcelId: string };
 
+type EstadoVentana = { texto: string; claseColor: string };
+
+// Jerarquía visual del estado, de mayor a menor prioridad: "Eliminada" gana siempre, aunque la
+// ventana también esté archivada (mismo criterio documentado en el modelo de dominio: eliminar es
+// el eje más fuerte, irreversible). Luego "Archivada", después el estado calculado de fechas.
+function resolverEstadoVentana(
+  ventana: Pick<VentanaCargaVista, "eliminadaEn" | "archivada" | "abierta">,
+): EstadoVentana {
+  if (ventana.eliminadaEn) return { texto: "Eliminada", claseColor: "border-gob-danger text-gob-danger" };
+  if (ventana.archivada) return { texto: "Archivada", claseColor: "border-gob-gray-a text-gob-gray-a" };
+  if (ventana.abierta) return { texto: "Abierta", claseColor: "border-gob-primary text-gob-primary" };
+  return { texto: "Cerrada", claseColor: "border-gob-gray-a text-gob-gray-a" };
+}
+
+// Motivo por el que el interruptor "Publicada" está bloqueado, o `undefined` si no lo está.
+// Eliminada gana sobre archivada en el mensaje (mismo orden de prioridad que `resolverEstadoVentana`),
+// aunque en la práctica ambos bloquean igual.
+function resolverTooltipPublicacion(ventana: Pick<VentanaCargaVista, "eliminadaEn" | "archivada">): string | undefined {
+  if (ventana.eliminadaEn !== null) return "No puedes publicar una ventana eliminada";
+  if (ventana.archivada) return "No puedes publicar una ventana archivada";
+  return undefined;
+}
+
+// Descripción del diálogo de archivar/desarchivar. Al archivar una ventana publicada, advierte
+// explícitamente el efecto secundario (se despublica en la misma escritura); al archivar una en
+// borrador, mensaje simple. Desarchivar nunca republica sola, así que siempre lo aclara.
+function descripcionCambioArchivado(ventana: VentanaCargaVista): string {
+  if (ventana.archivada) {
+    return `La ventana del año ${ventana.anio} volverá a aparecer en este listado. Queda como borrador (sin publicar); si necesitas que esté disponible para el notificador, publícala de nuevo.`;
+  }
+
+  if (ventana.publicada) {
+    return `Al archivar la ventana del año ${ventana.anio} se ocultará de este listado y se despublicará automáticamente: dejará de estar disponible para que el notificador suba archivos. Puedes encontrarla luego con "Mostrar archivadas"; para volver a habilitarla debes desarchivarla y publicarla de nuevo.`;
+  }
+
+  return `Vas a archivar la ventana del año ${ventana.anio}. Se ocultará de este listado; puedes encontrarla luego activando "Mostrar archivadas".`;
+}
+
+type ContenidoDialogoAccion = { titulo: string; descripcion: string; textoConfirmar: string; variante: VarianteBoton };
+
+// Resuelve título/descripción/texto/variante del diálogo de publicar-despublicar en una sola
+// función pura, en vez de cuatro ternarios sueltos dentro del JSX de `TablaVentanasCarga`: reduce
+// la complejidad de control de flujo de ese componente sin cambiar el mensaje que ve el usuario.
+function resolverDialogoPublicacion(ventana: VentanaCargaVista | null): ContenidoDialogoAccion {
+  if (ventana?.publicada) {
+    return {
+      titulo: "Despublicar ventana",
+      descripcion: `La ventana del año ${ventana.anio} dejará de ser visible para los notificadores.`,
+      textoConfirmar: "Despublicar",
+      variante: "peligro",
+    };
+  }
+
+  return {
+    titulo: "Publicar ventana",
+    descripcion: ventana
+      ? `La ventana del año ${ventana.anio} quedará visible para los notificadores con el formato ${ventana.formatoExcelNombre} asignado.`
+      : "",
+    textoConfirmar: "Publicar",
+    variante: "primario",
+  };
+}
+
+// Mismo criterio que `resolverDialogoPublicacion`, para el diálogo de archivar/desarchivar.
+function resolverDialogoArchivado(ventana: VentanaCargaVista | null): ContenidoDialogoAccion {
+  if (ventana?.archivada) {
+    return {
+      titulo: "Desarchivar ventana",
+      descripcion: descripcionCambioArchivado(ventana),
+      textoConfirmar: "Desarchivar",
+      variante: "primario",
+    };
+  }
+
+  return {
+    titulo: "Archivar ventana",
+    descripcion: ventana ? descripcionCambioArchivado(ventana) : "",
+    textoConfirmar: "Archivar",
+    variante: "peligro",
+  };
+}
+
+// Descripción del diálogo de eliminación: única acción irreversible del módulo (física o lógica
+// según tenga cargas asociadas), sin la advertencia de despublicación de las otras dos.
+function descripcionDialogoEliminacion(ventana: VentanaCargaVista | null): string {
+  if (!ventana) return "";
+
+  return `Vas a eliminar la ventana del año ${ventana.anio}. Si no tiene ninguna carga de archivo asociada, se elimina por completo; si ya tiene alguna, queda marcada como eliminada (se conserva para no perder a qué ventana pertenecen esas cargas) y deja de habilitar nuevas subidas para ese año. Esta acción no se puede deshacer.`;
+}
+
+type MensajeVacio = { titulo: string; cuerpo: string };
+
+// Resuelve el mensaje de "sin filas que mostrar" en sus dos variantes (sin ventanas creadas
+// todavía, o ninguna coincide con el buscador/filtros); `null` cuando corresponde mostrar la
+// tabla. Extraído para no anidar un segundo ternario dentro del JSX de `TablaVentanasCarga`.
+function resolverMensajeVacio(totalVentanas: number, totalFiltradas: number): MensajeVacio | null {
+  if (totalVentanas === 0) {
+    return {
+      titulo: "Aún no hay ventanas de carga",
+      cuerpo: "Crea la primera ventana para habilitar la subida de archivos a los notificadores.",
+    };
+  }
+
+  if (totalFiltradas === 0) {
+    return {
+      titulo: "Ninguna ventana coincide con la búsqueda",
+      cuerpo: 'Ajusta el término de búsqueda, el filtro de formato o activa "Mostrar archivadas".',
+    };
+  }
+
+  return null;
+}
+
+type CriteriosBusquedaVentanas = { termino: string; filtroFormato: string; mostrarArchivadas: boolean };
+
+function coincideConBusqueda(ventana: VentanaCargaVista, termino: string): boolean {
+  if (!termino) return true;
+  return String(ventana.anio).includes(termino) || ventana.formatoExcelNombre.toLowerCase().includes(termino);
+}
+
+// Filtro combinado del buscador (RF-15 ampliación): resuelto en cliente sobre el arreglo ya
+// cargado, sin pedir nada nuevo al servidor. `mostrarArchivadas` en falso oculta las archivadas
+// sin importar el resto de criterios.
+function filtrarVentanas(ventanas: VentanaCargaVista[], criterios: CriteriosBusquedaVentanas): VentanaCargaVista[] {
+  const termino = criterios.termino.trim().toLowerCase();
+
+  return ventanas.filter((ventana) => {
+    if (!criterios.mostrarArchivadas && ventana.archivada) return false;
+    if (criterios.filtroFormato && ventana.formatoExcelId !== criterios.filtroFormato) return false;
+    return coincideConBusqueda(ventana, termino);
+  });
+}
+
+// Buscador y filtros del listado, resueltos en cliente sobre el arreglo ya cargado (sin pedir
+// nada nuevo al servidor). Extraído como componente propio para que `TablaVentanasCarga` no
+// cargue también con el marcado del panel de filtros.
+type BuscadorVentanasCargaProps = {
+  terminoBusqueda: string;
+  onCambiarBusqueda: (valor: string) => void;
+  filtroFormato: string;
+  onCambiarFiltroFormato: (valor: string) => void;
+  opciones: OpcionSelect[];
+  mostrarArchivadas: boolean;
+  onCambiarMostrarArchivadas: () => void;
+};
+
+function BuscadorVentanasCarga({
+  terminoBusqueda,
+  onCambiarBusqueda,
+  filtroFormato,
+  onCambiarFiltroFormato,
+  opciones,
+  mostrarArchivadas,
+  onCambiarMostrarArchivadas,
+}: BuscadorVentanasCargaProps) {
+  return (
+    <section aria-labelledby="titulo-buscador-ventanas" className="rounded-lg border border-gob-accent bg-white p-4">
+      <h2 id="titulo-buscador-ventanas" className="text-sm font-semibold text-gob-black">
+        Buscar ventanas
+      </h2>
+
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <CampoTexto
+          id="busqueda-ventanas"
+          etiqueta="Buscar por año o formato"
+          type="text"
+          placeholder="Ej: 2025 o el nombre del formato"
+          value={terminoBusqueda}
+          onChange={(evento) => onCambiarBusqueda(evento.target.value)}
+        />
+        <CampoSelect
+          id="filtro-formato-ventanas"
+          etiqueta="Filtrar por formato de archivo"
+          opciones={opciones}
+          value={filtroFormato}
+          onChange={(evento) => onCambiarFiltroFormato(evento.target.value)}
+        />
+        <div className="flex items-end gap-2 pb-2">
+          <Interruptor
+            activado={mostrarArchivadas}
+            etiqueta="Mostrar ventanas archivadas"
+            onCambiar={onCambiarMostrarArchivadas}
+          />
+          <span className="text-sm text-gob-gray-a">Mostrar archivadas</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Celda de acciones de una fila: Editar/Guardar/Cancelar y Eliminar se ocultan cuando la ventana
+// ya fue eliminada lógicamente (comportamiento existente, sin cambios); Archivar/Desarchivar es
+// independiente y va siempre, incluso eliminada o en edición. Extraída aparte de `FilaVentanaCarga`
+// porque concentra casi toda su ramificación (cuatro estados posibles de esta celda).
+type AccionesFilaVentanaProps = {
+  ventana: Pick<VentanaCargaVista, "eliminadaEn" | "archivada" | "anio">;
+  enEdicion: boolean;
+  guardandoEdicion: boolean;
+  puedeEliminarFila: boolean;
+  onIniciarEdicion: () => void;
+  onGuardarEdicion: () => void;
+  onCancelarEdicion: () => void;
+  onSolicitarEliminacion: () => void;
+  onSolicitarArchivado: () => void;
+};
+
+function AccionesFilaVentana({
+  ventana,
+  enEdicion,
+  guardandoEdicion,
+  puedeEliminarFila,
+  onIniciarEdicion,
+  onGuardarEdicion,
+  onCancelarEdicion,
+  onSolicitarEliminacion,
+  onSolicitarArchivado,
+}: AccionesFilaVentanaProps) {
+  const textoAccionArchivado = ventana.archivada ? "Desarchivar" : "Archivar";
+
+  let accionesEdicion: ReactNode = null;
+  if (!ventana.eliminadaEn) {
+    accionesEdicion = enEdicion ? (
+      <>
+        <Boton variante="texto" cargando={guardandoEdicion} textoCargando="Guardando..." onClick={onGuardarEdicion}>
+          Guardar
+        </Boton>
+        <Boton variante="texto" disabled={guardandoEdicion} onClick={onCancelarEdicion}>
+          Cancelar
+        </Boton>
+      </>
+    ) : (
+      <>
+        <Boton variante="texto" onClick={onIniciarEdicion}>
+          Editar
+        </Boton>
+        {puedeEliminarFila ? (
+          <Boton variante="textoPeligro" onClick={onSolicitarEliminacion} aria-label={`Eliminar la ventana ${ventana.anio}`}>
+            <IconoEliminar />
+            Eliminar
+          </Boton>
+        ) : null}
+      </>
+    );
+  } else {
+    accionesEdicion = <span className="text-xs text-gob-gray-a">—</span>;
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-3">
+      {accionesEdicion}
+      {/* Independiente de Editar/Eliminar: visible siempre, incluso si la ventana ya fue
+          eliminada lógicamente o está en edición. */}
+      <Boton
+        variante="texto"
+        onClick={onSolicitarArchivado}
+        aria-label={`${textoAccionArchivado} la ventana ${ventana.anio}`}
+      >
+        <IconoArchivar />
+        {textoAccionArchivado}
+      </Boton>
+    </div>
+  );
+}
+
+// Una fila de la tabla, con su propia rama de edición inline. Sin estado propio: todo (qué fila
+// está en edición, el borrador de edición, los distintos "objetivo de..." que abren un diálogo)
+// vive en `TablaVentanasCarga`, que es quien decide qué mostrar; esta fila solo renderiza y
+// reenvía eventos, mismo criterio de separar UI y lógica que el resto de `shared/components`.
+type FilaVentanaCargaProps = {
+  ventana: VentanaCargaVista;
+  enEdicion: boolean;
+  edicion: FormularioEdicion;
+  guardandoEdicion: boolean;
+  opcionesFormatoExcel: OpcionSelect[];
+  puedeEliminarFila: boolean;
+  onCambiarEdicion: (cambio: Partial<FormularioEdicion>) => void;
+  onIniciarEdicion: () => void;
+  onGuardarEdicion: () => void;
+  onCancelarEdicion: () => void;
+  onSolicitarEliminacion: () => void;
+  onSolicitarPublicacion: () => void;
+  onSolicitarArchivado: () => void;
+};
+
+function FilaVentanaCarga({
+  ventana,
+  enEdicion,
+  edicion,
+  guardandoEdicion,
+  opcionesFormatoExcel,
+  puedeEliminarFila,
+  onCambiarEdicion,
+  onIniciarEdicion,
+  onGuardarEdicion,
+  onCancelarEdicion,
+  onSolicitarEliminacion,
+  onSolicitarPublicacion,
+  onSolicitarArchivado,
+}: FilaVentanaCargaProps) {
+  const estado = resolverEstadoVentana(ventana);
+
+  return (
+    <tr className="align-middle transition-colors hover:bg-gob-neutral/50">
+      <th scope="row" className="px-3 py-2 font-medium text-gob-black tabular-nums">
+        {ventana.anio}
+      </th>
+      <td className="whitespace-nowrap px-3 py-2 text-gob-gray-a">
+        {enEdicion ? (
+          <select
+            aria-label={`Formato de archivo de la ventana ${ventana.anio}`}
+            value={edicion.formatoExcelId}
+            disabled={guardandoEdicion}
+            onChange={(evento) => onCambiarEdicion({ formatoExcelId: evento.target.value })}
+            className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
+          >
+            {opcionesFormatoExcel.map((opcion) => (
+              <option key={opcion.valor} value={opcion.valor}>
+                {opcion.etiqueta}
+              </option>
+            ))}
+          </select>
+        ) : (
+          ventana.formatoExcelNombre
+        )}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
+        {enEdicion ? (
+          <input
+            type="date"
+            aria-label={`Fecha de apertura de la ventana ${ventana.anio}`}
+            value={edicion.fechaApertura}
+            disabled={guardandoEdicion}
+            onChange={(evento) => onCambiarEdicion({ fechaApertura: evento.target.value })}
+            className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
+          />
+        ) : (
+          formatearFechaIso(ventana.fechaApertura)
+        )}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
+        {enEdicion ? (
+          <input
+            type="date"
+            aria-label={`Fecha de vencimiento de la ventana ${ventana.anio}`}
+            value={edicion.fechaVencimiento}
+            disabled={guardandoEdicion}
+            onChange={(evento) => onCambiarEdicion({ fechaVencimiento: evento.target.value })}
+            className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
+          />
+        ) : (
+          formatearFechaIso(ventana.fechaVencimiento)
+        )}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2">
+        <span
+          className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${estado.claseColor}`}
+        >
+          {estado.texto}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-3 py-2">
+        <span className="flex items-center gap-2">
+          <Interruptor
+            activado={ventana.publicada}
+            etiqueta={`Ventana ${ventana.anio} publicada`}
+            onCambiar={onSolicitarPublicacion}
+            bloqueado={ventana.eliminadaEn !== null || ventana.archivada}
+            tooltip={resolverTooltipPublicacion(ventana)}
+          />
+          <span className="w-16 text-sm text-gob-gray-a">{ventana.publicada ? "Publicada" : "Borrador"}</span>
+        </span>
+      </td>
+      <td className="px-3 py-2 text-gob-gray-a">{ventana.creadoPorNombre}</td>
+      <td className="px-3 py-2 tabular-nums text-gob-gray-a">{ventana.cantidadCargas}</td>
+      <td className="whitespace-nowrap px-3 py-2 text-right">
+        <ViewTransition>
+          <Link
+            href={ventana.rutaDetalle}
+            className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+          >
+            Detalle
+          </Link>
+        </ViewTransition>
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right">
+        <AccionesFilaVentana
+          ventana={ventana}
+          enEdicion={enEdicion}
+          guardandoEdicion={guardandoEdicion}
+          puedeEliminarFila={puedeEliminarFila}
+          onIniciarEdicion={onIniciarEdicion}
+          onGuardarEdicion={onGuardarEdicion}
+          onCancelarEdicion={onCancelarEdicion}
+          onSolicitarEliminacion={onSolicitarEliminacion}
+          onSolicitarArchivado={onSolicitarArchivado}
+        />
+      </td>
+    </tr>
+  );
+}
+
 // Tabla + formulario de creación, compartidos entre `/dashboard/ventanas-carga` (ADMIN) y
 // `/revisor/ventanas-carga` (REVISOR_REPOSITORIO): ambos perfiles pueden crear ventanas, editar
 // sus fechas/formato de archivo y publicarlas (RF-15). Las fechas y el formato de archivo se
@@ -75,7 +485,8 @@ type FormularioEdicion = { fechaApertura: string; fechaVencimiento: string; form
 // cualquiera, REVISOR_REPOSITORIO solo las que él mismo creó — el botón se oculta según
 // `esAdmin`/`actorId`, pero la regla real la aplica el servidor (`EliminarVentanaCarga.ts`), esto
 // es solo para no ofrecer una acción que igual se rechazaría. Publicar/despublicar SÍ es simétrico
-// entre ambos perfiles, sin ocultamiento alguno.
+// entre ambos perfiles, sin ocultamiento alguno. Archivar/desarchivar también es simétrico y, a
+// diferencia de Editar/Eliminar, no se oculta nunca (ni con la ventana eliminada lógicamente).
 type TablaVentanasCargaProps = {
   ventanas: VentanaCargaVista[];
   actorId: string;
@@ -109,13 +520,49 @@ export function TablaVentanasCarga({
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
-  const [objetivoEliminacion, setObjetivoEliminacion] = useState<VentanaCargaVista | null>(null);
-  const [eliminando, setEliminando] = useState(false);
-  const [errorEliminacion, setErrorEliminacion] = useState<string | null>(null);
+  // Elimina la ventana: `DELETE`, sin cuerpo. `EliminarVentanaCarga.ts` decide si es física o
+  // lógica; el resultado no cambia esta llamada.
+  const eliminacion = useAccionConfirmable<VentanaCargaVista>(
+    (ventana) => fetch(`/api/dashboard/ventanas-carga/${ventana.id}`, { method: "DELETE" }),
+    () => router.refresh(),
+  );
 
-  const [objetivoPublicacion, setObjetivoPublicacion] = useState<VentanaCargaVista | null>(null);
-  const [cambiandoPublicacion, setCambiandoPublicacion] = useState(false);
-  const [errorPublicacion, setErrorPublicacion] = useState<string | null>(null);
+  // Publica/despublica: invierte el estado actual de la ventana objetivo.
+  const publicacion = useAccionConfirmable<VentanaCargaVista>(
+    (ventana) =>
+      fetch(`/api/dashboard/ventanas-carga/${ventana.id}/publicacion`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicada: !ventana.publicada }),
+      }),
+    () => router.refresh(),
+  );
+
+  // Archiva/desarchiva: invierte el estado actual de la ventana objetivo. El servidor decide la
+  // publicación resultante (`publicacionResultanteAlArchivar`), este cliente no la calcula.
+  const archivado = useAccionConfirmable<VentanaCargaVista>(
+    (ventana) =>
+      fetch(`/api/dashboard/ventanas-carga/${ventana.id}/archivado`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archivada: !ventana.archivada }),
+      }),
+    () => router.refresh(),
+  );
+
+  // Buscador y filtros del listado (RF-15 ampliación): resueltos en cliente sobre el arreglo ya
+  // cargado, sin pedir nada nuevo al servidor. `mostrarArchivadas` apagado por defecto: una
+  // ventana archivada solo aparece si se activa el interruptor, sin importar el resto de filtros.
+  const [terminoBusqueda, setTerminoBusqueda] = useState("");
+  const [filtroFormato, setFiltroFormato] = useState("");
+  const [mostrarArchivadas, setMostrarArchivadas] = useState(false);
+
+  const opcionesFiltroFormato: OpcionSelect[] = [OPCION_TODOS_LOS_FORMATOS, ...opcionesFormatoExcel];
+
+  const ventanasFiltradas = useMemo(
+    () => filtrarVentanas(ventanas, { termino: terminoBusqueda, filtroFormato, mostrarArchivadas }),
+    [ventanas, terminoBusqueda, filtroFormato, mostrarArchivadas],
+  );
 
   async function crearVentana() {
     setCreando(true);
@@ -193,65 +640,13 @@ export function TablaVentanasCarga({
     }
   }
 
-  async function confirmarEliminacion() {
-    if (!objetivoEliminacion) return;
-
-    setEliminando(true);
-    setErrorEliminacion(null);
-
-    try {
-      const respuesta = await fetch(`/api/dashboard/ventanas-carga/${objetivoEliminacion.id}`, {
-        method: "DELETE",
-      });
-
-      if (!respuesta.ok) {
-        const datos = await respuesta.json().catch(() => null);
-        setErrorEliminacion(datos?.error ?? MENSAJE_ERROR_GENERICO);
-        setEliminando(false);
-        return;
-      }
-
-      setObjetivoEliminacion(null);
-      setEliminando(false);
-      router.refresh();
-    } catch {
-      setErrorEliminacion(MENSAJE_ERROR_GENERICO);
-      setEliminando(false);
-    }
-  }
-
-  async function confirmarCambioPublicacion() {
-    if (!objetivoPublicacion) return;
-
-    setCambiandoPublicacion(true);
-    setErrorPublicacion(null);
-
-    try {
-      const respuesta = await fetch(`/api/dashboard/ventanas-carga/${objetivoPublicacion.id}/publicacion`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicada: !objetivoPublicacion.publicada }),
-      });
-
-      if (!respuesta.ok) {
-        const datos = await respuesta.json().catch(() => null);
-        setErrorPublicacion(datos?.error ?? MENSAJE_ERROR_GENERICO);
-        setCambiandoPublicacion(false);
-        return;
-      }
-
-      setObjetivoPublicacion(null);
-      setCambiandoPublicacion(false);
-      router.refresh();
-    } catch {
-      setErrorPublicacion(MENSAJE_ERROR_GENERICO);
-      setCambiandoPublicacion(false);
-    }
-  }
-
   function puedeEliminar(ventana: VentanaCargaVista): boolean {
     return esAdmin || ventana.creadoPorId === actorId;
   }
+
+  const mensajeVacio = resolverMensajeVacio(ventanas.length, ventanasFiltradas.length);
+  const dialogoPublicacion = resolverDialogoPublicacion(publicacion.objetivo);
+  const dialogoArchivado = resolverDialogoArchivado(archivado.objetivo);
 
   return (
     <div className="mt-6 flex flex-col gap-6">
@@ -323,12 +718,22 @@ export function TablaVentanasCarga({
         </Boton>
       </section>
 
-      {ventanas.length === 0 ? (
+      {ventanas.length > 0 ? (
+        <BuscadorVentanasCarga
+          terminoBusqueda={terminoBusqueda}
+          onCambiarBusqueda={setTerminoBusqueda}
+          filtroFormato={filtroFormato}
+          onCambiarFiltroFormato={setFiltroFormato}
+          opciones={opcionesFiltroFormato}
+          mostrarArchivadas={mostrarArchivadas}
+          onCambiarMostrarArchivadas={() => setMostrarArchivadas((actual) => !actual)}
+        />
+      ) : null}
+
+      {mensajeVacio ? (
         <div className="rounded-lg border border-gob-accent bg-white p-8 text-center">
-          <p className="text-base font-semibold text-gob-black">Aún no hay ventanas de carga</p>
-          <p className="mt-2 text-sm text-gob-gray-a">
-            Crea la primera ventana para habilitar la subida de archivos a los notificadores.
-          </p>
+          <p className="text-base font-semibold text-gob-black">{mensajeVacio.titulo}</p>
+          <p className="mt-2 text-sm text-gob-gray-a">{mensajeVacio.cuerpo}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gob-accent bg-white">
@@ -353,150 +758,24 @@ export function TablaVentanasCarga({
               </tr>
             </thead>
             <tbody className="divide-y divide-gob-accent/60">
-              {ventanas.map((ventana) => {
-                const enEdicion = idEnEdicion === ventana.id;
-
-                return (
-                  <tr key={ventana.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
-                    <th scope="row" className="px-3 py-2 font-medium text-gob-black tabular-nums">
-                      {ventana.anio}
-                    </th>
-                    <td className="whitespace-nowrap px-3 py-2 text-gob-gray-a">
-                      {enEdicion ? (
-                        <select
-                          aria-label={`Formato de archivo de la ventana ${ventana.anio}`}
-                          value={edicion.formatoExcelId}
-                          disabled={guardandoEdicion}
-                          onChange={(evento) =>
-                            setEdicion((actual) => ({ ...actual, formatoExcelId: evento.target.value }))
-                          }
-                          className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
-                        >
-                          {opcionesFormatoExcel.map((opcion) => (
-                            <option key={opcion.valor} value={opcion.valor}>
-                              {opcion.etiqueta}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        ventana.formatoExcelNombre
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                      {enEdicion ? (
-                        <input
-                          type="date"
-                          aria-label={`Fecha de apertura de la ventana ${ventana.anio}`}
-                          value={edicion.fechaApertura}
-                          disabled={guardandoEdicion}
-                          onChange={(evento) =>
-                            setEdicion((actual) => ({ ...actual, fechaApertura: evento.target.value }))
-                          }
-                          className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
-                        />
-                      ) : (
-                        formatearFechaIso(ventana.fechaApertura)
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                      {enEdicion ? (
-                        <input
-                          type="date"
-                          aria-label={`Fecha de vencimiento de la ventana ${ventana.anio}`}
-                          value={edicion.fechaVencimiento}
-                          disabled={guardandoEdicion}
-                          onChange={(evento) =>
-                            setEdicion((actual) => ({ ...actual, fechaVencimiento: evento.target.value }))
-                          }
-                          className="rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
-                        />
-                      ) : (
-                        formatearFechaIso(ventana.fechaVencimiento)
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      <span
-                        className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${
-                          ventana.eliminadaEn
-                            ? "border-gob-danger text-gob-danger"
-                            : ventana.abierta
-                              ? "border-gob-primary text-gob-primary"
-                              : "border-gob-gray-a text-gob-gray-a"
-                        }`}
-                      >
-                        {ventana.eliminadaEn ? "Eliminada" : ventana.abierta ? "Abierta" : "Cerrada"}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      <span className="flex items-center gap-2">
-                        <Interruptor
-                          activado={ventana.publicada}
-                          etiqueta={`Ventana ${ventana.anio} publicada`}
-                          onCambiar={() => {
-                            setErrorPublicacion(null);
-                            setObjetivoPublicacion(ventana);
-                          }}
-                          bloqueado={ventana.eliminadaEn !== null}
-                          tooltip={ventana.eliminadaEn !== null ? "No puedes publicar una ventana eliminada" : undefined}
-                        />
-                        <span className="w-16 text-sm text-gob-gray-a">
-                          {ventana.publicada ? "Publicada" : "Borrador"}
-                        </span>
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-gob-gray-a">{ventana.creadoPorNombre}</td>
-                    <td className="px-3 py-2 tabular-nums text-gob-gray-a">{ventana.cantidadCargas}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <ViewTransition>
-                        <Link
-                          href={ventana.rutaDetalle}
-                          className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
-                        >
-                          Detalle
-                        </Link>
-                      </ViewTransition>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {ventana.eliminadaEn ? (
-                        <span className="text-xs text-gob-gray-a">—</span>
-                      ) : enEdicion ? (
-                        <div className="flex items-center justify-end gap-3">
-                          <Boton
-                            variante="texto"
-                            cargando={guardandoEdicion}
-                            textoCargando="Guardando..."
-                            onClick={() => void guardarEdicion()}
-                          >
-                            Guardar
-                          </Boton>
-                          <Boton variante="texto" disabled={guardandoEdicion} onClick={cancelarEdicion}>
-                            Cancelar
-                          </Boton>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-end gap-3">
-                          <Boton variante="texto" onClick={() => iniciarEdicion(ventana)}>
-                            Editar
-                          </Boton>
-                          {puedeEliminar(ventana) ? (
-                            <Boton
-                              variante="textoPeligro"
-                              onClick={() => {
-                                setErrorEliminacion(null);
-                                setObjetivoEliminacion(ventana);
-                              }}
-                              aria-label={`Eliminar la ventana ${ventana.anio}`}
-                            >
-                              <IconoEliminar />
-                              Eliminar
-                            </Boton>
-                          ) : null}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {ventanasFiltradas.map((ventana) => (
+                <FilaVentanaCarga
+                  key={ventana.id}
+                  ventana={ventana}
+                  enEdicion={idEnEdicion === ventana.id}
+                  edicion={edicion}
+                  guardandoEdicion={guardandoEdicion}
+                  opcionesFormatoExcel={opcionesFormatoExcel}
+                  puedeEliminarFila={puedeEliminar(ventana)}
+                  onCambiarEdicion={(cambio) => setEdicion((actual) => ({ ...actual, ...cambio }))}
+                  onIniciarEdicion={() => iniciarEdicion(ventana)}
+                  onGuardarEdicion={() => void guardarEdicion()}
+                  onCancelarEdicion={cancelarEdicion}
+                  onSolicitarEliminacion={() => eliminacion.solicitar(ventana)}
+                  onSolicitarPublicacion={() => publicacion.solicitar(ventana)}
+                  onSolicitarArchivado={() => archivado.solicitar(ventana)}
+                />
+              ))}
             </tbody>
           </table>
 
@@ -509,47 +788,42 @@ export function TablaVentanasCarga({
       )}
 
       <DialogoConfirmacion
-        abierto={objetivoEliminacion !== null}
+        abierto={eliminacion.objetivo !== null}
         titulo="Eliminar ventana de carga"
-        descripcion={
-          objetivoEliminacion
-            ? `Vas a eliminar la ventana del año ${objetivoEliminacion.anio}. Si no tiene ninguna carga de archivo asociada, se elimina por completo; si ya tiene alguna, queda marcada como eliminada (se conserva para no perder a qué ventana pertenecen esas cargas) y deja de habilitar nuevas subidas para ese año. Esta acción no se puede deshacer.`
-            : ""
-        }
+        descripcion={descripcionDialogoEliminacion(eliminacion.objetivo)}
         textoConfirmar="Eliminar"
         textoConfirmando="Eliminando..."
         variante="peligro"
-        procesando={eliminando}
-        error={errorEliminacion}
-        onConfirmar={() => void confirmarEliminacion()}
-        onCancelar={() => {
-          if (eliminando) return;
-          setObjetivoEliminacion(null);
-          setErrorEliminacion(null);
-        }}
+        procesando={eliminacion.procesando}
+        error={eliminacion.error}
+        onConfirmar={() => void eliminacion.confirmar()}
+        onCancelar={eliminacion.cancelar}
       />
 
       <DialogoConfirmacion
-        abierto={objetivoPublicacion !== null}
-        titulo={objetivoPublicacion?.publicada ? "Despublicar ventana" : "Publicar ventana"}
-        descripcion={
-          objetivoPublicacion
-            ? objetivoPublicacion.publicada
-              ? `La ventana del año ${objetivoPublicacion.anio} dejará de ser visible para los notificadores.`
-              : `La ventana del año ${objetivoPublicacion.anio} quedará visible para los notificadores con el formato ${objetivoPublicacion.formatoExcelNombre} asignado.`
-            : ""
-        }
-        textoConfirmar={objetivoPublicacion?.publicada ? "Despublicar" : "Publicar"}
+        abierto={publicacion.objetivo !== null}
+        titulo={dialogoPublicacion.titulo}
+        descripcion={dialogoPublicacion.descripcion}
+        textoConfirmar={dialogoPublicacion.textoConfirmar}
         textoConfirmando="Guardando..."
-        variante={objetivoPublicacion?.publicada ? "peligro" : "primario"}
-        procesando={cambiandoPublicacion}
-        error={errorPublicacion}
-        onConfirmar={() => void confirmarCambioPublicacion()}
-        onCancelar={() => {
-          if (cambiandoPublicacion) return;
-          setObjetivoPublicacion(null);
-          setErrorPublicacion(null);
-        }}
+        variante={dialogoPublicacion.variante}
+        procesando={publicacion.procesando}
+        error={publicacion.error}
+        onConfirmar={() => void publicacion.confirmar()}
+        onCancelar={publicacion.cancelar}
+      />
+
+      <DialogoConfirmacion
+        abierto={archivado.objetivo !== null}
+        titulo={dialogoArchivado.titulo}
+        descripcion={dialogoArchivado.descripcion}
+        textoConfirmar={dialogoArchivado.textoConfirmar}
+        textoConfirmando="Guardando..."
+        variante={dialogoArchivado.variante}
+        procesando={archivado.procesando}
+        error={archivado.error}
+        onConfirmar={() => void archivado.confirmar()}
+        onCancelar={archivado.cancelar}
       />
     </div>
   );

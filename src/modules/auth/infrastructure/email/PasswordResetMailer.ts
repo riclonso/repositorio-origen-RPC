@@ -2,6 +2,7 @@ import { configSmtp } from "@/infrastructure/config/env";
 import { correoDisponible, enviarCorreo } from "@/infrastructure/email/SmtpMailer";
 import { HORAS_VIGENCIA_TOKEN } from "@/modules/auth/domain/entities/PasswordResetToken";
 import type { EnviadorCorreoRecuperacion } from "@/modules/auth/application/ports";
+import { escaparHtml } from "@/shared/utils/escaparHtml";
 
 // Único lugar del sistema que sabe cómo se ve el correo de recuperación y cómo se arma la URL
 // del enlace.
@@ -27,14 +28,6 @@ function primerNombre(nombres: string): string {
 // legítimo llega al titular con un enlace que entrega el token al atacante.
 function construirEnlace(urlBase: string, token: string): string {
   return `${urlBase}/recuperar/confirmar?token=${encodeURIComponent(token)}`;
-}
-
-function escaparHtml(valor: string): string {
-  return valor
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function cuerpoTexto(saludo: string, enlace: string): string {

@@ -53,6 +53,13 @@ export function respuestaVentanaEliminada(): NextResponse {
   return respuestaError("Esta ventana ya fue eliminada", 409, { codigo: "VENTANA_ELIMINADA" });
 }
 
+// Se intentó ACTIVAR la publicación de una ventana archivada: primero hay que desarchivarla.
+export function respuestaVentanaArchivada(): NextResponse {
+  return respuestaError("No puedes publicar una ventana archivada. Desarchívala primero.", 409, {
+    codigo: "VENTANA_ARCHIVADA",
+  });
+}
+
 // El formato de archivo seleccionado no existe o no está activo (salvo que sea el que la ventana
 // ya tenía asignado, ver `editarVentanaCarga`). Mismo estilo que `respuestaRangoInvalido`.
 export function respuestaFormatoInvalido(): NextResponse {
@@ -67,5 +74,30 @@ export function respuestaFormatoInvalido(): NextResponse {
 export function respuestaSinPermisoEliminar(): NextResponse {
   return respuestaError("Solo puedes eliminar ventanas de carga que tú creaste", 403, {
     codigo: "SIN_PERMISO",
+  });
+}
+
+// RF-17 (alertas por email). El HTML sanitizado de la plantilla quedó con un placeholder que no
+// es ninguno de los permitidos.
+export function respuestaPlaceholderInvalido(placeholder: string): NextResponse {
+  return respuestaError(`La plantilla contiene un marcador no permitido: {{${placeholder}}}`, 400, {
+    campo: "plantillaAlerta",
+    codigo: "PLACEHOLDER_INVALIDO",
+  });
+}
+
+// No es un error grave (la operación se aceptó), pero no hay a quién enviarle: no se genera un
+// lote vacío.
+export function respuestaSinPendientes(): NextResponse {
+  return respuestaError("No hay notificadores pendientes de reportar en esta ventana", 409, {
+    codigo: "SIN_PENDIENTES",
+  });
+}
+
+// El `usuarioId` recibido ya no está en la lista real de pendientes al revalidar en el servidor
+// (ya reportó, fue desactivado, o se le quitó el formato entre que se abrió el modal y se envió).
+export function respuestaDestinatarioNoPendiente(): NextResponse {
+  return respuestaError("Este notificador ya no está pendiente de reportar en esta ventana", 409, {
+    codigo: "DESTINATARIO_NO_PENDIENTE",
   });
 }

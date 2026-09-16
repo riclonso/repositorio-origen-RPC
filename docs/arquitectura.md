@@ -989,6 +989,75 @@ canary (`next/dist/compiled/react`, que sí implementa `ViewTransition`) al comp
 componentes de `app/`. Verificado con `npx tsc --noEmit` y `npm run build` antes de dar esta
 ampliación por terminada.
 
+### Archivar/desarchivar ventanas, buscador y filtro por formato (ampliación de RF-15)
+
+Agregado después de la entrega inicial de RF-15, a pedido explícito del usuario: un cuarto eje de
+estado, independiente de `publicada`/`eliminadaEn`, para ocultar ventanas de la vista por defecto
+del panel administrativo sin perderlas (recuperables por búsqueda), simétrico entre ADMIN y
+REVISOR_REPOSITORIO.
+
+**`VentanaCarga.archivada`, un eje nuevo, no una reutilización de `eliminadaEn`/`publicada`.**
+`eliminadaEn` es irreversible y está atado al `ON DELETE RESTRICT` de `CargaArchivo`; `publicada`
+es el efecto que gobierna la visibilidad para el notificador, no la causa de "oculta del listado
+administrativo". Ninguno de los dos expresaba "oculta pero recuperable", así que se agregó
+`archivada Boolean @default(false)` (migración `20260916124153_agregar_archivada_ventana_carga`,
+aditiva, sin backfill: el default cubre las filas existentes). Sin restricción de estado previo:
+se puede archivar cualquier ventana, en cualquier combinación de `publicada`/`eliminadaEn`.
+
+**Archivar despublica en la MISMA escritura atómica; desarchivar no vuelve a publicar sola.**
+`publicacionResultanteAlArchivar(publicadaActual, archivada)` (`domain/entities/VentanaCarga.ts`)
+es la única función que decide el valor resultante de `publicada` al cambiar `archivada`: devuelve
+`false` si se está archivando, o `publicadaActual` sin cambios si se está desarchivando. El caso de
+uso `cambiarArchivadoVentanaCarga` la usa para construir el `data` de una sola llamada a
+`VentanaCargaRepository.cambiarArchivado(id, { archivada, publicada })`, que
+`PrismaVentanaCargaRepository` resuelve con un único `prisma.ventanaCarga.update()` (mismo patrón
+que `cambiarPublicacion`, sin `$transaction`: es una sola sentencia SQL). El resultado es que nunca
+existe un estado observable con `archivada: true` y `publicada: true` simultáneamente, por lo que
+`listarDisponibles()` (usado por `/notificador` y por `TableroSeguimientoVentanas`, RF-16) no
+necesitó ningún cambio: ya filtraba `publicada: true`.
+
+**`CambiarPublicacionVentanaCarga` cierra el hueco de saltarse "Desarchivar".** Sin este cambio,
+alguien podría llamar directamente al endpoint de publicación ya existente para volver a publicar
+una ventana archivada sin pasar por "Desarchivar", dejando el estado peligroso que el punto
+anterior evita. `puedePublicarse(ventana)` (`domain/entities/VentanaCarga.ts`) extrae la regla
+completa (`eliminadaEn === null && !archivada`) en un solo lugar; el caso de uso solo la aplica
+cuando se intenta ACTIVAR la publicación (`publicada: true`) — despublicar una ventana archivada
+sigue permitido siempre (aunque no debería hacer falta, ya debería estar en `false`). El motivo de
+rechazo nuevo `VENTANA_ARCHIVADA` viaja con la misma forma que el `VENTANA_ELIMINADA` ya existente,
+mapeado a 409 por `respuestaVentanaArchivada()` (`app/api/dashboard/ventanas-carga/_lib/http.ts`).
+
+**Endpoint dedicado, copia estructural de `.../publicacion`.**
+`PATCH /api/dashboard/ventanas-carga/[id]/archivado` (`route.ts` nuevo) reutiliza el mismo guard
+`exigirAdminORevisor()`, el mismo esquema Zod (`cambiarArchivadoVentanaCargaSchema`, `{ archivada:
+boolean }`) y el mismo patrón de respuesta/auditoría que el endpoint de publicación — sin
+restricción de ownership, simétrico entre ambos perfiles. Un solo evento de auditoría por operación
+(`VENTANA_CARGA_ARCHIVO_CAMBIADO`, éxito y rechazos `SIN_PERMISO`/`NO_ENCONTRADO`), aunque
+internamente se toquen dos columnas: refleja la intención real del actor. El evento incluye tanto
+`archivada` (nuevo valor) como `publicada` (valor resultante), reutilizando el campo `publicada` que
+ya existía en `EventoAuditoria` para `VENTANA_CARGA_PUBLICACION_CAMBIADA`.
+
+**Buscador y filtro resueltos en cliente, sin endpoint ni consulta SQL nueva.**
+`TablaVentanasCarga` (componente compartido) filtra el arreglo ya cargado por el servidor: coincidencia
+de texto contra el año (como string) y el nombre del formato, un `<select>` de formato con "Todos" que
+reutiliza el mismo catálogo de opciones que el formulario de creación/edición, y un interruptor
+"Mostrar archivadas" (apagado por defecto, oculta las filas archivadas salvo que se active). La
+columna "Estado" ganó un cuarto valor, "Archivada", con la misma prioridad visual que ya tenía
+"Eliminada" (una fila eliminada sigue mostrando "Eliminada" aunque también esté archivada:
+`resolverEstadoVentana()` resuelve esa jerarquía en un solo lugar). El botón "Archivar"/"Desarchivar"
+es independiente de "Editar"/"Eliminar": va siempre visible, incluso con la ventana eliminada
+lógicamente o en edición (a diferencia de esos dos, que sí se ocultan). El interruptor "Publicada" se
+bloquea también cuando `archivada === true`, con el mismo mecanismo de tooltip ya usado para
+`eliminadaEn`.
+
+**Extracción a subcomponentes y a un hook genérico, para no degradar la complejidad del componente
+compartido.** `TablaVentanasCarga.tsx` ya era un componente grande antes de esta ampliación; agregar
+el buscador, el diálogo de archivado y la columna/botón nuevos sin reestructurar habría cruzado el
+umbral de complejidad de `react-doctor` (`no-high-complexity-react-function`). Se extrajeron
+`BuscadorVentanasCarga` (la barra de filtros), `FilaVentanaCarga`/`AccionesFilaVentana` (una fila y
+su celda de acciones, sin estado propio: reciben callbacks) y un hook `useAccionConfirmable<T>` que
+generaliza el patrón "objetivo pendiente + procesando + error + confirmar" ya repetido por
+eliminar/publicar y ahora también por archivar, en vez de triplicar el mismo bloque de `try/catch`.
+
 ### Tablero de seguimiento de ventanas de carga abiertas (RF-16)
 
 **Reutiliza "abierta" tal cual, no la reimplementa.** `TableroSeguimientoVentanas`
@@ -1110,3 +1179,217 @@ sin reutilización. Al necesitar las mismas etiquetas también en `GeneradorErro
 `DetalleCargaPropia.tsx`, se movieron a `shared/utils/erroresCargaArchivo.ts` y
 `shared/utils/estadoCargaArchivo.ts`: un único lugar por concepto evita que la tabla en pantalla, el
 Excel descargable y el detalle diverjan en el texto mostrado para el mismo dato.
+
+## Alertas por email a notificadores (RF-17)
+
+Alertas por email a notificadores NOTIFICADOR_RPC que no han reportado su archivo en una ventana de
+carga, configurable por ventana, con envío automático (scheduler en proceso) y manual (masivo o
+individual), plantilla HTML enriquecida editable, e historial de envíos agrupado por lotes.
+
+### Sanitización en dos etapas, no una
+
+`modules/ventanas-carga/domain/entities/PlantillaAlerta.ts` sanea el HTML dos veces, con criterios
+distintos, porque son dos superficies distintas:
+
+* **Guardado** (`sanitizarPlantillaAlertaHtml`): el HTML que produce el editor (plantilla de la
+  ventana, o el mensaje editado en el modal individual antes de resolver placeholders). El único
+  `<a href>` permitido es el marcador literal `{{enlaceSistema}}`; cualquier otro se degrada a
+  `<span>` (conserva el texto, pierde el enlace) — nunca se descarta el nodo completo, para que un
+  operador que pegó un enlace externo por error siga viendo el texto que escribió.
+* **Envío** (`sanitizarMensajeResueltoHtml`): el mensaje ya con los placeholders resueltos,
+  incluido el enlace convertido en la URL real. El único `href` permitido es exactamente esa URL,
+  con `rel="noopener noreferrer"` agregado por el servidor. Es defensa en profundidad: cierra la
+  ventana entre "lo que el editor pudo producir" y "lo que realmente se envía" — un valor de
+  `mensaje` manipulado directamente vía la API (sin pasar por el editor) queda igual de acotado.
+
+**Detalle de `sanitize-html` encontrado al probar, no documentado en su propia referencia:**
+`transformTags` degradando un `<a>` a un tagName que NO está en `allowedTags` dejaba, en un
+documento con dos transformaciones de `<a>` (una descartada, otra preservada), el HTML resultante
+con las etiquetas de cierre desalineadas entre elementos hermanos (`<a href="...">texto</span>` en
+vez de `</a>`) — no una vulnerabilidad de XSS (el contenido peligroso sigue fuera), pero sí HTML
+inválido que podría romperse en un cliente de correo. La corrección fue agregar `span` a
+`allowedTags` (sin atributos permitidos) para que el tagName de destino de la degradación sea un
+tag reconocido y el manejo de la pila de tags de la librería no se desincronice entre hermanos.
+
+### `resolverPlantillaAlerta`: escapar datos de usuario, no la URL que arma el servidor
+
+Cada valor de `PLACEHOLDERS_PERMITIDOS` (`nombreUsuario`, `diasRestantes`, `formatoArchivo`,
+`anio`) se escapa con `escaparHtml()` antes de interpolarse — son datos que, aunque hoy vienen de
+la base y no directamente de un formulario, podrían contener caracteres con significado HTML
+(un nombre con `&`, por ejemplo). El marcador `{{enlaceSistema}}` se reemplaza por la URL real SIN
+escapar: es una cadena construida por el propio servidor (`AlertaVentanaMailer.construirUrlEnlaceSistema`),
+no un dato de usuario.
+
+### `escaparHtml`/`describirFalloEnvio` centralizados en `shared/utils/`
+
+Ambas funciones vivían privadas dentro de `modules/auth/` (`PasswordResetMailer.ts` y
+`RequestPasswordReset.ts` respectivamente, de RF-10). RF-17 las necesita desde
+`modules/ventanas-carga/`, y `application/`/`domain/` de un módulo no puede importar
+infraestructura o un caso de uso de otro módulo — se movieron a `shared/utils/escaparHtml.ts` y
+`shared/utils/describirFalloEnvio.ts`, y `modules/auth/` pasó a importarlas desde ahí en vez de
+declararlas de nuevo.
+
+### El enlace al sistema es un puerto, no una función de infraestructura importada directamente
+
+`EnviadorCorreoAlerta` (`modules/ventanas-carga/application/ports.ts`) expone
+`construirUrlEnlaceSistema(): string` además de `enviar()` y `disponible()`. Los casos de uso de
+envío (`EnviarAlertaMasivaVentana`, `EnviarAlertaIndividualVentana`, `EjecutarEnvioAutomaticoAlertas`,
+`ObtenerVistaAlertasVentana`) necesitan esa URL para resolver la plantilla, pero `application/` no
+puede invocar `infrastructure/` directamente (la URL se arma siempre desde `configSmtp.urlBase`,
+nunca desde una cabecera de la petición, mismo criterio de seguridad que `PasswordResetMailer.ts`)
+— por eso vive en el puerto, implementado por `infrastructure/email/AlertaVentanaMailer.ts`, no como
+una función suelta importada desde `application/`.
+
+### Deduplicación del envío automático: un índice único parcial, no una comprobación previa
+
+`AlertaNotificacionVentana` tiene un índice único parcial agregado a mano en la migración
+(`WHERE tipo = 'AUTOMATICA' AND resultado = 'EXITO'`, sobre `(ventanaCargaId, usuarioId,
+fechaProgramada)`) porque Prisma no expresa `WHERE` en su DSL. `EjecutarEnvioAutomaticoAlertas`
+igual consulta primero `listarUsuariosConEnvioExitoso` (una consulta por ventana, nunca una por
+destinatario) para no intentar un envío que el índice de todas formas rechazaría; si una carrera
+real ocurre entre dos ejecuciones del ciclo, `crearLote` usa `skipDuplicates: true` en el
+`createMany`, que absorbe la colisión en silencio sin fallar el resto del lote.
+
+### Reintento solo en el envío automático, con espera fija, persistiendo únicamente el resultado final
+
+`enviarConReintento` (dentro de `EjecutarEnvioAutomaticoAlertas.ts`) reintenta hasta 3 veces con
+2 segundos de espera entre intentos, y solo se persiste UNA fila por destinatario (el resultado del
+último intento), nunca una fila por intento fallido. El envío manual (masivo o individual) no
+reintenta: un clic del operador es un solo intento, con su resultado inmediato.
+
+### Los envíos automáticos no se auditan en `logs/auditoria.txt`
+
+A diferencia de los cuatro endpoints manuales (`VENTANA_CARGA_ALERTAS_CONFIGURADAS`,
+`PLANTILLA_ALERTA_ACTUALIZADA`, `ALERTA_MASIVA_ENVIADA`, `ALERTA_INDIVIDUAL_ENVIADA`, auditados en
+éxito y en los rechazos de negocio), el ciclo automático del scheduler no genera ningún evento de
+auditoría: la propia tabla `alerta_notificacion_ventana` ya es su registro estructurado, con más
+detalle del que cabría en una línea de auditoría. Solo un fallo del CICLO COMPLETO (no de un envío
+puntual a un destinatario, que ya queda como fila `ERROR`) se registra, y en `logs/errores.txt` vía
+`logger.error`, no en `auditoria.txt`.
+
+### Scheduler en el mismo proceso, arrancado desde `instrumentation.ts`
+
+`src/infrastructure/scheduler/schedulerAlertasVentanas.ts` sigue exactamente el patrón de guard de
+`globalThis` de `src/infrastructure/database/prisma.ts` (una instancia por proceso, copia en
+`globalThis` solo en desarrollo para sobrevivir al Fast Refresh sin registrar dos tareas cron).
+`src/instrumentation.ts` (raíz de `src/`, no `app/`) exporta `register()`, filtrado por
+`process.env.NEXT_RUNTIME === "nodejs"` porque `node-cron` es Node-only y `register()` también se
+evalúa en el runtime Edge.
+
+### Editor de texto enriquecido: Lexical, sin conflicto de peers
+
+`shared/components/EditorTextoEnriquecidoLimitado.tsx` usa Lexical 0.50.0 (`lexical`,
+`@lexical/react`, `@lexical/list`, `@lexical/link`, `@lexical/html`), que declara
+`react: ">=18.x"` — se instaló sin ningún conflicto de peer dependency contra React 19.2.8, así que
+no hizo falta el plan B (`contentEditable` + `execCommand`). Barra de exactamente 4 botones
+(negrita, cursiva, lista con viñetas, "Enlace al sistema"); el botón de enlace siempre dispara
+`TOGGLE_LINK_COMMAND` con el marcador fijo `MARCADOR_ENLACE_SISTEMA`, nunca un campo de texto
+editable por el operador — si no hay selección activa, inserta el texto "Ingresa aquí" ya envuelto
+en el enlace (`$createLinkNode` + `$createTextNode`, sin pasar por un `<a href>` con URL libre en
+ningún momento). Serializa/deserializa como HTML (`$generateHtmlFromNodes`/`$generateNodesFromDOM`
+de `@lexical/html`), nunca como el JSON interno de Lexical: lo único que persiste el servidor es
+HTML, y ese HTML siempre pasa por `sanitizarPlantillaAlertaHtml` en `application/` antes de
+guardarse — el editor no es una barrera de seguridad, solo la superficie de edición. "Restaurar
+plantilla por defecto" fuerza un remount del editor (cambia la prop `key`) en vez de mutar su
+estado interno: Lexical no expone una prop `value` controlada.
+
+**`DOMParser` no existe durante el pase de servidor de un Client Component.** La carga del HTML
+inicial NUNCA debe ir en `initialConfig.editorState` de `LexicalComposer`: ese callback lo ejecuta
+React durante el render, incluido el pase de SSR que Next.js hace de cualquier Client Component
+antes de hidratar (`"use client"` no exime de ese pase) — y `DOMParser` es una API exclusiva del
+navegador. `CargarHtmlInicialPlugin` mueve ese parseo a un `useEffect` (que solo corre en el
+cliente), dejando el editor nacer vacío en el pase de servidor. Se comprobó reproduciendo el pase
+de SSR con `react-dom/server` fuera del navegador: con el HTML inicial en `initialConfig.editorState`
+lanzaba `ReferenceError: DOMParser is not defined` en cada render de servidor (rompía la página de
+detalle completa, no solo la sección de alertas); con el `useEffect`, el mismo render no lanza nada.
+
+**`LinkNode.sanitizeUrl()` corrompe el marcador `{{enlaceSistema}}` a `https://{{enlaceSistema}}`,
+tanto en el DOM visible como en el HTML exportado — no configurable desde fuera.** Comprobado
+llamando directamente al `formatUrl()` exportado por `@lexical/link`: cualquier `url` de un
+`LinkNode` que no empiece con un esquema reconocido (`http:`, `mailto:`, etc.), un `/`, un `#`, o
+incluya `@`, se le antepone `https://` — y esa función corre SIEMPRE que el nodo se renderiza a DOM
+(`createDOM`/`updateDOM`, usados tanto por el editor visible como por `exportDOM`, que
+`$generateHtmlFromNodes` invoca internamente). El estado interno del nodo (`getURL()`) queda
+intacto; solo lo que se VE y lo que se EXPORTA se corrompe. Como no hay ninguna opción pública del
+plugin de enlaces para desactivar esta normalización, la corrección vive en dos puntos de
+`EditorTextoEnriquecidoLimitado.tsx`: `corregirMarcadorEnlaceHtml()` deshace la corrupción en el
+HTML que sale hacia `onChangeHtml` (antes de llegar al servidor), y `CorregirEnlaceSistemaPlugin`
+(`registerMutationListener(LinkNode, ...)`) la corrige también en el DOM visible del editor, para
+que el operador nunca vea el marcador con el prefijo agregado. **Sin ninguna de las dos
+correcciones, el sistema seguía siendo seguro** (verificado): `sanitizarPlantillaAlertaHtml`
+compara el `href` con igualdad EXACTA contra `MARCADOR_ENLACE_SISTEMA`, así que un
+`href="https://{{enlaceSistema}}"` corrompido no calza y se degrada a `<span>` igual que cualquier
+otro enlace no autorizado — el bug rompía la FUNCIÓN (el enlace se perdía en cada guardado hecho
+desde el editor), nunca abrió una vía de bypass de la sanitización.
+
+### `useAccionConfirmable` extraído a `shared/hooks/`
+
+Vivía privado dentro de `TablaVentanasCarga.tsx` (eliminar/publicar/archivar). RF-17 lo reutiliza
+en `TablaNotificadoresPendientesVentana.tsx` para el envío masivo; se movió a
+`shared/hooks/useAccionConfirmable.ts` sin cambiar su comportamiento, y `TablaVentanasCarga.tsx`
+pasó a importarlo desde ahí. El envío individual usa estado propio (no este hook): el mensaje
+editado en el modal solo se conoce al momento de confirmar, y no cabe en la forma de "un objetivo
+fijo desde que se solicita" del hook genérico.
+
+## "Mis cargas" del notificador: histórico de exitosas (RF-18)
+
+`/notificador/cargas`, enlazada desde el menú lateral (`nav-enlaces.ts`), reemplaza la sección "Mis
+cargas" que vivía al final de Inicio. Cambia de alcance: antes listaba toda `CargaArchivo` propia sin
+filtrar, ahora solo `estado = APROBADA` (decisión explícita del usuario) — `CON_ERRORES` sigue en
+"Intentos fallidos" y `PENDIENTE_VISTO_BUENO` sigue en Inicio, ninguno de los dos se tocó. Sin
+migración de Prisma (todo el dato ya existía en `CargaArchivo`) ni endpoint `/api/` nuevo (Server
+Component puro sobre el repositorio, mismo criterio que RF-15/RF-16).
+
+### Reemplazo derivado en lectura, agrupado por `ventanaCargaId`
+
+Igual que RF-16 documentó para el tablero de seguimiento, `CargaArchivo` no tiene restricción de
+unicidad sobre `(usuarioId, ventanaCargaId)`: un notificador puede tener varias `APROBADA` para la
+misma ventana (correcciones sucesivas). No existe ningún flag "reemplazada" persistido — se deriva
+en `agruparCargasAprobadasPorVentana()` (`domain/entities/CargaArchivo.ts`): agrupa por
+`ventanaCargaId`, y entre las que comparten grupo, la de mayor `vistoBuenoEn` es la vigente (fila
+principal) y el resto quedan como reemplazadas, listadas como historial anidado (`<details>` dentro
+de la misma fila, mismo patrón accesible que `/dashboard/logs`) — nunca como filas sueltas en la
+tabla principal. La función asume que `cargas` ya llega ordenado `vistoBuenoEn desc` desde
+`CargaArchivoRepository.listarPropiasAprobadas` (`take: 500` como tope defensivo documentado, no un
+límite accidental) y depende de que toda fila `APROBADA` tenga `vistoBuenoEn` no nulo — cierto hoy
+porque el único camino a `APROBADA` es `darVistoBueno()`, que setea ambos atómicamente; si esa
+invariante cambiara, el `ORDER BY ... DESC` de Postgres coloca los `NULL` primero (`NULLS FIRST` por
+defecto), lo que colaría una fila sin visto bueno como "vigente".
+
+### Paginación de grupos, no de filas — y filtro acotado a la página cargada
+
+`ListarCargasPropiasExitosas` pagina el arreglo de **grupos** (no las filas crudas) en memoria, con
+el mismo contrato `{pagina, tamano, total, totalPaginas}` que `ListarCargasPropias`/
+`ListarCargasAprobadas`: si paginara filas crudas, una reemplazada podría quedar separada de su
+vigente por un corte de página. El filtro por formato de archivo y por año (decisión explícita del
+usuario) se resuelve en cliente, sobre el arreglo de grupos ya cargado — mismo criterio de
+simplicidad que el buscador de `TablaVentanasCarga` (RF-15). Limitación conocida y aceptada: como el
+arreglo "ya cargado" es solo la página actual (25 grupos por defecto), el filtro no alcanza grupos de
+otras páginas hasta navegar a ellas — aceptable porque el volumen esperado por notificador es bajo.
+
+### Límite servidor/cliente de React: dos bugs reales encontrados en la verificación en navegador de esta entrega
+
+`TablaMisCargasExitosas.tsx` necesita `"use client"` (filtros con `useState`/`useMemo`), a diferencia
+de su componente de referencia `TablaCargasAprobadas.tsx` (Server Component puro, sin filtros). Esa
+diferencia rompió dos veces el patrón que sí funciona en la referencia:
+
+1. **Una función no-componente exportada de un módulo `"use client"` no es invocable desde un Server
+   Component.** `ListadoMisCargasExitosas.tsx` (Server Component) llamaba a `aGrupoCargaExitosaVista`
+   importada desde `TablaMisCargasExitosas.tsx` — al llevar esa segunda `"use client"`, la función
+   queda del lado del cliente aunque sea una función pura sin JSX. Causaba 500
+   (`Attempted to call aGrupoCargaExitosaVista() from the server but ... is on the client`). Se
+   corrigió moviendo esa función (y sus tipos) a `shared/components/mis-cargas-exitosas.ts`, un
+   módulo sin `"use client"` que ambos lados importan.
+2. **Una función no se puede pasar como prop desde un Server Component hacia un Client Component**
+   (salvo que sea una Server Action `"use server"`, no aplica aquí). `ListadoMisCargasExitosas.tsx`
+   pasaba `rutaDetalle={(id) => \`/notificador/cargas/${id}\`}` a `TablaMisCargasExitosas` — causaba
+   500 (`Functions cannot be passed directly to Client Components`). Se corrigió pasando un string
+   (`rutaBase="/notificador/cargas"`) y construyendo el `href` final dentro del componente cliente.
+
+Ninguno de los dos problemas existe en `ListadoCargasAprobadas.tsx`/`TablaCargasAprobadas.tsx`
+porque ambos son Server Components — pasar funciones o exportar helpers entre dos Server Components
+nunca cruza el límite serializable de RSC. La lección para el próximo componente que copie ese
+patrón: si la tabla necesita interactividad de cliente, el mapeo dominio→vista y cualquier
+constructor de ruta que el Server Component orquestador necesite invocar deben vivir en un módulo
+aparte sin `"use client"`, y cualquier dato que cruce hacia el componente cliente debe ser serializable
+(string/número/objeto plano), nunca una función.

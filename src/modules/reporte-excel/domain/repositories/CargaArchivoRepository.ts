@@ -1,6 +1,7 @@
 import type {
   CargaArchivo,
   CargaArchivoParaDescarga,
+  CargaArchivoResumen,
   DatosNuevaCargaArchivo,
   FiltroListadoCargasAprobadas,
   FiltroListadoCargasPropias,
@@ -18,6 +19,13 @@ export interface CargaArchivoRepository {
   // Filtra `estado = APROBADA` a nivel de consulta SQL, mismo criterio que `listarAprobadas`.
   obtenerAprobadaPorId(id: string): Promise<CargaArchivo | null>;
   listarPropias(filtro: FiltroListadoCargasPropias): Promise<PaginaCargas>;
+  // "Mis cargas" (histórico de exitosas): TODAS las `APROBADA` de un notificador, ordenadas
+  // `vistoBuenoEn desc` (contrato del que depende `agruparCargasAprobadasPorVentana` en
+  // `domain/entities/CargaArchivo.ts` para detectar la vigente como la primera ocurrencia de cada
+  // `ventanaCargaId`). Sin paginar en SQL: la agrupación y la paginación de los GRUPOS resultantes
+  // ocurren en `application/`, nunca sobre las filas crudas, para que una reemplazada no quede
+  // separada de su vigente por un corte de página. Ownership por `usuarioId` siempre en el `WHERE`.
+  listarPropiasAprobadas(usuarioId: string): Promise<CargaArchivoResumen[]>;
   // Filtra siempre `estado = APROBADA` a nivel de consulta SQL, nunca solo en la UI.
   listarAprobadas(filtro: FiltroListadoCargasAprobadas): Promise<PaginaCargas>;
   // Transición condicional y atómica `PENDIENTE_VISTO_BUENO -> APROBADA`, filtrada por

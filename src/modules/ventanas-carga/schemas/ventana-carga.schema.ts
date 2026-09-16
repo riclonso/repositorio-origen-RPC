@@ -3,7 +3,7 @@ import { fechaDentroDelAnio } from "@/modules/ventanas-carga/domain/entities/ran
 
 // Rango amplio y razonable: no hay un límite de negocio documentado, solo una defensa contra un
 // valor absurdo tecleado por error.
-const ANIO_MINIMO = 2000;
+const ANIO_MINIMO = 2021;
 const ANIO_MAXIMO = 2100;
 
 export const anioVentanaCargaSchema = z.coerce
@@ -90,3 +90,65 @@ export type EditarVentanaCargaInput = z.infer<typeof editarVentanaCargaSchema>;
 // viaja junto a fechas/formato: tiene su propio Route Handler PATCH.
 export const cambiarPublicacionVentanaCargaSchema = z.object({ publicada: z.boolean() });
 export type CambiarPublicacionVentanaCargaInput = z.infer<typeof cambiarPublicacionVentanaCargaSchema>;
+
+// Esquema del endpoint dedicado a archivar/desarchivar una ventana. Mismo patrón que el esquema
+// hermano de publicación: nunca viaja junto a fechas/formato, tiene su propio Route Handler PATCH.
+export const cambiarArchivadoVentanaCargaSchema = z.object({ archivada: z.boolean() });
+export type CambiarArchivadoVentanaCargaInput = z.infer<typeof cambiarArchivadoVentanaCargaSchema>;
+
+// RF-17 (alertas por email): rango amplio y razonable, sin límite de negocio documentado más allá
+// de que no tiene sentido anticipar alertas más de un año o repetirlas con menos frecuencia que
+// una vez al año.
+const DIAS_ALERTA_MINIMO = 1;
+const DIAS_ALERTA_MAXIMO = 365;
+
+const diasAlertaVentanaCargaSchema = z.coerce
+  .number()
+  .int()
+  .min(DIAS_ALERTA_MINIMO, `El valor debe ser ${DIAS_ALERTA_MINIMO} o mayor`)
+  .max(DIAS_ALERTA_MAXIMO, `El valor debe ser ${DIAS_ALERTA_MAXIMO} o menor`);
+
+// Ambos campos vienen juntos (activar el envío automático) o ambos `null` (desactivarlo): un
+// `diasAnticipacionInicio` sin `intervaloRepeticionDias` (o viceversa) no tiene una interpretación
+// de negocio válida, así que se rechaza en el borde en vez de dejarlo a medias en la base.
+export const configurarAlertasVentanaCargaSchema = z
+  .object({
+    diasAnticipacionInicio: diasAlertaVentanaCargaSchema.nullable(),
+    intervaloRepeticionDias: diasAlertaVentanaCargaSchema.nullable(),
+  })
+  .superRefine((datos, contexto) => {
+    const ambosNulos = datos.diasAnticipacionInicio === null && datos.intervaloRepeticionDias === null;
+    const ambosConValor = datos.diasAnticipacionInicio !== null && datos.intervaloRepeticionDias !== null;
+
+    if (!ambosNulos && !ambosConValor) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["intervaloRepeticionDias"],
+        message: "Debes configurar ambos valores, o dejar ambos vacíos para desactivar el envío automático",
+      });
+    }
+  });
+export type ConfigurarAlertasVentanaCargaInput = z.infer<typeof configurarAlertasVentanaCargaSchema>;
+
+// RF-17: HTML crudo del editor enriquecido. Se sanitiza en `application/`
+// (`sanitizarPlantillaAlertaHtml`), nunca aquí: este esquema solo valida la FORMA (longitud) del
+// body, no su contenido.
+export const actualizarPlantillaAlertaVentanaCargaSchema = z.object({
+  plantillaAlerta: z.string().min(1, "La plantilla no puede estar vacía").max(6000, "La plantilla es demasiado extensa"),
+});
+export type ActualizarPlantillaAlertaVentanaCargaInput = z.infer<
+  typeof actualizarPlantillaAlertaVentanaCargaSchema
+>;
+
+// RF-17: número de página de una de las dos tablas del historial de alertas
+// (`?paginaAutomatica=`/`?paginaManual=` en `DetalleVentanaCarga`). Modo tolerante: un valor
+// inválido en la URL cae a la página 1 en vez de romper la pantalla, mismo criterio que
+// `listadoCargasSchema`.
+export const paginaAlertaVentanaCargaSchema = z.coerce.number().int().min(1).catch(1);
+
+// RF-17: envío individual desde el modal de una fila de la tabla de pendientes.
+export const enviarAlertaIndividualSchema = z.object({
+  usuarioId: z.uuid("Selecciona un destinatario válido"),
+  mensaje: z.string().min(1, "El mensaje no puede estar vacío").max(10000, "El mensaje es demasiado extenso"),
+});
+export type EnviarAlertaIndividualInput = z.infer<typeof enviarAlertaIndividualSchema>;

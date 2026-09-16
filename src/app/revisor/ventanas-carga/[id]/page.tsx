@@ -6,6 +6,7 @@ import {
   FILTRO_LISTADO_CARGAS_POR_DEFECTO,
   listadoCargasSchema,
 } from "@/modules/reporte-excel/schemas/reporte-excel.schema";
+import { paginaAlertaVentanaCargaSchema } from "@/modules/ventanas-carga/schemas/ventana-carga.schema";
 import { DetalleVentanaCarga } from "@/shared/components/DetalleVentanaCarga";
 import { construirRutaDetalleVentanaRevisor } from "./ruta-detalle";
 
@@ -42,6 +43,11 @@ export default async function DetalleVentanaCargaRevisorPage({
   // "Detalle" de esa tabla.
   const vieneDeInicio = parametros.origen === "inicio";
 
+  // RF-17: página actual de cada tabla del historial de alertas, tolerante ante un valor inválido
+  // en la URL (mismo criterio que `filtro` arriba).
+  const paginaAlertasAutomaticas = paginaAlertaVentanaCargaSchema.parse(parametros.paginaAutomatica);
+  const paginaAlertasManuales = paginaAlertaVentanaCargaSchema.parse(parametros.paginaManual);
+
   return (
     <DetalleVentanaCarga
       ventana={ventana}
@@ -52,6 +58,8 @@ export default async function DetalleVentanaCargaRevisorPage({
       construirHref={(pagina) =>
         construirRutaDetalleVentanaRevisor(id, pagina, vieneDeInicio ? "inicio" : undefined)
       }
+      paginaAlertasAutomaticas={paginaAlertasAutomaticas}
+      paginaAlertasManuales={paginaAlertasManuales}
     />
   );
 }

@@ -14,9 +14,11 @@ import { IconoAprobado, IconoSubir } from "@/shared/components/iconos";
 import { ETIQUETAS_ESTADO } from "@/shared/utils/estadoCargaArchivo";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
-// Vista liviana para "Mis cargas": mismos campos que `CargaArchivoResumenDTO`, con las fechas ya
-// como texto (llegan así tanto desde el servidor -prop inicial- como desde `fetch` -tras subir o
-// dar visto bueno-).
+// Vista liviana de las cargas propias del notificador: mismos campos que `CargaArchivoResumenDTO`,
+// con las fechas ya como texto (llegan así tanto desde el servidor -prop inicial- como desde
+// `fetch` -tras subir o dar visto bueno-). Este panel ya no renderiza su propia tabla con todas las
+// cargas (se movió a "Mis cargas" en el menú lateral, `/notificador/cargas`); aquí solo se deriva de
+// ella el historial de intentos fallidos por tarjeta y qué combinaciones ocultar por ya aprobadas.
 export type CargaResumenVista = Omit<CargaArchivoResumen, "createdAt" | "vistoBuenoEn"> & {
   createdAt: string;
   vistoBuenoEn: string | null;
@@ -69,9 +71,9 @@ function claveCombinacion(combinacion: CombinacionCargaVista): string {
 }
 
 // Historial persistente de intentos fallidos (`CON_ERRORES`) de una combinación (formato,
-// ventana) puntual, derivado de `misCargas` (ya cargada para "Mis cargas") sin ninguna consulta
-// nueva. Distinta de esa tabla global: esta vive anidada bajo cada `TarjetaCargaArchivo` y solo
-// muestra los intentos de ESA combinación.
+// ventana) puntual, derivado de `misCargas` (ya cargada en este panel) sin ninguna consulta nueva.
+// Distinta del histórico de "Mis cargas" (`/notificador/cargas`, solo `APROBADA`): esta vive
+// anidada bajo cada `TarjetaCargaArchivo` y solo muestra los intentos fallidos de ESA combinación.
 function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) {
   if (intentos.length === 0) return null;
 
@@ -254,6 +256,9 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales }: PanelCarga
   // actualizar el estado de la combinación correspondiente tras dar visto bueno.
   const [resultados, setResultados] = useState<Record<string, CargaDetalleVista>>({});
 
+  // Ya no alimenta ninguna tabla propia de este panel (esa vista vive en "Mis cargas",
+  // `/notificador/cargas`): se mantiene solo para derivar `TablaIntentosFallidos` (estado
+  // `CON_ERRORES`) y `combinacionesVisibles` (oculta una combinación ya `APROBADA`).
   const [misCargas, setMisCargas] = useState<CargaResumenVista[]>(cargasIniciales);
 
   const [objetivoVistoBueno, setObjetivoVistoBueno] = useState<CargaResumenVista | null>(null);
@@ -344,62 +349,6 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales }: PanelCarga
           />
         ))
       )}
-
-      <section aria-labelledby="titulo-mis-cargas">
-        <h2 id="titulo-mis-cargas" className="text-base font-semibold text-gob-black">
-          Mis cargas
-        </h2>
-
-        {misCargas.length === 0 ? (
-          <p className="mt-3 text-sm text-gob-gray-a">Todavía no has subido ningún archivo.</p>
-        ) : (
-          <div className="mt-3 overflow-x-auto rounded-lg border border-gob-accent bg-white">
-            <table className="w-full min-w-2xl border-collapse text-left text-sm">
-              <caption className="sr-only">Cargas de archivo propias</caption>
-              <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
-                <tr>
-                  <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Formato</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Subido el</th>
-                  <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
-                    Acciones
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gob-accent/60">
-                {misCargas.map((carga) => (
-                  <tr key={carga.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
-                    <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
-                      {carga.nombreArchivoOriginal}
-                    </th>
-                    <td className="px-3 py-2 text-gob-gray-a">{carga.formatoExcelNombre}</td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      <BadgeEstado estado={carga.estado} />
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                      {formatearFechaHoraIso(carga.createdAt)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {carga.estado === "PENDIENTE_VISTO_BUENO" ? (
-                        <Boton variante="texto" onClick={() => setObjetivoVistoBueno(carga)}>
-                          Dar visto bueno
-                        </Boton>
-                      ) : (
-                        <span className="text-xs text-gob-gray-a">
-                          {carga.cantidadErrores > 0
-                            ? `${carga.cantidadErrores} ${carga.cantidadErrores === 1 ? "error" : "errores"}`
-                            : "—"}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
 
       <DialogoConfirmacion
         abierto={objetivoVistoBueno !== null}

@@ -14,6 +14,7 @@ import {
   idVentanaCargaSchema,
   respuestaError,
   respuestaSinAcceso,
+  respuestaVentanaArchivada,
   respuestaVentanaEliminada,
 } from "@/app/api/dashboard/ventanas-carga/_lib/http";
 
@@ -67,6 +68,17 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
           publicada: datos.data.publicada,
         });
         return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+      }
+
+      if (resultado.motivo === "VENTANA_ARCHIVADA") {
+        auditarVentanaCarga(acceso.sesion, request, {
+          accion: "VENTANA_CARGA_PUBLICACION_CAMBIADA",
+          resultado: "RECHAZADO",
+          motivo: "VENTANA_ARCHIVADA",
+          ventanaCargaId: idValido.data,
+          publicada: datos.data.publicada,
+        });
+        return respuestaVentanaArchivada();
       }
 
       auditarVentanaCarga(acceso.sesion, request, {

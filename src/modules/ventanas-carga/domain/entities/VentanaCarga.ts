@@ -24,6 +24,11 @@ export type VentanaCarga = {
   // esté publicada, un notificador no debe verla, sin importar sus fechas (exclusión real en el
   // `WHERE` de `listarDisponibles()`, no solo en la UI).
   publicada: boolean;
+  // Oculta la ventana de la vista por defecto del panel administrativo, recuperable por búsqueda
+  // ("Mostrar archivadas"). Eje independiente de `publicada`/`eliminadaEn`: archivar apaga
+  // `publicada` en la misma escritura (ver `publicacionResultanteAlArchivar`), pero desarchivar no
+  // la vuelve a publicar sola.
+  archivada: boolean;
   creadoPorId: string;
   // Denormalizado vía join a `Usuario`, mismo criterio que `CargaArchivo.usuarioNombre`: el ADMIN
   // y el REVISOR_REPOSITORIO necesitan saber quién creó cada ventana sin una consulta aparte.
@@ -40,6 +45,13 @@ export type VentanaCarga = {
   // de Prisma (nunca trayendo las cargas completas ni contando en JS), mismo patrón que
   // `FormatoExcelResumen.cantidadReglas`.
   cantidadCargas: number;
+  // RF-17 (alertas por email): ambos nulos a la vez o ninguno (regla de `application/`). `null`
+  // desactiva el envío automático de esta ventana; el envío manual sigue disponible igual.
+  diasAnticipacionInicio: number | null;
+  intervaloRepeticionDias: number | null;
+  // HTML sanitizado (ver `PlantillaAlerta.ts`). NUNCA nulo: nace como copia de
+  // `PLANTILLA_ALERTA_POR_DEFECTO_HTML` al crearse la ventana, editable después.
+  plantillaAlerta: string;
 };
 
 export type DatosNuevaVentanaCarga = {
@@ -82,6 +94,21 @@ export function disponibleParaNotificador(
 // tabla de `/dashboard` y `/revisor` sin que la vista tenga que importar `estaAbierta()`.
 export type VentanaCargaConEstado = VentanaCarga & { abierta: boolean };
 
+// Archivar una ventana apaga siempre su publicación en la misma operación (decisión explícita),
+// para que nunca quede disponible para el NOTIFICADOR_RPC estando fuera de la vista por defecto.
+// Desarchivar NO la vuelve a publicar automáticamente: queda como borrador hasta que alguien la
+// publique manualmente, igual que una ventana recién creada.
+export function publicacionResultanteAlArchivar(publicadaActual: boolean, archivada: boolean): boolean {
+  return archivada ? false : publicadaActual;
+}
+
+// No se puede publicar una ventana archivada ni una ya eliminada (esta segunda condición ya
+// existía, verificada en línea dentro del caso de uso de publicación; se extrae aquí para nombrar
+// la regla completa en un solo lugar).
+export function puedePublicarse(ventana: Pick<VentanaCarga, "eliminadaEn" | "archivada">): boolean {
+  return ventana.eliminadaEn === null && !ventana.archivada;
+}
+
 // RF-16 (tablero de seguimiento): umbral, en días, bajo el cual una ventana abierta se considera
 // "por vencer" y la barra de progreso de tiempo cambia a color de alerta. Constante de dominio en
 // código, no en BD, mismo patrón que `TOPE_FILAS_DATOS`/`TOPE_ERRORES_PERSISTIDOS`
@@ -115,4 +142,33 @@ export function calcularFraccionTiempoTranscurrido(
 
   const transcurridoMs = ahora.getTime() - fechaApertura.getTime();
   return Math.min(1, Math.max(0, transcurridoMs / duracionTotalMs));
+}
+
+// RF-17 (alertas por email): una ventana con `diasAnticipacionInicio`/`intervaloRepeticionDias`
+// configurados (ambos, nunca solo uno, ver `application/ConfigurarAlertasVentanaCargaSchema`)
+// empieza a enviar alertas automáticas `diasAnticipacionInicio` días antes de
+// `fechaVencimiento`, y repite cada `intervaloRepeticionDias` días desde ese punto (incluyendo el
+// propio día de inicio, día 0). `false` si cualquiera de los dos campos es `null`: sin
+// configuración, esta ventana nunca dispara envío automático.
+export function esDiaDeEnvioAutomatico(
+  ventana: Pick<VentanaCarga, "fechaVencimiento" | "diasAnticipacionInicio" | "intervaloRepeticionDias">,
+  ahora: Date,
+): boolean {
+  if (ventana.diasAnticipacionInicio === null || ventana.intervaloRepeticionDias === null) {
+    return false;
+  }
+
+  const fechaInicioAlertas = new Date(
+    ventana.fechaVencimiento.getTime() - ventana.diasAnticipacionInicio * MILISEGUNDOS_POR_DIA,
+  );
+
+  if (ahora < fechaInicioAlertas) {
+    return false;
+  }
+
+  const diasTranscurridosDesdeInicio = Math.floor(
+    (ahora.getTime() - fechaInicioAlertas.getTime()) / MILISEGUNDOS_POR_DIA,
+  );
+
+  return diasTranscurridosDesdeInicio % ventana.intervaloRepeticionDias === 0;
 }

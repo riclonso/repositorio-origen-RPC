@@ -3,8 +3,14 @@ import type {
   DatosNuevaVentanaCarga,
   VentanaCarga,
 } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import type { NotificadorPendiente } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
 
 export type TipoEliminacionVentanaCarga = "HARD" | "SOFT";
+
+export type DatosConfiguracionAlertasVentanaCarga = {
+  diasAnticipacionInicio: number | null;
+  intervaloRepeticionDias: number | null;
+};
 
 export interface VentanaCargaRepository {
   crear(datos: DatosNuevaVentanaCarga): Promise<VentanaCarga>;
@@ -28,10 +34,25 @@ export interface VentanaCargaRepository {
   // Activa/desactiva la publicación de una ventana (RF-15 ampliación), simétrico entre ADMIN y
   // REVISOR_REPOSITORIO. `null` si el id no existe, mismo patrón que `actualizar`.
   cambiarPublicacion(id: string, publicada: boolean): Promise<VentanaCarga | null>;
+  // Archiva/desarchiva una ventana, apagando (o dejando como está) `publicada` en la MISMA
+  // escritura atómica (una sola sentencia SQL): `publicada` viaja ya resuelta por el caso de uso
+  // (`publicacionResultanteAlArchivar`), este método no decide esa regla. `null` si el id no existe.
+  cambiarArchivado(id: string, datos: { archivada: boolean; publicada: boolean }): Promise<VentanaCarga | null>;
   // Elimina la ventana: física (`DELETE`) si no tiene cargas asociadas, o lógica
   // (`eliminadaEn`/`eliminadaPorId`) si el `ON DELETE RESTRICT` de `CargaArchivo.ventanaCargaId`
   // rechaza el `DELETE` porque ya tiene alguna. `null` si el id no existe. La decisión hard/soft
   // la toma la propia base de datos (el `RESTRICT`), no un conteo previo: evita la ventana de
   // carrera de contar "0 cargas" y que una llegue justo antes del `DELETE`.
   eliminar(id: string, eliminadoPorId: string): Promise<{ tipo: TipoEliminacionVentanaCarga } | null>;
+  // RF-17 (alertas por email): activa/desactiva el envío automático. `null` si el id no existe.
+  configurarAlertas(
+    id: string,
+    datos: DatosConfiguracionAlertasVentanaCarga,
+  ): Promise<VentanaCarga | null>;
+  // RF-17: persiste el HTML ya sanitizado (`sanitizarPlantillaAlertaHtml`); este método no
+  // sanitiza ni valida nada, esa responsabilidad es de `application/`. `null` si el id no existe.
+  actualizarPlantillaAlerta(id: string, plantillaAlertaSanitizada: string): Promise<VentanaCarga | null>;
+  // RF-17: notificadores NOTIFICADOR_RPC activos, asignados al formato de la ventana, sin ninguna
+  // `CargaArchivo` APROBADA en ella todavía. Una sola consulta, nunca N+1.
+  listarNotificadoresPendientes(ventanaCargaId: string): Promise<NotificadorPendiente[]>;
 }

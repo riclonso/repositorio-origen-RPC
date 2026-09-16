@@ -19,7 +19,18 @@ export type AccionAuditoria =
   // Una sola acción para publicar Y despublicar (el nuevo estado va en el campo `publicada` del
   // evento), mismo precedente que `FORMATO_EXCEL_ESTADO_CAMBIADO`, no el patrón de dos acciones
   // de `USUARIO_ACTIVADO`/`USUARIO_DESACTIVADO`.
-  | "VENTANA_CARGA_PUBLICACION_CAMBIADA";
+  | "VENTANA_CARGA_PUBLICACION_CAMBIADA"
+  // Una sola acción para archivar Y desarchivar (el nuevo estado va en el campo `archivada` del
+  // evento), mismo criterio que `VENTANA_CARGA_PUBLICACION_CAMBIADA`: un solo evento por
+  // operación, aunque internamente también se toque `publicada`.
+  | "VENTANA_CARGA_ARCHIVO_CAMBIADO"
+  // RF-17 (alertas por email). Los envíos AUTOMÁTICOS del scheduler NUNCA se auditan aquí (la
+  // tabla `alerta_notificacion_ventana` ya es su registro estructurado); solo estas cuatro
+  // acciones, disparadas por un ADMIN/REVISOR_REPOSITORIO desde el panel.
+  | "VENTANA_CARGA_ALERTAS_CONFIGURADAS"
+  | "VENTANA_CARGA_PLANTILLA_ALERTA_ACTUALIZADA"
+  | "VENTANA_CARGA_ALERTA_MASIVA_ENVIADA"
+  | "VENTANA_CARGA_ALERTA_INDIVIDUAL_ENVIADA";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -63,7 +74,20 @@ export type MotivoAuditoria =
   | "VENTANA_ELIMINADA"
   // Específico de `CARGA_ARCHIVO_REGISTRADA` (RF-15 ampliación): la ventana existe y está
   // abierta, pero no fue publicada.
-  | "VENTANA_NO_PUBLICADA";
+  | "VENTANA_NO_PUBLICADA"
+  // De `VENTANA_CARGA_PUBLICACION_CAMBIADA`: se intentó ACTIVAR la publicación de una ventana
+  // archivada. Despublicar una archivada sigue permitido, así que este motivo solo aplica cuando
+  // se intenta publicar.
+  | "VENTANA_ARCHIVADA"
+  // De `VENTANA_CARGA_PLANTILLA_ALERTA_ACTUALIZADA`: el HTML sanitizado contiene un placeholder
+  // no reconocido (fuera de `PLACEHOLDERS_PERMITIDOS ∪ {"enlaceSistema"}`).
+  | "PLACEHOLDER_INVALIDO"
+  // De `VENTANA_CARGA_ALERTA_MASIVA_ENVIADA`: no hay ningún notificador pendiente al momento del
+  // envío (no es un error de negocio grave, pero tampoco genera un lote vacío).
+  | "SIN_PENDIENTES"
+  // De `VENTANA_CARGA_ALERTA_INDIVIDUAL_ENVIADA`: el `usuarioId` recibido ya no está en la lista
+  // real de pendientes de esa ventana al momento de revalidar en el servidor.
+  | "DESTINATARIO_NO_PENDIENTE";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -110,6 +134,20 @@ export type EventoAuditoria = {
   tipoEliminacionVentana?: "HARD" | "SOFT" | null;
   // Específico de `VENTANA_CARGA_PUBLICACION_CAMBIADA`: nuevo estado tras el cambio.
   publicada?: boolean | null;
+  // Específico de `VENTANA_CARGA_ARCHIVO_CAMBIADO`: nuevo estado tras el cambio. `publicada`
+  // (arriba) también viaja en este evento con su valor resultante, para que el histórico refleje
+  // el efecto secundario de despublicación sin necesidad de un segundo evento.
+  archivada?: boolean | null;
+  // Específicos de RF-17 (alertas por email). `diasAnticipacionInicio`/`intervaloRepeticionDias`:
+  // nuevo estado tras `VENTANA_CARGA_ALERTAS_CONFIGURADAS`. `loteId`/`destinatarioId`/
+  // `cantidadExitos` (`cantidadErrores` ya existe arriba, reutilizado): resultado de un envío
+  // masivo o individual. Nunca se registra el HTML del mensaje ni la plantilla completa, solo
+  // estos metadatos.
+  diasAnticipacionInicio?: number | null;
+  intervaloRepeticionDias?: number | null;
+  loteId?: string | null;
+  destinatarioId?: string | null;
+  cantidadExitos?: number | null;
   ip: string | null;
   userAgent: string | null;
 };

@@ -189,6 +189,21 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return { filas: registros.map(aCargaArchivoResumen), total };
   },
 
+  async listarPropiasAprobadas(usuarioId) {
+    // Ownership (`usuarioId`) y `estado = APROBADA` siempre en el mismo `WHERE`, nunca filtrado en
+    // JS después. Tope defensivo (no paginado): evita traer un histórico sin límite si un
+    // notificador acumula miles de correcciones sucesivas; la agrupación/paginación de GRUPOS vive
+    // en `application/ListarCargasPropiasExitosas.ts`.
+    const registros = await prisma.cargaArchivo.findMany({
+      where: { usuarioId, estado: "APROBADA" },
+      select: SELECCION_RESUMEN,
+      orderBy: { vistoBuenoEn: "desc" },
+      take: 500,
+    });
+
+    return registros.map(aCargaArchivoResumen);
+  },
+
   async listarAprobadas(filtro) {
     // El filtro `estado = APROBADA` se aplica siempre aquí, a nivel de consulta SQL, nunca solo
     // en la UI: `/api/dashboard/cargas/*` depende de esta garantía.

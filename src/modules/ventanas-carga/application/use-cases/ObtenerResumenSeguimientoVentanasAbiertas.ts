@@ -1,4 +1,5 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
+import type { AlertaNotificacionRepository } from "@/modules/ventanas-carga/domain/repositories/AlertaNotificacionRepository";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import {
@@ -6,12 +7,16 @@ import {
   calcularDiasRestantes,
   calcularFraccionTiempoTranscurrido,
 } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
-import type { ResumenSeguimientoVentanaCarga } from "@/modules/ventanas-carga/domain/entities/ResumenSeguimientoVentana";
+import {
+  resolverEstadoAlertaVentana,
+  type ResumenSeguimientoVentanaCarga,
+} from "@/modules/ventanas-carga/domain/entities/ResumenSeguimientoVentana";
 
 export type DependenciasResumenSeguimientoVentanas = {
   repositorioVentanas: VentanaCargaRepository;
   repositorioFormatos: FormatoExcelRepository;
   repositorioCargas: CargaArchivoRepository;
+  repositorioAlertas: AlertaNotificacionRepository;
 };
 
 // RF-16 (tablero de seguimiento): resumen por cada ventana ABIERTA (misma noción de "abierta" que
@@ -31,9 +36,10 @@ export async function obtenerResumenSeguimientoVentanasAbiertas(
   const formatoExcelIds = ventanasAbiertas.map((ventana) => ventana.formatoExcelId);
   const ventanaCargaIds = ventanasAbiertas.map((ventana) => ventana.id);
 
-  const [asignadosPorFormato, reportaronPorVentana] = await Promise.all([
+  const [asignadosPorFormato, reportaronPorVentana, resumenAlertasPorVentana] = await Promise.all([
     dependencias.repositorioFormatos.contarNotificadoresAsignadosActivosPorFormato(formatoExcelIds),
     dependencias.repositorioCargas.contarNotificadoresDistintosPorVentana(ventanaCargaIds),
+    dependencias.repositorioAlertas.obtenerResumenPorVentanas(ventanaCargaIds),
   ]);
 
   return ventanasAbiertas.map((ventana) => {
@@ -57,6 +63,10 @@ export async function obtenerResumenSeguimientoVentanasAbiertas(
         ahora,
       ),
       vencimientoProximo: diasRestantes <= UMBRAL_DIAS_ALERTA_VENCIMIENTO_VENTANA,
+      estadoAlerta: resolverEstadoAlertaVentana(ventana, resumenAlertasPorVentana[ventana.id] ?? {
+        ultimoEnvioExitosoEn: null,
+        ultimoEnvioConErrorEn: null,
+      }),
     };
   });
 }

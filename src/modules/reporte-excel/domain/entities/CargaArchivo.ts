@@ -130,3 +130,40 @@ export type CargaArchivoParaDescarga = {
   tipoContenidoArchivo: string;
   contenidoArchivo: Buffer;
 };
+
+// "Mis cargas" (histórico de exitosas del notificador): no existe un concepto de "reemplazo"
+// persistido en `CargaArchivo`, se deriva en lectura agrupando por `ventanaCargaId` (mismo criterio
+// que RF-15 ampliación, para no confundir una ventana eliminada y recreada con la vigente). Entre
+// las `APROBADA` que comparten `ventanaCargaId`, la de mayor `vistoBuenoEn` es la vigente; el resto
+// quedan como historial de reemplazadas.
+export type GrupoCargaAprobada = {
+  vigente: CargaArchivoResumen;
+  reemplazadas: CargaArchivoResumen[];
+};
+
+// Agrupa las `APROBADA` de un notificador por `ventanaCargaId`. Requiere que `cargas` ya venga
+// ordenado `vistoBuenoEn desc` (contrato de `CargaArchivoRepository.listarPropiasAprobadas`): así,
+// la primera carga que aparece para cada `ventanaCargaId` es la vigente, y las siguientes para esa
+// misma combinación son las reemplazadas, ya en orden más reciente -> más antigua. Como `Map`
+// conserva el orden de inserción, los grupos resultantes quedan ordenados por
+// `vigente.vistoBuenoEn` descendente sin necesidad de un `sort` aparte.
+// Precondición: toda fila con estado APROBADA tiene vistoBuenoEn no nulo (único camino a APROBADA
+// es darVistoBueno(), que setea ambos atómicamente). Si esa invariante cambiara, el orderBy
+// "vistoBuenoEn desc" de Postgres colocaría los NULL primero (NULLS FIRST por defecto en DESC),
+// haciendo que una fila sin vistoBuenoEn se cuele como "vigente" del grupo.
+export function agruparCargasAprobadasPorVentana(cargas: CargaArchivoResumen[]): GrupoCargaAprobada[] {
+  const gruposPorVentana = new Map<string, GrupoCargaAprobada>();
+
+  for (const carga of cargas) {
+    const grupoExistente = gruposPorVentana.get(carga.ventanaCargaId);
+
+    if (!grupoExistente) {
+      gruposPorVentana.set(carga.ventanaCargaId, { vigente: carga, reemplazadas: [] });
+      continue;
+    }
+
+    grupoExistente.reemplazadas.push(carga);
+  }
+
+  return Array.from(gruposPorVentana.values());
+}
