@@ -34,14 +34,16 @@ const columnasFormatoExcelSchema = z
   .max(COLUMNAS_MAXIMO, `Se permiten como máximo ${COLUMNAS_MAXIMO} columnas`)
   .refine(nombresDeColumnaUnicos, "Los nombres de columna no pueden repetirse");
 
-// Tres tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
+// Cuatro tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
 // `ALGUNA_COLUMNA_CON_VALOR` exige un conjunto de columnas del que al menos una debe traer valor;
 // `FECHA_DENTRO_DE_VENTANA_VIGENTE` exige exactamente una columna de tipo `FECHA`/`FECHA_HORA`
 // cuyo valor debe caer dentro de la ventana de carga elegida por el notificador (RF-15);
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` exige una columna principal + al menos una alternativa
 // (todas `FECHA`/`FECHA_HORA`) cuya "fecha efectiva" resultante debe caer dentro del AÑO
-// calendario de esa ventana (ampliación posterior). El evaluador que las ejecuta contra un
-// archivo real vive en `modules/reporte-excel/`; aquí solo se persiste y valida la configuración.
+// calendario de esa ventana (ampliación posterior); `FILA_DUPLICADA` exige al menos una columna
+// (sin restricción de tipo de dato) cuya combinación de valores no puede repetirse entre filas del
+// mismo archivo (ampliación posterior). El evaluador que las ejecuta contra un archivo real vive
+// en `modules/reporte-excel/`; aquí solo se persiste y valida la configuración.
 const reglaValidacionFormatoExcelSchema = z.object({
   tipo: tipoReglaValidacionSchema,
   columnas: z
@@ -124,6 +126,10 @@ function validarReferenciasDeReglas(
       }
     });
 
+    // `FILA_DUPLICADA` NO hereda este mínimo de 2: con 1 sola columna la regla es perfectamente
+    // válida (p. ej. detectar un RUT repetido dentro del archivo), así que se queda con el mínimo
+    // genérico de 1 que ya exige `reglaValidacionFormatoExcelSchema.columnas`, sin restricción
+    // adicional aquí.
     if (regla.tipo === "ALGUNA_COLUMNA_CON_VALOR" && regla.columnas.length < MINIMO_COLUMNAS_POR_REGLA) {
       contexto.addIssue({
         code: "custom",

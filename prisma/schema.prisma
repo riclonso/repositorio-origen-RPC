@@ -156,6 +156,7 @@ enum TipoReglaValidacionFormatoExcel {
   ALGUNA_COLUMNA_CON_VALOR
   FECHA_DENTRO_DE_VENTANA_VIGENTE
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
+  FILA_DUPLICADA
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de

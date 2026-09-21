@@ -12,7 +12,11 @@ import {
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { ValidadoresTipoDato, celdaVacia } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
-import { cumpleReglaValidacion } from "@/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
+import {
+  crearRastreadorFilasDuplicadas,
+  cumpleReglaValidacion,
+  evaluarFilaDuplicada,
+} from "@/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
 
 export type DatosValidarYCargarArchivo = {
   formatoExcelId: string;
@@ -158,6 +162,13 @@ export async function validarYCargarArchivo(
 
   const filasAValidar = filas.slice(0, TOPE_FILAS_DATOS);
 
+  // Reglas `FILA_DUPLICADA` del formato: a diferencia del resto, necesitan memoria entre filas
+  // (ver comentario en `EvaluadorReglasValidacion.ts`). El rastreador se crea una sola vez, antes
+  // del recorrido, y se reutiliza fila a fila dentro del mismo `forEach` de abajo: sin una segunda
+  // pasada sobre el archivo ni bucles anidados.
+  const reglasFilaDuplicada = formato.reglasValidacion.filter((regla) => regla.tipo === "FILA_DUPLICADA");
+  const rastreadorFilasDuplicadas = crearRastreadorFilasDuplicadas(reglasFilaDuplicada);
+
   filasAValidar.forEach((fila: Record<string, ValorCeldaArchivo>, indice) => {
     // La fila de encabezado cuenta como fila 1, así que la primera fila de datos es la 2.
     const numeroFila = indice + 2;
@@ -189,6 +200,20 @@ export async function validarYCargarArchivo(
 
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, fila, { ventana })) {
+        errores.push({
+          numeroFila,
+          columna: null,
+          tipoError: "REGLA_VALIDACION",
+          mensaje: regla.mensaje,
+        });
+      }
+    }
+
+    // Mismo criterio que las demás reglas (`tipoError: "REGLA_VALIDACION"`, `columna: null` por
+    // involucrar varias columnas, igual que `ALGUNA_COLUMNA_CON_VALOR`), pero evaluadas aparte
+    // porque requieren el estado del rastreador en vez de ser puras.
+    for (const regla of reglasFilaDuplicada) {
+      if (evaluarFilaDuplicada(rastreadorFilasDuplicadas, regla, fila, numeroFila)) {
         errores.push({
           numeroFila,
           columna: null,

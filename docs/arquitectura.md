@@ -822,6 +822,68 @@ usaba este valor). Mismo caveat que las migraciones de enum anteriores de este m
 si el proceso de `next dev`/producción ya estaba corriendo, el cliente de Prisma en memoria no ve
 el valor nuevo hasta reiniciar con `prisma generate` + restart.
 
+### Cuarto tipo de regla: `FILA_DUPLICADA` — la primera que exige memoria entre filas
+
+Ampliación posterior a RF-13/14/15, a pedido explícito del usuario: detectar filas que repiten
+exactamente los mismos valores en un conjunto de columnas dentro del mismo archivo. Se agrega a
+`TipoReglaValidacionFormatoExcel` con el mismo mecanismo de persistencia que las tres reglas
+anteriores (columnas por **nombre**, `mensaje` configurado por el operador), pero es una extensión
+real del motor de evaluación, no solo un `case` nuevo:
+
+**Regla pura vs. regla con estado.** Las tres reglas previas son funciones puras: reciben una fila
+y deciden, sin recordar nada de filas anteriores. `FILA_DUPLICADA` necesita memoria de todo lo ya
+visto en el archivo para poder decidir si la fila actual repite una combinación anterior. Por eso
+`EvaluadorReglasValidacion.cumpleReglaValidacion()` (que se mantiene puro a propósito) devuelve
+`true` sin evaluar nada para este tipo, y el chequeo real vive en dos funciones nuevas del mismo
+archivo: `crearRastreadorFilasDuplicadas(reglas)` construye, una sola vez por carga, un
+`Map<reglaId, Map<claveSerializada, numeroFilaOriginal>>` (una entrada de mapa por cada regla
+`FILA_DUPLICADA` del formato, para que dos reglas de este tipo con columnas distintas no
+interfieran entre sí); `evaluarFilaDuplicada(rastreador, regla, fila, numeroFila)` construye la
+clave de la fila actual y decide. `ValidarYCargarArchivo` crea el rastreador antes del `forEach`
+que ya recorre las filas y lo consulta dentro del mismo recorrido — sin una segunda pasada sobre el
+archivo ni bucles anidados, manteniendo la complejidad en O(filas) por regla de este tipo.
+
+**Cuatro decisiones de negocio confirmadas por el usuario, todas en `evaluarFilaDuplicada` y en
+`ValidadoresTipoDato.serializarValorParaClaveDuplicado()`:**
+
+1. **Columnas configurables, mínimo 1** (no 2 como `ALGUNA_COLUMNA_CON_VALOR`): con 1 sola columna
+   la regla es válida — p. ej. detectar un RUT repetido — así que `formato-excel.schema.ts` NO
+   aplica a este tipo la restricción de mínimo 2 que sí aplica a `ALGUNA_COLUMNA_CON_VALOR`, y se
+   queda con el mínimo genérico de 1 que ya exige el esquema base de toda regla. En la UI
+   (`EditorReglasValidacionFormatoExcel.tsx`), a diferencia de las dos reglas de fecha, el selector
+   de columnas de `FILA_DUPLICADA` NO filtra por `tipoDato`: ofrece todas las columnas del formato,
+   porque la comparación de igualdad de valores no depende de que la columna sea de un tipo en
+   particular. Gana además un atajo de UI de un solo sentido, "Seleccionar todas las columnas",
+   visible solo en esta rama, que precarga `columnas[]` con el nombre de todas las columnas del
+   formato — es pura conveniencia de UI, no un modo de almacenamiento distinto: el resultado sigue
+   siendo el mismo `columnas: string[]` que usan las demás reglas.
+2. **Comparación case-sensitive tras `trim()`** (no case-insensitive, a diferencia de la
+   comparación de nombres de columna en `formato-excel.schema.ts`): "Juan" y "JUAN" son valores
+   distintos para esta regla. `serializarValorParaClaveDuplicado()` normaliza cada celda a texto
+   (`Date` → ISO, `number`/`boolean` → su representación literal, `string` → `trim()` sin
+   `toLowerCase()`, vacía → `null`) antes de armar la clave. La clave de la fila es
+   `JSON.stringify(valoresClave)` sobre el **array** de valores serializados (no una concatenación
+   con separador): `JSON.stringify` produce una representación textual unívoca de esa combinación
+   de valores, distinguiendo automáticamente `null` (columna vacía) de la cadena literal `"null"`,
+   y escapa comillas/backslashes de cualquier valor de texto real sin depender de que algún
+   carácter esté garantizado ausente del contenido de la celda.
+3. **Solo la 2ª aparición en adelante se marca.** El rastreador guarda el número de fila de la
+   primera vez que aparece cada clave ("el original") y nunca la reporta como error; solo la
+   siguiente vez que la misma clave reaparece se reporta.
+4. **Celdas vacías en la clave excluyen la fila del chequeo.** Si el valor de la fila en **todas**
+   las columnas de la clave de esa regla está vacío (mismo criterio que `celdaVacia()`), esa fila
+   nunca se considera duplicada de otra — ni se agrega al mapa, así que tampoco puede convertirse
+   en "el original" de una futura fila igualmente vacía. Si solo alguna de las columnas de la clave
+   está vacía (no todas), esa ausencia sí cuenta como parte de la clave (representada como `null`
+   en el array que serializa `JSON.stringify`, distinto de cualquier valor real de texto/número), para
+   no confundir "una columna vacía" con "clave completa vacía".
+
+Reporta con el mismo contrato que las demás reglas: `tipoError: "REGLA_VALIDACION"`,
+`columna: null` (mismo criterio que `ALGUNA_COLUMNA_CON_VALOR`, por involucrar varias columnas),
+`mensaje: regla.mensaje` sin texto dinámico agregado. Migración
+`20260917142311_agregar_regla_fila_duplicada`: aditiva (`ALTER TYPE ... ADD VALUE`), sin backfill,
+mismo caveat de reinicio del cliente de Prisma en memoria que las migraciones de enum anteriores.
+
 ### Primera capacidad de escritura de REVISOR_REPOSITORIO
 
 Hasta RF-15, `/revisor` era 100% solo lectura (bienvenida + listado de cargas aprobadas, RF-14).

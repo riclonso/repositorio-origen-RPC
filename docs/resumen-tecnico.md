@@ -206,6 +206,14 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   reiniciar el proceso después de aplicarla** (mismo caveat de cliente de Prisma en memoria que el
   resto de migraciones de este módulo): `npx prisma generate` + restart, o falla con
   `Unknown argument 'archivada'`.
+* **Ampliación de RF-13/14 (`20260917142311_agregar_regla_fila_duplicada`) es aditiva, sin
+  backfill.** Agrega `FILA_DUPLICADA` a `TipoReglaValidacionFormatoExcel` (`ALTER TYPE ... ADD
+  VALUE`, mismo caveat de siempre: no reversible en la misma transacción si hiciera falta
+  deshacerla). No toca ninguna tabla ni columna existente; ninguna fila puede usar el valor nuevo
+  todavía, así que no hace falta backfill. Admite despliegue rolling. **Requiere reiniciar el
+  proceso después de aplicarla** (mismo caveat de cliente de Prisma en memoria que el resto de
+  migraciones de este módulo): `npx prisma generate` + restart, o falla con `Invalid value for
+  argument tipo` al intentar guardar una regla de este tipo nuevo.
 
 
 ## Recuperación de contraseña (RF-10)

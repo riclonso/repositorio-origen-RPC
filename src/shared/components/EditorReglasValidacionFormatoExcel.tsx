@@ -31,6 +31,7 @@ const OPCIONES_TIPO_REGLA: OpcionSelect[] = [
     valor: "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
     etiqueta: "Fecha efectiva (principal o alternativa más antigua) dentro del año de la ventana",
   },
+  { valor: "FILA_DUPLICADA", etiqueta: "Fila duplicada" },
 ];
 
 const REGLA_POR_DEFECTO: ReglaValidacionEditable = {
@@ -64,10 +65,14 @@ type EditorReglasValidacionFormatoExcelProps = {
 // rango de la ventana de carga elegida por el notificador para esa subida.
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (ampliación posterior): una columna principal + al
 // menos una alternativa, todas de fecha; se usa la principal si trae valor, o la más antigua de
-// las alternativas si está vacía, y el año resultante debe coincidir con el de la ventana. Los
-// campos requeridos de `TablaColumnasFormatoExcel` se validan primero; estas reglas se evalúan
-// después (ver `CLAUDE.md`), pero ese evaluador vive en `modules/reporte-excel/`: este componente
-// solo gestiona la configuración.
+// las alternativas si está vacía, y el año resultante debe coincidir con el de la ventana.
+// `FILA_DUPLICADA` (ampliación posterior): de un subconjunto de columnas (cualquier tipo de
+// dato), ninguna fila puede repetir exactamente los mismos valores (comparados tras recortar
+// espacios, distinguiendo mayúsculas de minúsculas) que otra fila anterior del mismo archivo; solo
+// se rechaza la 2ª aparición en adelante, y las filas con esas columnas totalmente vacías quedan
+// excluidas del chequeo. Los campos requeridos de `TablaColumnasFormatoExcel` se validan primero;
+// estas reglas se evalúan después (ver `CLAUDE.md`), pero ese evaluador vive en
+// `modules/reporte-excel/`: este componente solo gestiona la configuración.
 export function EditorReglasValidacionFormatoExcel({
   reglas,
   columnasDisponibles,
@@ -104,7 +109,11 @@ export function EditorReglasValidacionFormatoExcel({
           &ldquo;Fecha efectiva dentro del año de la ventana&rdquo; usa la columna principal si
           trae valor; si viene vacía, usa la más antigua de las columnas alternativas que sí
           traigan una fecha, y exige que el año de esa fecha efectiva coincida con el año de la
-          ventana. Se evalúan después de comprobar las columnas requeridas.
+          ventana. &ldquo;Fila duplicada&rdquo; exige que, de un conjunto de columnas, ninguna
+          fila repita exactamente los mismos valores que otra fila anterior del mismo archivo
+          (comparación sensible a mayúsculas); solo se rechaza la 2ª aparición en adelante, y las
+          filas con esas columnas totalmente vacías quedan excluidas del chequeo. Se evalúan
+          después de comprobar las columnas requeridas.
         </p>
       </div>
 
@@ -208,6 +217,37 @@ export function EditorReglasValidacionFormatoExcel({
                         })
                       }
                       ayuda="Si la columna principal viene vacía, se usa la más antigua de estas que traiga fecha. Selecciona al menos una."
+                      error={
+                        columnasFaltantes.length > 0
+                          ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes
+                              .map((nombre) => `"${nombre}"`)
+                              .join(", ")}`
+                          : null
+                      }
+                    />
+                  </>
+                ) : regla.tipo === "FILA_DUPLICADA" ? (
+                  <>
+                    {/* Atajo de un solo sentido: marca todas las columnas del formato en la
+                        clave de duplicado de esta regla. Solo tiene sentido aquí, donde a
+                        diferencia de las demás reglas no hay restricción por tipo de dato: se
+                        ofrecen TODAS las columnas del formato como candidatas. */}
+                    <Boton
+                      type="button"
+                      variante="texto"
+                      className="w-fit"
+                      onClick={() => actualizarRegla(indice, { columnas: [...nombresColumnasDisponibles] })}
+                    >
+                      Seleccionar todas las columnas
+                    </Boton>
+
+                    <CampoSeleccionMultiple
+                      id={`regla-${indice}-columnas`}
+                      etiqueta="Columnas de la clave de duplicado"
+                      opciones={opcionesColumnas}
+                      valoresSeleccionados={regla.columnas}
+                      onCambiar={(columnas) => actualizarRegla(indice, { columnas })}
+                      ayuda="Selecciona al menos 1 columna. Dos filas se consideran duplicadas si tienen exactamente los mismos valores en estas columnas; las filas con estas columnas totalmente vacías no se comparan."
                       error={
                         columnasFaltantes.length > 0
                           ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes

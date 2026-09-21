@@ -130,6 +130,19 @@ export function parsearFecha(valor: ValorCeldaArchivo): Date | null {
   return null;
 }
 
+// Serializa una celda a una representación estable para construir la clave de comparación de
+// `FILA_DUPLICADA` (`EvaluadorReglasValidacion.ts`). Retorna `null` cuando la celda está vacía
+// (mismo criterio que `celdaVacia`), para que el caller pueda distinguir "vacío" de "valor real" y
+// excluir del chequeo las filas cuya clave completa queda vacía (decisión de negocio: celdas
+// vacías no cuentan como duplicado). Deliberadamente case-sensitive (sin `toLowerCase()`): "Juan"
+// y "JUAN" son valores distintos para efectos de esta regla.
+export function serializarValorParaClaveDuplicado(valor: ValorCeldaArchivo): string | null {
+  if (valor === null || celdaVacia(valor)) return null;
+  if (valor instanceof Date) return valor.toISOString();
+  if (typeof valor === "number" || typeof valor === "boolean") return String(valor);
+  return valor.trim();
+}
+
 // Un validador por cada uno de los ocho tipos de dato. Se invoca únicamente sobre celdas que ya
 // pasaron `celdaVacia` (una celda vacía se reporta como `VALOR_REQUERIDO_VACIO`, nunca como
 // `TIPO_DATO_INVALIDO`).
