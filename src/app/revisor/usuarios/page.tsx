@@ -13,17 +13,24 @@ import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuari
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { FiltrosUsuarios } from "@/shared/components/FiltrosUsuarios";
 import { ListadoUsuarios } from "@/shared/components/ListadoUsuarios";
-import { RUTA_USUARIOS_DASHBOARD, construirRutaUsuariosDashboard } from "./ruta-usuarios";
+import { RUTA_USUARIOS_REVISOR, construirRutaUsuariosRevisor } from "./ruta-usuarios";
 
 export const metadata: Metadata = {
-  title: "Repositorio RPC - SEREMI de Salud Biobío",
+  title: "Usuarios - Repositorio RPC - SEREMI de Salud Biobío",
 };
 
-type UsuariosPageProps = {
+type UsuariosRevisorPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function UsuariosPage({ searchParams }: UsuariosPageProps) {
+// Mismo mantenedor que `/dashboard/usuarios` (RF-06 extendido a REVISOR_REPOSITORIO): acceso
+// completo a las seis operaciones, salvo sobre cuentas con perfil ADMIN (ver
+// `TablaUsuarios`/`CrearUsuario`/`ActualizarUsuario`/`CambiarEstadoUsuario`/
+// `RestablecerContrasena`/`EmitirEnlaceContrasena`, que rechazan esa combinación con
+// PERFIL_ADMIN_RESTRINGIDO). La pantalla comparte componentes con `shared/components/`, y los
+// endpoints bajo `/api/usuarios/**` (guardados con `exigirAdminORevisor()`) son los mismos para
+// ambos paneles.
+export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevisorPageProps) {
   const parametros = await searchParams;
   const usuarioCreado = parametros.creado === "1";
   const enlaceEnviado = parametros.enlace === "enviado";
@@ -44,7 +51,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
   ]);
 
   const actorId = sesion?.sub ?? "";
-  const claveFiltro = construirRutaUsuariosDashboard(filtro);
+  const claveFiltro = construirRutaUsuariosRevisor(filtro);
 
   return (
     <div>
@@ -57,7 +64,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         </div>
 
         <Link
-          href={`${RUTA_USUARIOS_DASHBOARD}/nuevo`}
+          href={`${RUTA_USUARIOS_REVISOR}/nuevo`}
           className="inline-flex items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Nuevo usuario
@@ -71,7 +78,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
         opcionesPerfil={aOpcionesPerfil(perfiles)}
-        rutaBase={RUTA_USUARIOS_DASHBOARD}
+        rutaBase={RUTA_USUARIOS_REVISOR}
       />
 
       {usuarioCreado || enlaceEnviado || contrasenaDefinida ? (
@@ -93,9 +100,9 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         <ListadoUsuarios
           filtro={filtro}
           actorId={actorId}
-          rutaBase={RUTA_USUARIOS_DASHBOARD}
-          construirHref={(pagina) => construirRutaUsuariosDashboard(filtro, pagina)}
-          actorEsAdmin
+          rutaBase={RUTA_USUARIOS_REVISOR}
+          construirHref={(pagina) => construirRutaUsuariosRevisor(filtro, pagina)}
+          actorEsAdmin={false}
         />
       </Suspense>
     </div>

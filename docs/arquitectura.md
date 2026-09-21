@@ -217,6 +217,52 @@ La paleta oficial de gob.cl no trae un rojo que pase WCAG AA como texto sobre bl
 de error y acciones destructivas. `gob-gray-b` (#8a8a8a, ~3.1:1) es solo para bordes y placeholders:
 etiquetas y texto de ayuda usan `gob-gray-a` (#4a4a4a, ~7.4:1).
 
+### Acceso extendido a REVISOR_REPOSITORIO, con restricción `PERFIL_ADMIN_RESTRINGIDO` (posterior, tras RF-15)
+
+A diferencia de `formatos-excel/` y `ventanas-carga/` (donde el cambio de guard fue puramente
+mecánico, sin ninguna regla de negocio que distinguiera entre perfiles), abrir el mantenedor de
+usuarios a REVISOR_REPOSITORIO sí necesitaba una regla nueva: ninguno de los cinco casos de uso
+mutadores (`CrearUsuario`, `ActualizarUsuario`, `CambiarEstadoUsuario`, `RestablecerContrasena` en
+`modules/usuarios/`, y `EmitirEnlaceContrasena` en `modules/auth/`, invocado desde los mismos Route
+Handlers) impedía que quien tuviera acceso al mantenedor tocara una cuenta ADMIN o se
+autopromoviera. Sin esa regla, un REVISOR_REPOSITORIO podría degradar/desactivar/resetear la
+contraseña de cualquier ADMIN existente, o asignarse a sí mismo el perfil ADMIN editando su propio
+registro.
+
+La regla — "un actor cuyo `perfilCodigo` no es ADMIN no puede crear una cuenta ADMIN, operar sobre
+una cuenta cuyo perfil ACTUAL es ADMIN, ni cambiar el perfil de nadie a ADMIN (incluido el suyo
+propio)" — se implementó en `application/`, como comprobación adicional en cada uno de los cinco
+casos de uso, recibiendo el `perfilCodigo` del actor como parámetro nuevo (mismo criterio que
+`actorId` en las reglas anti-autobloqueo ya existentes: si viviera solo en el Route Handler o en la
+UI, se podría saltar llamando la API directamente). Se modela como un motivo de rechazo propio,
+`PERFIL_ADMIN_RESTRINGIDO`, distinto de `SIN_PERMISO` (que es "no tiene acceso al mantenedor en
+absoluto"): éste es "tiene acceso, pero no a esta cuenta o a este valor de perfil". Cada Route
+Handler lo traduce a 403 (`respuestaPerfilAdminRestringido()` en `app/api/usuarios/_lib/http.ts`) y
+lo audita como `RECHAZADO`, en vez de dejarlo caer en el diccionario `MENSAJES_CONFLICTO` (409) que
+ya manejaba `AUTO_OPERACION`/`ULTIMO_ADMIN` — son familias de error distintas (autorización vs.
+conflicto de negocio) aunque las dos devuelvan una escritura rechazada.
+
+Los 6 endpoints bajo `app/api/usuarios/` reexportan `exigirAdminORevisor` en vez de `exigirAdmin`
+(igual que `formatos-excel/`). En la UI, `/revisor/usuarios` no deshabilita Editar, ambas acciones de
+Contraseña y el interruptor de estado en una fila con perfil ADMIN: los OCULTA. Como `/dashboard/**`
+es exclusivamente ADMIN y `/revisor/**` exclusivamente REVISOR_REPOSITORIO (garantizado por
+`proxy.ts`), basta un booleano `actorEsAdmin` que cada `page.tsx` de área pasa como literal (`true`
+en dashboard, `false` en revisor) al componente compartido `TablaUsuarios`, sin leer la sesión ahí.
+Los ocho componentes de UI que antes vivían dentro de `app/dashboard/usuarios/` (`TablaUsuarios`,
+`UsuarioForm`, `FiltrosUsuarios`, `ListadoUsuarios`, `PaginacionUsuarios`, `EsqueletoTablaUsuarios`,
+`ContrasenaForm`, `EnlaceContrasenaForm`, más los helpers `opciones-perfil.ts` y
+`opciones-formato-excel.ts`) se extrajeron a `shared/components/` con una prop `rutaBase: string`
+(mismo patrón que `formatos-excel`), para que `/revisor/usuarios` los reutilice sin duplicar lógica.
+
+El `<select>` de perfil en alta y edición (`app/revisor/usuarios/nuevo/page.tsx` y
+`.../[id]/editar/page.tsx`) filtra la opción "Administrador" del catálogo antes de pasarlo a
+`UsuarioForm`, salvo que sea el perfil ya vigente de la persona que se está editando (para no perder
+su valor actual en el select cuando, por navegación directa a una URL, se llega a editar una cuenta
+que ya es ADMIN). Es una mejora de UX sobre el mismo criterio de `TablaUsuarios`: ocultar en vez de
+solo rechazar en el envío. El control real sigue siendo la regla en `application/` descrita arriba —
+este filtrado del `<select>` no reemplaza esa verificación, solo evita mostrar una opción que el
+servidor rechazaría.
+
 ## Decisiones de diseño de RF-09 (catálogo de perfiles)
 
 ### Los perfiles son datos; los permisos siguen siendo código

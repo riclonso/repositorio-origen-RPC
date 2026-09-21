@@ -2,6 +2,7 @@ import type { CampoUnico, Usuario } from "@/modules/usuarios/domain/entities/Usu
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type { PerfilRepository } from "@/modules/perfiles/domain/repositories/PerfilRepository";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
@@ -22,10 +23,15 @@ export type ResultadoCrearUsuario =
   | { ok: true; usuario: Usuario }
   | { ok: false; motivo: "DUPLICADO"; campo: CampoUnico; rut: string }
   | { ok: false; motivo: "PERFIL_INVALIDO" }
-  | { ok: false; motivo: "FORMATO_INVALIDO" };
+  | { ok: false; motivo: "FORMATO_INVALIDO" }
+  | { ok: false; motivo: "PERFIL_ADMIN_RESTRINGIDO" };
 
 export async function crearUsuario(
   datos: DatosCreacionUsuario,
+  // Perfil de quien ejecuta la operación (ADMIN o REVISOR_REPOSITORIO: ambos tienen acceso al
+  // mantenedor). Se recibe aparte de `dependencias` porque es un dato de identidad del actor, no
+  // una dependencia técnica inyectable.
+  actorPerfilCodigo: string,
   dependencias: {
     repositorio: UsuarioRepository;
     repositorioPerfiles: PerfilRepository;
@@ -36,6 +42,13 @@ export async function crearUsuario(
   // comprueba aquí, para responder un 400 de validación y no un 500 por clave foránea.
   if (!(await dependencias.repositorioPerfiles.existeActivo(datos.perfilCodigo))) {
     return { ok: false, motivo: "PERFIL_INVALIDO" };
+  }
+
+  // Un actor sin perfil ADMIN (p.ej. REVISOR_REPOSITORIO) no puede crear una cuenta con perfil
+  // ADMIN. Vive aquí, en `application/`, y no en el Route Handler ni en la UI, para que no se
+  // pueda saltar llamando a la API directamente.
+  if (!esPerfilAdministrador(actorPerfilCodigo) && esPerfilAdministrador(datos.perfilCodigo)) {
+    return { ok: false, motivo: "PERFIL_ADMIN_RESTRINGIDO" };
   }
 
   // Mismo criterio que el perfil: el esquema ya garantiza la FORMA (UUIDs, sin repetidos) y que

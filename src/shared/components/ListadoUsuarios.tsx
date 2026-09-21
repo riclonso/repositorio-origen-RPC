@@ -2,9 +2,8 @@ import Link from "next/link";
 import type { FiltroListadoUsuarios, Usuario } from "@/modules/usuarios/domain/entities/Usuario";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
-import { RUTA_USUARIOS, construirRutaUsuarios } from "./ruta-usuarios";
-import { PaginacionUsuarios } from "./paginacion-usuarios";
-import { TablaUsuarios, type FilaUsuarioVista } from "./tabla-usuarios";
+import { PaginacionUsuarios } from "@/shared/components/PaginacionUsuarios";
+import { TablaUsuarios, type FilaUsuarioVista } from "@/shared/components/TablaUsuarios";
 
 // La fecha se formatea en el servidor y con zona horaria fija: si la formateara el navegador,
 // la hidratación mostraría un valor distinto según la zona del equipo del funcionario.
@@ -26,6 +25,7 @@ function aFilaVista(usuario: Usuario): FilaUsuarioVista {
     rut: usuario.rut,
     email: usuario.email,
     username: usuario.username,
+    perfilCodigo: usuario.perfilCodigo,
     perfilNombre: usuario.perfilNombre,
     activo: usuario.activo,
     tieneContrasena: usuario.tieneContrasena,
@@ -43,12 +43,24 @@ function EstadoVacio({ titulo, detalle, accion }: { titulo: string; detalle: str
   );
 }
 
+// Compartido entre `/dashboard/usuarios` (ADMIN) y `/revisor/usuarios` (REVISOR_REPOSITORIO):
+// mismo listado, cada área aporta su propia base de ruta, su constructor de URL de paginación y
+// si su actor es o no ADMIN (para ocultar acciones sobre cuentas ADMIN cuando no lo es).
 type ListadoUsuariosProps = {
   filtro: FiltroListadoUsuarios;
   actorId: string;
+  rutaBase: string;
+  construirHref: (pagina: number) => string;
+  actorEsAdmin: boolean;
 };
 
-export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps) {
+export async function ListadoUsuarios({
+  filtro,
+  actorId,
+  rutaBase,
+  construirHref,
+  actorEsAdmin,
+}: ListadoUsuariosProps) {
   const resultado = await listarUsuarios(filtro, { repositorio: prismaUsuarioRepository });
   const { filas, paginacion } = resultado;
 
@@ -70,10 +82,16 @@ export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps)
 
       {filas.length > 0 ? (
         <>
-          <TablaUsuarios filas={filas.map(aFilaVista)} actorId={actorId} descripcion={descripcionTabla} />
+          <TablaUsuarios
+            filas={filas.map(aFilaVista)}
+            actorId={actorId}
+            descripcion={descripcionTabla}
+            rutaBase={rutaBase}
+            actorEsAdmin={actorEsAdmin}
+          />
           <PaginacionUsuarios
             paginacion={paginacion}
-            filtro={filtro}
+            construirHref={construirHref}
             cantidadEnPagina={filas.length}
           />
         </>
@@ -84,7 +102,7 @@ export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps)
           titulo="Aún no hay usuarios registrados"
           detalle="Crea la primera cuenta para que el equipo pueda ingresar al sistema."
           accion={
-            <Link href={`${RUTA_USUARIOS}/nuevo`} className={CLASES_ENLACE_VACIO}>
+            <Link href={`${rutaBase}/nuevo`} className={CLASES_ENLACE_VACIO}>
               Crear usuario
             </Link>
           }
@@ -100,7 +118,7 @@ export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps)
           }
           detalle="Revisa el texto buscado o quita los filtros para ver el padrón completo."
           accion={
-            <Link href={RUTA_USUARIOS} className={CLASES_ENLACE_VACIO}>
+            <Link href={rutaBase} className={CLASES_ENLACE_VACIO}>
               Limpiar filtros
             </Link>
           }
@@ -112,7 +130,7 @@ export async function ListadoUsuarios({ filtro, actorId }: ListadoUsuariosProps)
           titulo="Esta página no tiene resultados"
           detalle={`La búsqueda tiene ${paginacion.total} resultados repartidos en ${paginacion.totalPaginas} páginas.`}
           accion={
-            <Link href={construirRutaUsuarios(filtro, 1)} className={CLASES_ENLACE_VACIO}>
+            <Link href={construirHref(1)} className={CLASES_ENLACE_VACIO}>
               Ir a la página 1
             </Link>
           }

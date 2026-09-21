@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
 import { UsuarioForm } from "@/shared/components/UsuarioForm";
-import { RUTA_USUARIOS_DASHBOARD } from "../ruta-usuarios";
+import { RUTA_USUARIOS_REVISOR } from "../ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Nuevo usuario - Repositorio RPC - SEREMI de Salud Biobío",
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
 // perfil privilegiado.
 const OPCION_SIN_ELEGIR: OpcionSelect = { valor: "", etiqueta: "Selecciona un perfil" };
 
-export default async function NuevoUsuarioPage() {
+export default async function NuevoUsuarioRevisorPage() {
   // Esta pantalla no lee cookies ni parámetros, así que Next la prerenderizaría en el build y
   // dejaría el catálogo congelado en esa foto (y obligaría a la base a estar disponible al
   // compilar). `connection()` la ancla al momento de la petición.
@@ -44,7 +45,7 @@ export default async function NuevoUsuarioPage() {
         modo="crear"
         endpoint="/api/usuarios"
         metodo="POST"
-        rutaBase={RUTA_USUARIOS_DASHBOARD}
+        rutaBase={RUTA_USUARIOS_REVISOR}
         valoresIniciales={{
           nombres: "",
           apellidos: "",
@@ -53,7 +54,13 @@ export default async function NuevoUsuarioPage() {
           perfilCodigo: "",
           formatosExcelIds: [],
         }}
-        opcionesPerfil={[OPCION_SIN_ELEGIR, ...aOpcionesPerfil(perfiles)]}
+        opcionesPerfil={[
+          OPCION_SIN_ELEGIR,
+          // Un actor REVISOR_REPOSITORIO no puede otorgar el perfil ADMIN (regla en
+          // `application/`, ver CrearUsuario): se oculta la opción para no mostrar una acción
+          // que el servidor rechazará igual.
+          ...aOpcionesPerfil(perfiles.filter((perfil) => !esPerfilAdministrador(perfil.codigo))),
+        ]}
         opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel)}
       />
     </div>

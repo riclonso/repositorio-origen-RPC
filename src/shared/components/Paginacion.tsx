@@ -19,7 +19,7 @@ function calcularPaginasVisibles(pagina: number, totalPaginas: number): number[]
   return paginas;
 }
 
-// Versión genérica de `dashboard/usuarios/paginacion-usuarios.tsx`, parametrizada por
+// Versión genérica de `shared/components/PaginacionUsuarios.tsx`, parametrizada por
 // `construirHref` en vez de un helper de ruta fijo: la reutilizan listados de distintas áreas
 // (`/dashboard/cargas`, `/revisor/cargas`) que comparten la misma UI de paginación pero arman su
 // URL de forma distinta.

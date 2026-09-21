@@ -30,7 +30,7 @@ export async function ListadoVentanasCarga({ rutaBase }: ListadoVentanasCargaPro
 
   // Formatos activos + los que alguna ventana ya tuviera asignados, aunque hayan sido dados de
   // baja mientras tanto. Mismo criterio que `aOpcionesFormatoExcel`
-  // (`app/dashboard/usuarios/opciones-formato-excel.ts`): sin esto, editar una ventana con un
+  // (`shared/components/opciones-formato-excel.ts`): sin esto, editar una ventana con un
   // formato inactivo lo quitaría en silencio al guardar (nunca aparecería en el `<select>`).
   const idsFormatoEnUso = new Set(ventanas.map((ventana) => ventana.formatoExcelId));
   const opcionesFormatoExcel: OpcionSelect[] = formatos

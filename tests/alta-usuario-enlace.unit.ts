@@ -30,6 +30,7 @@ async function probarAltaSinContrasena() {
       perfilCodigo: usuarioBase.perfilCodigo,
       formatosExcelIds: [],
     },
+    "ADMIN",
     {
       repositorioPerfiles: {
         listar: async () => [],
@@ -94,7 +95,7 @@ async function probarEnlaceDeActivacion() {
   let contextoCorreo: string | null = null;
   let horasEmitidas = 0;
 
-  const resultado = await emitirEnlaceContrasena(usuarioBase.id, {
+  const resultado = await emitirEnlaceContrasena(usuarioBase.id, "ADMIN", {
     repositorioUsuarios: {
       buscarPorRut: async () => null,
       buscarPorEmail: async () => null,
@@ -137,7 +138,7 @@ async function probarFalloDeEnvioInvalidaToken() {
   let invalidado: string | null = null;
   const tokenId = randomUUID();
 
-  const resultado = await emitirEnlaceContrasena(usuarioBase.id, {
+  const resultado = await emitirEnlaceContrasena(usuarioBase.id, "ADMIN", {
     repositorioUsuarios: {
       buscarPorRut: async () => null,
       buscarPorEmail: async () => null,

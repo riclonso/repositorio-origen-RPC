@@ -8,7 +8,6 @@ import { Boton } from "@/shared/components/Boton";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
 import { RequisitosContrasena } from "@/shared/components/RequisitosContrasena";
 import { CoincidenciaContrasena } from "@/shared/components/CoincidenciaContrasena";
-import { RUTA_USUARIOS } from "../../ruta-usuarios";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo definir la contraseña. Intenta nuevamente.";
 
@@ -32,11 +31,14 @@ function aErroresPorCampo(error: ZodError): Record<string, string> {
   return errores;
 }
 
+type ContrasenaFormProps = { usuarioId: string; rutaBase: string };
+
 // Opción 2: el administrador fija la contraseña directamente. La confirmación NO viaja al
 // servidor: solo la contraseña definitiva. Los campos son controlados a propósito (React 19
 // resetea los no controlados de un `<form action>` al terminar la acción, incluso al devolver
-// errores de validación; sin esto se borraría lo tecleado).
-export function ContrasenaForm({ usuarioId }: { usuarioId: string }) {
+// errores de validación; sin esto se borraría lo tecleado). Compartido entre `/dashboard/usuarios`
+// (ADMIN) y `/revisor/usuarios` (REVISOR_REPOSITORIO): cada área aporta su propia base de ruta.
+export function ContrasenaForm({ usuarioId, rutaBase }: ContrasenaFormProps) {
   const router = useRouter();
   const [contrasena, setContrasena] = useState("");
   const [confirmacion, setConfirmacion] = useState("");
@@ -67,7 +69,7 @@ export function ContrasenaForm({ usuarioId }: { usuarioId: string }) {
         return { errores: {}, errorGeneral: MENSAJE_ERROR_GENERICO };
       }
 
-      router.push(`${RUTA_USUARIOS}?contrasena=definida`);
+      router.push(`${rutaBase}?contrasena=definida`);
       router.refresh();
       return ESTADO_INICIAL;
     },

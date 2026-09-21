@@ -13,7 +13,6 @@ import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoSeleccionMultiple, type OpcionSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { RUTA_USUARIOS } from "./ruta-usuarios";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el usuario. Intenta nuevamente.";
 
@@ -52,10 +51,14 @@ function campoDeRespuesta(campo: unknown): string {
   return campo === "username" ? "rut" : String(campo);
 }
 
+// Compartido entre `/dashboard/usuarios` (ADMIN) y `/revisor/usuarios` (REVISOR_REPOSITORIO):
+// mismo formulario, cada área aporta su propia base de ruta para "Cancelar" y la navegación
+// posterior al envío.
 type UsuarioFormProps = {
   modo: "crear" | "editar";
   endpoint: string;
   metodo: "POST" | "PUT";
+  rutaBase: string;
   valoresIniciales: ValoresUsuarioForm;
   // Vienen de la base a través de la página. En el alta incluyen una opción vacía que el
   // esquema rechaza, para que el perfil sea una elección explícita del operador.
@@ -68,6 +71,7 @@ export function UsuarioForm({
   modo,
   endpoint,
   metodo,
+  rutaBase,
   valoresIniciales,
   opcionesPerfil,
   opcionesFormatoExcel,
@@ -148,7 +152,7 @@ export function UsuarioForm({
         return { errores: {}, errorGeneral: MENSAJE_ERROR_GENERICO };
       }
 
-      router.push(esCreacion ? `${RUTA_USUARIOS}?creado=1` : RUTA_USUARIOS);
+      router.push(esCreacion ? `${rutaBase}?creado=1` : rutaBase);
       router.refresh();
       return ESTADO_INICIAL;
     },
@@ -280,7 +284,7 @@ export function UsuarioForm({
         </Boton>
 
         <Link
-          href={RUTA_USUARIOS}
+          href={rutaBase}
           className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar

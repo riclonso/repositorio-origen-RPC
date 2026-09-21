@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoContrasena, IconoEditar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
-import { RUTA_USUARIOS } from "./ruta-usuarios";
 
+// Compartida entre `/dashboard/usuarios` (ADMIN) y `/revisor/usuarios` (REVISOR_REPOSITORIO):
+// misma tabla, cada área aporta su propia base de ruta y si su actor es o no ADMIN.
 export type FilaUsuarioVista = {
   id: string;
   nombres: string;
@@ -17,6 +19,7 @@ export type FilaUsuarioVista = {
   rut: string;
   email: string;
   username: string;
+  perfilCodigo: string;
   perfilNombre: string;
   activo: boolean;
   tieneContrasena: boolean;
@@ -28,28 +31,42 @@ const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del usuario. Int
 type AccionesFilaProps = {
   fila: FilaUsuarioVista;
   esPropia: boolean;
+  rutaBase: string;
+  actorEsAdmin: boolean;
   onCambiarEstado: () => void;
 };
 
-function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
+function AccionesFila({ fila, esPropia, rutaBase, actorEsAdmin, onCambiarEstado }: AccionesFilaProps) {
   const persona = nombreCompleto(fila);
+
+  // Un actor sin perfil ADMIN (área /revisor) no puede editar, cambiar la contraseña ni
+  // activar/desactivar una cuenta con perfil ADMIN: la regla de negocio vive en `application/`
+  // (fuente de verdad, ver CrearUsuario/ActualizarUsuario/CambiarEstadoUsuario/
+  // RestablecerContrasena); aquí solo se OCULTA la acción para no ofrecer un botón que el
+  // servidor rechazaría con PERFIL_ADMIN_RESTRINGIDO.
+  const puedeGestionarCuenta = actorEsAdmin || !esPerfilAdministrador(fila.perfilCodigo);
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <BotonIcono
-        etiqueta={`Editar a ${persona}`}
-        Icono={IconoEditar}
-        href={`${RUTA_USUARIOS}/${fila.id}/editar`}
-      />
-      <BotonIcono
-        etiqueta={
-          fila.tieneContrasena
-            ? `Cambiar la contraseña de ${persona}`
-            : `Definir la contraseña de ${persona}`
-        }
-        Icono={IconoContrasena}
-        href={`${RUTA_USUARIOS}/${fila.id}/contrasena`}
-      />
+      {puedeGestionarCuenta ? (
+        <BotonIcono
+          etiqueta={`Editar a ${persona}`}
+          Icono={IconoEditar}
+          href={`${rutaBase}/${fila.id}/editar`}
+        />
+      ) : null}
+
+      {puedeGestionarCuenta ? (
+        <BotonIcono
+          etiqueta={
+            fila.tieneContrasena
+              ? `Cambiar la contraseña de ${persona}`
+              : `Definir la contraseña de ${persona}`
+          }
+          Icono={IconoContrasena}
+          href={`${rutaBase}/${fila.id}/contrasena`}
+        />
+      ) : null}
 
       {/* Una cuenta no puede desactivarse a sí misma, así que en la fila propia NO se muestra el
           interruptor: mostrarlo bloqueado invitaba a intentarlo. En su lugar, una etiqueta neutra
@@ -58,7 +75,7 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
           color. */}
       {esPropia ? (
         <span className="text-sm text-gob-gray-a">Tu cuenta</span>
-      ) : (
+      ) : puedeGestionarCuenta ? (
         <span className="flex items-center gap-2">
           <Interruptor
             activado={fila.activo}
@@ -69,6 +86,8 @@ function AccionesFila({ fila, esPropia, onCambiarEstado }: AccionesFilaProps) {
             {fila.activo ? "Activo" : "Inactivo"}
           </span>
         </span>
+      ) : (
+        <span className="w-16 text-sm text-gob-gray-a">{fila.activo ? "Activo" : "Inactivo"}</span>
       )}
     </div>
   );
@@ -120,9 +139,14 @@ type TablaUsuariosProps = {
   filas: FilaUsuarioVista[];
   actorId: string;
   descripcion: string;
+  rutaBase: string;
+  // `true` en `/dashboard` (perfil ADMIN), `false` en `/revisor` (perfil REVISOR_REPOSITORIO).
+  // Como cada área mapea 1:1 a un perfil (garantizado por `src/proxy.ts`), basta un literal que
+  // cada `page.tsx` de área pasa directamente, sin leer la sesión en este componente compartido.
+  actorEsAdmin: boolean;
 };
 
-export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProps) {
+export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAdmin }: TablaUsuariosProps) {
   const router = useRouter();
   const [objetivo, setObjetivo] = useState<FilaUsuarioVista | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -175,6 +199,8 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
           <AccionesFila
             fila={fila}
             esPropia={fila.id === actorId}
+            rutaBase={rutaBase}
+            actorEsAdmin={actorEsAdmin}
             onCambiarEstado={() => setObjetivo(fila)}
           />
         )}
@@ -191,6 +217,8 @@ export function TablaUsuarios({ filas, actorId, descripcion }: TablaUsuariosProp
               <AccionesFila
                 fila={fila}
                 esPropia={fila.id === actorId}
+                rutaBase={rutaBase}
+                actorEsAdmin={actorEsAdmin}
                 onCambiarEstado={() => setObjetivo(fila)}
               />
             </div>

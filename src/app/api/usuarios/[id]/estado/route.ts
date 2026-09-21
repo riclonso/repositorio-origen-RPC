@@ -9,9 +9,10 @@ import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
   aUsuarioDTO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idUsuarioSchema,
   respuestaError,
+  respuestaPerfilAdminRestringido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
@@ -24,7 +25,7 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
   // Independientes entre sí: se resuelven en paralelo para no encadenar latencias.
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 
@@ -61,10 +62,25 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
       idValido.data,
       datos.data.activo,
       acceso.sesion.sub,
+      acceso.sesion.perfil,
       { repositorio: prismaUsuarioRepository },
     );
 
     if (!resultado.ok) {
+      // 403, no un 409 de MENSAJES_CONFLICTO: es un rechazo de autorización, no un conflicto de
+      // negocio. Aplica tanto al activar como al desactivar.
+      if (resultado.motivo === "PERFIL_ADMIN_RESTRINGIDO") {
+        auditarUsuario(acceso.sesion, request, {
+          accion,
+          resultado: "RECHAZADO",
+          motivo: "PERFIL_ADMIN_RESTRINGIDO",
+          usuarioObjetivoId: idValido.data,
+          usuarioObjetivoRut: resultado.rut,
+        });
+
+        return respuestaPerfilAdminRestringido();
+      }
+
       auditarUsuario(acceso.sesion, request, {
         accion,
         resultado: "RECHAZADO",

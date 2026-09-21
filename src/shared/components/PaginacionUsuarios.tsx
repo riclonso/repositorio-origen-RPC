@@ -1,7 +1,5 @@
 import Link from "next/link";
-import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import type { PaginacionUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
-import { construirRutaUsuarios } from "./ruta-usuarios";
 
 const PAGINAS_VISIBLES = 5;
 
@@ -22,15 +20,17 @@ function calcularPaginasVisibles(pagina: number, totalPaginas: number): number[]
   return paginas;
 }
 
+// Compartido entre `/dashboard/usuarios` (ADMIN) y `/revisor/usuarios` (REVISOR_REPOSITORIO):
+// misma paginación, cada área aporta su propio constructor de URL (ya ligado al filtro vigente).
 type PaginacionUsuariosProps = {
   paginacion: PaginacionUsuarios;
-  filtro: FiltroListadoUsuarios;
+  construirHref: (pagina: number) => string;
   cantidadEnPagina: number;
 };
 
 export function PaginacionUsuarios({
   paginacion,
-  filtro,
+  construirHref,
   cantidadEnPagina,
 }: PaginacionUsuariosProps) {
   const desde = (paginacion.pagina - 1) * paginacion.tamano + 1;
@@ -48,10 +48,7 @@ export function PaginacionUsuarios({
         <ul className="flex flex-wrap items-center gap-1">
           <li>
             {hayAnterior ? (
-              <Link
-                href={construirRutaUsuarios(filtro, paginacion.pagina - 1)}
-                className={CLASES_ENLACE}
-              >
+              <Link href={construirHref(paginacion.pagina - 1)} className={CLASES_ENLACE}>
                 Anterior
               </Link>
             ) : (
@@ -72,7 +69,7 @@ export function PaginacionUsuarios({
                 </span>
               ) : (
                 <Link
-                  href={construirRutaUsuarios(filtro, numero)}
+                  href={construirHref(numero)}
                   aria-label={`Ir a la página ${numero}`}
                   className={CLASES_ENLACE}
                 >
@@ -84,10 +81,7 @@ export function PaginacionUsuarios({
 
           <li>
             {haySiguiente ? (
-              <Link
-                href={construirRutaUsuarios(filtro, paginacion.pagina + 1)}
-                className={CLASES_ENLACE}
-              >
+              <Link href={construirHref(paginacion.pagina + 1)} className={CLASES_ENLACE}>
                 Siguiente
               </Link>
             ) : (

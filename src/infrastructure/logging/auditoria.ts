@@ -55,6 +55,12 @@ export type MotivoAuditoria =
   | "AUTO_OPERACION"
   | "ULTIMO_ADMIN"
   | "SIN_PERMISO"
+  // Actor con acceso al mantenedor (ADMIN o REVISOR_REPOSITORIO) pero sin perfil ADMIN, que
+  // intenta crear, editar, activar/desactivar, restablecer la contraseña o reenviar el enlace de
+  // una cuenta ADMIN, o asignar el perfil ADMIN a cualquier cuenta (incluida la propia). Distinto
+  // de `SIN_PERMISO`: ese motivo es "no tiene acceso al mantenedor en absoluto", este es "tiene
+  // acceso pero no a este objetivo/valor de perfil".
+  | "PERFIL_ADMIN_RESTRINGIDO"
   | "CUENTA_INEXISTENTE"
   | "CUENTA_INACTIVA"
   | "LIMITE_ALCANZADO"

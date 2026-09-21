@@ -1,6 +1,6 @@
 import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 
-export default function CargandoUsuarios() {
+export default function CargandoUsuariosRevisor() {
   return (
     <div>
       <h1 className="text-xl font-semibold text-gob-black">Usuarios</h1>

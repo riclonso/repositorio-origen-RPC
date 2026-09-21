@@ -11,6 +11,7 @@ import type {
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
 import { describirFalloEnvio } from "@/modules/auth/application/describirFalloEnvio";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 
 // Emite un enlace de contraseña iniciado por el ADMINISTRADOR: al crear una cuenta, al
 // restablecer la contraseña de un tercero o al reenviar un enlace de activación. Los tres son la
@@ -18,10 +19,11 @@ import { describirFalloEnvio } from "@/modules/auth/application/describirFalloEn
 // auditoría, no aquí.
 //
 // A diferencia del autoservicio (`RequestPasswordReset`), este caso de uso NO es un oráculo ni
-// tiene anti-enumeración: quien lo invoca ya está autenticado como ADMIN y el Route Handler
-// ESPERA el desenlace para devolvérselo. Tampoco lleva cupo por cuenta: es una acción
-// autenticada, no un formulario público. La invariante "todo enlace admin nuevo invalida los
-// vigentes de la cuenta" la garantiza `emitirParaAdmin` en su transacción.
+// tiene anti-enumeración: quien lo invoca ya está autenticado con acceso al mantenedor (ADMIN o
+// REVISOR_REPOSITORIO) y el Route Handler ESPERA el desenlace para devolvérselo. Tampoco lleva
+// cupo por cuenta: es una acción autenticada, no un formulario público. La invariante "todo
+// enlace admin nuevo invalida los vigentes de la cuenta" la garantiza `emitirParaAdmin` en su
+// transacción.
 //
 // El correo NUNCA lleva la contraseña, solo el enlace. El token en claro vive únicamente en
 // memoria durante esta llamada y dentro del correo.
@@ -33,6 +35,7 @@ export type ResultadoEmitirEnlaceContrasena =
   | { estado: "NO_ENCONTRADO" }
   | { estado: "CUENTA_INACTIVA"; usuarioId: string; usuarioRut: string }
   | { estado: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string }
+  | { estado: "PERFIL_ADMIN_RESTRINGIDO"; usuarioId: string; usuarioRut: string }
   | {
       estado: "ENVIO_FALLIDO";
       usuarioId: string;
@@ -51,12 +54,22 @@ export type DependenciasEmitirEnlaceContrasena = {
 
 export async function emitirEnlaceContrasena(
   usuarioId: string,
+  // Perfil de quien ejecuta la operación (ADMIN o REVISOR_REPOSITORIO: ambos tienen acceso al
+  // mantenedor). Se recibe aparte de `dependencias` porque es un dato de identidad del actor, no
+  // una dependencia técnica inyectable.
+  actorPerfilCodigo: string,
   dependencias: DependenciasEmitirEnlaceContrasena,
 ): Promise<ResultadoEmitirEnlaceContrasena> {
   const usuario = await dependencias.repositorioUsuarios.buscarPorId(usuarioId);
 
   if (!usuario) {
     return { estado: "NO_ENCONTRADO" };
+  }
+
+  // Un actor sin perfil ADMIN no puede emitir un enlace de contraseña (alta, restablecimiento o
+  // reenvío) para una cuenta ADMIN.
+  if (!esPerfilAdministrador(actorPerfilCodigo) && esPerfilAdministrador(usuario.perfilCodigo)) {
+    return { estado: "PERFIL_ADMIN_RESTRINGIDO", usuarioId: usuario.id, usuarioRut: usuario.rut };
   }
 
   // Una cuenta desactivada no recibe enlace: hay que reactivarla primero desde el mantenedor.

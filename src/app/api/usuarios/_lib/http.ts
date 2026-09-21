@@ -2,15 +2,24 @@ import { NextResponse } from "next/server";
 import type { CampoUnico, Usuario } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   exigirAdmin,
+  exigirAdminORevisor,
   idRutaSchema,
   respuestaError,
   respuestaSinAcceso,
   type AccesoAdmin,
+  type AccesoAdminORevisor,
 } from "@/app/api/_lib/http";
 
 // Helpers genéricos (guard de sesión, formato de error, id de ruta) viven en
 // `app/api/_lib/http.ts` y se reexportan aquí sin cambiar los imports existentes del mantenedor.
-export { exigirAdmin, respuestaError, respuestaSinAcceso, type AccesoAdmin };
+export {
+  exigirAdmin,
+  exigirAdminORevisor,
+  respuestaError,
+  respuestaSinAcceso,
+  type AccesoAdmin,
+  type AccesoAdminORevisor,
+};
 
 export const MENSAJE_ERROR_INTERNO = "No se pudo completar la operación. Intenta nuevamente.";
 export const MENSAJE_NO_ENCONTRADO = "El usuario no existe";
@@ -53,4 +62,16 @@ export function respuestaFormatoExcelInvalido(): NextResponse {
     campo: "formatosExcelIds",
     codigo: "FORMATO_INVALIDO",
   });
+}
+
+// Un actor con acceso al mantenedor (ADMIN o REVISOR_REPOSITORIO) pero sin perfil ADMIN, que
+// intenta operar sobre una cuenta ADMIN o asignar el perfil ADMIN a alguien. Distinto de
+// `respuestaSinAcceso(403)`: ese responde "no tienes acceso al mantenedor", este "tienes acceso
+// pero no a esta cuenta/valor de perfil".
+export function respuestaPerfilAdminRestringido(): NextResponse {
+  return respuestaError(
+    "No tienes permisos para esta acción sobre una cuenta con perfil administrador",
+    403,
+    { codigo: "PERFIL_ADMIN_RESTRINGIDO" },
+  );
 }

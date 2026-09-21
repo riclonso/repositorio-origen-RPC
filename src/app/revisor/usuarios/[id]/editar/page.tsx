@@ -5,12 +5,13 @@ import { obtenerUsuario } from "@/modules/usuarios/application/use-cases/Obtener
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
 import { UsuarioForm } from "@/shared/components/UsuarioForm";
-import { RUTA_USUARIOS_DASHBOARD } from "../../ruta-usuarios";
+import { RUTA_USUARIOS_REVISOR } from "../../ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Editar usuario - Repositorio RPC - SEREMI de Salud Biobío",
@@ -18,11 +19,11 @@ export const metadata: Metadata = {
 
 const idSchema = z.uuid();
 
-type EditarUsuarioPageProps = {
+type EditarUsuarioRevisorPageProps = {
   params: Promise<{ id: string }>;
 };
 
-export default async function EditarUsuarioPage({ params }: EditarUsuarioPageProps) {
+export default async function EditarUsuarioRevisorPage({ params }: EditarUsuarioRevisorPageProps) {
   const { id } = await params;
   const idValido = idSchema.safeParse(id);
 
@@ -72,7 +73,7 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
         modo="editar"
         endpoint={`/api/usuarios/${usuario.id}`}
         metodo="PUT"
-        rutaBase={RUTA_USUARIOS_DASHBOARD}
+        rutaBase={RUTA_USUARIOS_REVISOR}
         valoresIniciales={{
           nombres: usuario.nombres,
           apellidos: usuario.apellidos,
@@ -81,7 +82,14 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
           perfilCodigo: usuario.perfilCodigo,
           formatosExcelIds: idsFormatosAsignados,
         }}
-        opcionesPerfil={aOpcionesPerfil(perfiles)}
+        opcionesPerfil={aOpcionesPerfil(
+          // Un actor REVISOR_REPOSITORIO no puede promover a nadie a ADMIN (regla en
+          // `application/`, ver ActualizarUsuario): se oculta la opción salvo que sea el perfil
+          // ya vigente de esta persona, para no perder su valor actual en el select.
+          perfiles.filter(
+            (perfil) => !esPerfilAdministrador(perfil.codigo) || perfil.codigo === usuario.perfilCodigo,
+          ),
+        )}
         opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel, idsFormatosAsignados)}
       />
     </div>

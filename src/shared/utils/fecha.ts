@@ -1,7 +1,7 @@
 // Formateadores compartidos: la fecha se formatea siempre en el servidor y con zona horaria fija
 // (America/Santiago). Si la formateara el navegador, la hidratación mostraría un valor distinto
 // según la zona del equipo del funcionario (mismo criterio ya usado en
-// `dashboard/usuarios/listado-usuarios.tsx` y `dashboard/logs/page.tsx`).
+// `shared/components/ListadoUsuarios.tsx` y `dashboard/logs/page.tsx`).
 
 const FORMATEADOR_FECHA = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",

@@ -28,7 +28,7 @@ export type ResultadoActualizarUsuario =
   | { ok: false; motivo: "PERFIL_INVALIDO" }
   | { ok: false; motivo: "FORMATO_INVALIDO" }
   | { ok: false; motivo: "DUPLICADO"; campo: CampoUnico; rut: string }
-  | { ok: false; motivo: "AUTO_OPERACION" | "ULTIMO_ADMIN"; rut: string };
+  | { ok: false; motivo: "AUTO_OPERACION" | "ULTIMO_ADMIN" | "PERFIL_ADMIN_RESTRINGIDO"; rut: string };
 
 const CAMPOS_EDITABLES = ["nombres", "apellidos", "email", "perfilCodigo"] as const;
 
@@ -40,6 +40,10 @@ export async function actualizarUsuario(
   id: string,
   datos: DatosEdicionUsuario,
   actorId: string,
+  // Perfil de quien ejecuta la operación (ADMIN o REVISOR_REPOSITORIO: ambos tienen acceso al
+  // mantenedor). Se recibe aparte de `dependencias` porque es un dato de identidad del actor, no
+  // una dependencia técnica inyectable.
+  actorPerfilCodigo: string,
   dependencias: {
     repositorio: UsuarioRepository;
     repositorioPerfiles: PerfilRepository;
@@ -50,6 +54,16 @@ export async function actualizarUsuario(
 
   if (!actual) {
     return { ok: false, motivo: "NO_ENCONTRADO" };
+  }
+
+  // Un actor sin perfil ADMIN no puede tocar una cuenta que YA es ADMIN, ni asignarle el perfil
+  // ADMIN a nadie (incluido su propio registro). Va ANTES de conservaSuPerfil/degradaPerfil: esas
+  // reglas son exclusivamente para cuando el actor SÍ es ADMIN operando sobre una cuenta ADMIN.
+  if (
+    !esPerfilAdministrador(actorPerfilCodigo) &&
+    (esPerfilAdministrador(actual.perfilCodigo) || esPerfilAdministrador(datos.perfilCodigo))
+  ) {
+    return { ok: false, motivo: "PERFIL_ADMIN_RESTRINGIDO", rut: actual.rut };
   }
 
   // Conservar el perfil que la persona ya tiene siempre es válido, aunque el catálogo lo haya

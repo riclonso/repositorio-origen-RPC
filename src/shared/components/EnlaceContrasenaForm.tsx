@@ -3,7 +3,6 @@
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { Boton } from "@/shared/components/Boton";
-import { RUTA_USUARIOS } from "../../ruta-usuarios";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo enviar el enlace. Intenta nuevamente.";
 
@@ -11,9 +10,12 @@ type EstadoFormulario = { error: string | null };
 
 const ESTADO_INICIAL: EstadoFormulario = { error: null };
 
+type EnlaceContrasenaFormProps = { usuarioId: string; rutaBase: string };
+
 // Opción 1: la persona fija su propia contraseña con un enlace de un solo uso. No sale contraseña
-// alguna de este formulario; solo dispara el envío.
-export function EnlaceContrasenaForm({ usuarioId }: { usuarioId: string }) {
+// alguna de este formulario; solo dispara el envío. Compartido entre `/dashboard/usuarios` (ADMIN)
+// y `/revisor/usuarios` (REVISOR_REPOSITORIO): cada área aporta su propia base de ruta.
+export function EnlaceContrasenaForm({ usuarioId, rutaBase }: EnlaceContrasenaFormProps) {
   const router = useRouter();
 
   const [estado, enviarFormulario, enviando] = useActionState<EstadoFormulario, FormData>(
@@ -31,7 +33,7 @@ export function EnlaceContrasenaForm({ usuarioId }: { usuarioId: string }) {
         return { error: MENSAJE_ERROR_GENERICO };
       }
 
-      router.push(`${RUTA_USUARIOS}?enlace=enviado`);
+      router.push(`${rutaBase}?enlace=enviado`);
       router.refresh();
       return ESTADO_INICIAL;
     },
