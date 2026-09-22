@@ -1,7 +1,6 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { DatosEdicionVentanaCarga, VentanaCarga } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
-import { fechaDentroDelAnio } from "@/modules/ventanas-carga/domain/entities/rangoAnio";
 import { FormatoInvalidoVentanaCargaError } from "@/modules/ventanas-carga/domain/errors/FormatoInvalidoVentanaCargaError";
 
 export type ResultadoEditarVentanaCarga =
@@ -35,14 +34,10 @@ export async function editarVentanaCarga(
     return { ok: false, motivo: "VENTANA_ELIMINADA" };
   }
 
+  // El `anio` de la ventana es solo la etiqueta del período de reporte: no se exige que las
+  // fechas caigan dentro de ese año calendario (una ventana puede abrirse en diciembre y vencer
+  // en enero siguiente).
   if (datos.fechaVencimiento <= datos.fechaApertura) {
-    return { ok: false, motivo: "RANGO_INVALIDO" };
-  }
-
-  if (
-    !fechaDentroDelAnio(datos.fechaApertura, ventana.anio) ||
-    !fechaDentroDelAnio(datos.fechaVencimiento, ventana.anio)
-  ) {
     return { ok: false, motivo: "RANGO_INVALIDO" };
   }
 

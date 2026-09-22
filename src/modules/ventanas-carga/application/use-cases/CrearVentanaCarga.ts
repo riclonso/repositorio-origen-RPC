@@ -1,7 +1,6 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { VentanaCarga } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
-import { fechaDentroDelAnio } from "@/modules/ventanas-carga/domain/entities/rangoAnio";
 import { VentanaCargaDuplicadaError } from "@/modules/ventanas-carga/domain/errors/VentanaCargaDuplicadaError";
 import { FormatoInvalidoVentanaCargaError } from "@/modules/ventanas-carga/domain/errors/FormatoInvalidoVentanaCargaError";
 
@@ -30,12 +29,10 @@ export async function crearVentanaCarga(
 ): Promise<ResultadoCrearVentanaCarga> {
   // Revalidado aquí también (ya lo valida `crearVentanaCargaSchema.superRefine` en el Route
   // Handler): mismo criterio de defensa en profundidad que ya usa `editarVentanaCarga`, para
-  // que un futuro caller directo de este caso de uso no pueda saltarse la regla de rango.
-  if (
-    datos.fechaVencimiento <= datos.fechaApertura ||
-    !fechaDentroDelAnio(datos.fechaApertura, datos.anio) ||
-    !fechaDentroDelAnio(datos.fechaVencimiento, datos.anio)
-  ) {
+  // que un futuro caller directo de este caso de uso no pueda saltarse la regla de rango. El
+  // `anio` es solo la etiqueta del período de reporte: no se exige que las fechas caigan dentro
+  // de ese año calendario (una ventana puede abrirse en diciembre y vencer en enero siguiente).
+  if (datos.fechaVencimiento <= datos.fechaApertura) {
     return { ok: false, motivo: "RANGO_INVALIDO" };
   }
 

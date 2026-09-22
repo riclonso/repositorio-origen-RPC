@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { fechaDentroDelAnio } from "@/modules/ventanas-carga/domain/entities/rangoAnio";
 
 // Rango amplio y razonable: no hay un límite de negocio documentado, solo una defensa contra un
 // valor absurdo tecleado por error.
@@ -30,30 +29,15 @@ const fechaVencimientoVentanaCargaSchema = fechaVentanaCargaSchema.transform((fe
   return finDeDia;
 });
 
-// Compartida entre creación y edición: ambas exigen que las dos fechas caigan dentro del año
-// calendario de la ventana y que `fechaVencimiento` sea posterior a `fechaApertura`. Recibe el
-// `anio` ya resuelto (del propio payload al crear, del registro existente al editar) para no
-// duplicar la regla de rango en dos sitios.
+// Compartida entre creación y edición: ambas exigen que `fechaVencimiento` sea posterior a
+// `fechaApertura`. El `anio` es solo la etiqueta del período de reporte que declara la ventana —
+// no tiene por qué coincidir con el año calendario de las fechas de apertura/vencimiento (p.ej.
+// una ventana del año de reporte 2024 puede abrirse en diciembre de 2024 y vencer en enero de
+// 2025), así que deliberadamente no se valida esa correspondencia.
 function validarRangoVentana(
-  datos: { anio: number; fechaApertura: Date; fechaVencimiento: Date },
+  datos: { fechaApertura: Date; fechaVencimiento: Date },
   contexto: z.RefinementCtx,
 ): void {
-  if (!fechaDentroDelAnio(datos.fechaApertura, datos.anio)) {
-    contexto.addIssue({
-      code: "custom",
-      path: ["fechaApertura"],
-      message: `La fecha de apertura debe estar dentro del año ${datos.anio}`,
-    });
-  }
-
-  if (!fechaDentroDelAnio(datos.fechaVencimiento, datos.anio)) {
-    contexto.addIssue({
-      code: "custom",
-      path: ["fechaVencimiento"],
-      message: `La fecha de vencimiento debe estar dentro del año ${datos.anio}`,
-    });
-  }
-
   if (datos.fechaVencimiento <= datos.fechaApertura) {
     contexto.addIssue({
       code: "custom",
@@ -76,9 +60,8 @@ export type CrearVentanaCargaInput = z.infer<typeof crearVentanaCargaSchema>;
 
 // Esquema de edición: el body real que envía el cliente son las dos fechas y el formato de
 // archivo (`anio` es inmutable y nunca se recibe en la edición; `publicada` tiene su propio
-// endpoint PATCH). La comprobación de rango contra el año se repite en
-// `application/use-cases/EditarVentanaCarga.ts`, que sí conoce el año fijo de la ventana (lo
-// resuelve leyendo el registro existente) — este esquema solo valida la FORMA del body.
+// endpoint PATCH). La comprobación de `fechaVencimiento > fechaApertura` se repite en
+// `application/use-cases/EditarVentanaCarga.ts` — este esquema solo valida la FORMA del body.
 export const editarVentanaCargaSchema = z.object({
   fechaApertura: fechaVentanaCargaSchema,
   fechaVencimiento: fechaVencimientoVentanaCargaSchema,

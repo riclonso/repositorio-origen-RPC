@@ -50,8 +50,8 @@ src/
 │   └── ventanas-carga/     — ventanas de tiempo para carga de archivos (RF-15, implementado)
 │       ├── domain/         — entities/VentanaCarga.ts (incluye estaAbierta, sin estado persistido;
 │       │                     referencia un `FormatoExcel` concreto vía `formatoExcelId`, no un
-│       │                     `TipoArchivo` genérico), entities/rangoAnio.ts (fechaDentroDelAnio),
-│       │                     repositories/, errors/VentanaCargaDuplicadaError.ts,
+│       │                     `TipoArchivo` genérico), repositories/,
+│       │                     errors/VentanaCargaDuplicadaError.ts,
 │       │                     errors/FormatoInvalidoVentanaCargaError.ts
 │       ├── application/    — use-cases/ (Crear/EditarFechas/Listar/ListarAniosDisponibles/Obtener)
 │       ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/

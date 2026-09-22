@@ -81,8 +81,8 @@ export type MotivoAuditoria =
   | "YA_APROBADA"
   // Específicos de `VENTANA_CARGA_CREADA`: ya existe una ventana para ese año.
   | "ANIO_DUPLICADO"
-  // De `VENTANA_CARGA_CREADA`/`VENTANA_CARGA_EDITADA`: las fechas no caen dentro del año de la
-  // ventana, o `fechaVencimiento` no es posterior a `fechaApertura`.
+  // De `VENTANA_CARGA_CREADA`/`VENTANA_CARGA_EDITADA`: `fechaVencimiento` no es posterior a
+  // `fechaApertura`.
   | "RANGO_INVALIDO"
   // De `VENTANA_CARGA_CREADA`/`VENTANA_CARGA_EDITADA`: el `formatoExcelId` recibido no existe o no
   // está activo.

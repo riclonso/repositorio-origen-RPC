@@ -137,7 +137,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
         fechaVencimiento: datos.data.fechaVencimiento,
       });
       return respuestaRangoInvalido(
-        "Las fechas deben caer dentro del año de la ventana y la de vencimiento debe ser posterior a la de apertura",
+        "La fecha de vencimiento debe ser posterior a la fecha de apertura",
       );
     }
 
