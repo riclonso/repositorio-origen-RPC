@@ -49,46 +49,50 @@ export function PestanasNotificacionesVentana({
   ];
 
   return (
-    <section aria-labelledby="titulo-notificaciones-ventana" className="flex flex-col gap-5">
-      <div className="space-y-2">
+    <section aria-labelledby="titulo-notificaciones-ventana" className="grid grid-cols-1 gap-6">
+      <div className="space-y-3">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Detalle</p>
-        <h2 id="titulo-notificaciones-ventana" className="text-2xl font-bold text-gob-black">
+        <h2 id="titulo-notificaciones-ventana" className="text-3xl font-bold text-gob-black">
           Notificaciones
         </h2>
       </div>
 
-      <div role="tablist" aria-label="Notificaciones de la ventana" className="flex flex-wrap gap-1 border-b-2 border-gob-neutral">
-        {pestanas.map((pestana) => (
-          <button
-            key={pestana.id}
-            type="button"
-            role="tab"
-            id={`tab-${pestana.id}`}
-            aria-selected={activa === pestana.id}
-            aria-controls={`panel-${pestana.id}`}
-            onClick={() => setActiva(pestana.id)}
-            className={`-mb-0.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-              activa === pestana.id
-                ? "border-gob-primary text-gob-primary"
-                : "border-transparent text-gob-gray-a hover:text-gob-black"
-            }`}
-          >
-            {pestana.etiqueta} <span className="font-bold text-gob-primary">({pestana.total})</span>
-          </button>
-        ))}
-      </div>
-
-      {pestanas.map((pestana) => (
-        <div
-          key={pestana.id}
-          role="tabpanel"
-          id={`panel-${pestana.id}`}
-          aria-labelledby={`tab-${pestana.id}`}
-          hidden={activa !== pestana.id}
-        >
-          {pestana.contenido}
+      <div className="rounded-lg bg-white border border-gob-neutral/50 overflow-hidden">
+        <div role="tablist" aria-label="Notificaciones de la ventana" className="flex flex-wrap gap-0 border-b-2 border-gob-neutral bg-gob-neutral/10 p-1">
+          {pestanas.map((pestana) => (
+            <button
+              key={pestana.id}
+              type="button"
+              role="tab"
+              id={`tab-${pestana.id}`}
+              aria-selected={activa === pestana.id}
+              aria-controls={`panel-${pestana.id}`}
+              onClick={() => setActiva(pestana.id)}
+              className={`flex-1 min-w-0 px-4 py-3 text-sm font-semibold transition-all rounded-md ${
+                activa === pestana.id
+                  ? "bg-gob-primary text-white shadow-sm"
+                  : "text-gob-gray-a hover:text-gob-black hover:bg-white/50"
+              }`}
+            >
+              <span className="truncate">{pestana.etiqueta}</span> <span className="font-bold whitespace-nowrap ml-1">({pestana.total})</span>
+            </button>
+          ))}
         </div>
-      ))}
+
+        <div className="p-6">
+          {pestanas.map((pestana) => (
+            <div
+              key={pestana.id}
+              role="tabpanel"
+              id={`panel-${pestana.id}`}
+              aria-labelledby={`tab-${pestana.id}`}
+              hidden={activa !== pestana.id}
+            >
+              {pestana.contenido}
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

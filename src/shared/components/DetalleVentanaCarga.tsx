@@ -116,27 +116,29 @@ export async function DetalleVentanaCarga({
   return (
     <ViewTransition>
       <div className="flex flex-col gap-8">
-        <div className="rounded-2xl border border-gob-neutral bg-white p-6 shadow-lg">
+        <div className="rounded-2xl border border-gob-neutral bg-white p-8 shadow-lg">
           <Link
             href={rutaVolver}
-            className="text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
+            className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro mb-6"
           >
             {textoVolver}
           </Link>
-          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
-            <div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+            <div className="lg:col-span-2 space-y-3">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">
                 Ventana de carga
               </p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight text-gob-black">
-                Cargas aprobadas — Ventana {ventana.anio}
+              <h1 className="text-4xl font-bold tracking-tight text-gob-black leading-tight">
+                Cargas — Ventana {ventana.anio}
               </h1>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-gob-primary bg-blue-100 px-3 py-1.5 text-xs font-bold text-gob-primary">
+
+            <div className="flex flex-col gap-3 lg:items-end">
+              <span className="rounded-full border border-gob-primary bg-blue-100 px-4 py-2 text-xs font-bold text-gob-primary w-fit">
                 {ventana.formatoExcelNombre}
               </span>
-              <span className="rounded-full border border-gob-gray-a bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gob-black">
+              <span className="rounded-full border border-gob-gray-a bg-gray-100 px-4 py-2 text-xs font-semibold text-gob-black w-fit lg:w-auto">
                 Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
                 {formatearFechaCalendario(ventana.fechaVencimiento)}
               </span>
