@@ -19,7 +19,7 @@ export default async function SolicitudesRevisorPage({ searchParams }: Solicitud
   // Modo tolerante: una URL editada a mano cae a los valores por defecto en vez de romper la
   // pantalla.
   const analisis = listadoSolicitudesReemplazoSchema.safeParse(parametros);
-  const filtro = analisis.success ? analisis.data : { ...FILTRO_LISTADO_SOLICITUDES_REEMPLAZO_POR_DEFECTO };
+  const filtro = analisis.success ? analisis.data : FILTRO_LISTADO_SOLICITUDES_REEMPLAZO_POR_DEFECTO;
 
   return (
     <div>
