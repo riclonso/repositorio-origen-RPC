@@ -27,9 +27,9 @@ export async function ListadoCargasAprobadas({
 
   if (filas.length === 0) {
     return (
-      <div className="mt-6 rounded-lg border border-gob-accent bg-white p-8 text-center">
-        <p className="text-base font-semibold text-gob-black">Aún no hay cargas aprobadas</p>
-        <p className="mt-2 text-sm text-gob-gray-a">
+      <div className="rounded-lg border border-gob-neutral bg-white p-12 text-center shadow-md">
+        <p className="text-lg font-semibold text-gob-black">Aún no hay cargas aprobadas</p>
+        <p className="mt-3 text-base text-gob-gray-a max-w-md mx-auto">
           Cuando un notificador dé visto bueno a una carga, aparecerá aquí.
         </p>
       </div>
