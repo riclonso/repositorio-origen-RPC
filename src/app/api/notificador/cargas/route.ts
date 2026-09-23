@@ -7,6 +7,7 @@ import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastruc
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 import { lectorArchivoReporteExcelJs } from "@/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
+import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import { extraerIp } from "@/shared/utils/peticion";
 import {
@@ -21,8 +22,10 @@ import {
   aCargaArchivoResumenDTO,
   exigirNotificador,
   respuestaArchivoInvalido,
+  respuestaCargaPendienteDeDecision,
   respuestaError,
   respuestaFormatoNoAsignado,
+  respuestaReemplazoNoAutorizado,
   respuestaSinAcceso,
   respuestaSinVentanaAbierta,
   tipoContenidoDesdeArchivo,
@@ -177,6 +180,7 @@ export async function POST(request: Request) {
         repositorio: prismaCargaArchivoRepository,
         repositorioFormatosExcel: prismaFormatoExcelRepository,
         repositorioVentanasCarga: prismaVentanaCargaRepository,
+        repositorioSolicitudesReemplazo: prismaSolicitudReemplazoCargaRepository,
         lector: lectorArchivoReporteExcelJs,
       },
     );
@@ -197,6 +201,14 @@ export async function POST(request: Request) {
       });
       if (resultado.motivo === "FORMATO_NO_ASIGNADO") {
         return respuestaFormatoNoAsignado();
+      }
+
+      if (resultado.motivo === "REEMPLAZO_NO_AUTORIZADO") {
+        return respuestaReemplazoNoAutorizado();
+      }
+
+      if (resultado.motivo === "CARGA_PENDIENTE_DECISION") {
+        return respuestaCargaPendienteDeDecision();
       }
 
       // `SIN_VENTANA_ABIERTA` y `VENTANA_NO_PUBLICADA` comparten la misma respuesta genérica: no

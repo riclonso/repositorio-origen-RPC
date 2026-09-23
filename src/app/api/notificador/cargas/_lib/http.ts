@@ -34,10 +34,11 @@ export const idCargaArchivoSchema = idRutaSchema;
 // Mismo tope que la plantilla de formato de archivo (RF-13): 10 MB.
 export const TAMANO_MAXIMO_ARCHIVO = 10 * 1024 * 1024;
 
-export type CargaArchivoDTO = Omit<CargaArchivo, "createdAt" | "updatedAt" | "vistoBuenoEn"> & {
+export type CargaArchivoDTO = Omit<CargaArchivo, "createdAt" | "updatedAt" | "vistoBuenoEn" | "finalizadaEn"> & {
   createdAt: string;
   updatedAt: string;
   vistoBuenoEn: string | null;
+  finalizadaEn: string | null;
 };
 
 export function aCargaArchivoDTO(carga: CargaArchivo): CargaArchivoDTO {
@@ -46,12 +47,14 @@ export function aCargaArchivoDTO(carga: CargaArchivo): CargaArchivoDTO {
     createdAt: carga.createdAt.toISOString(),
     updatedAt: carga.updatedAt.toISOString(),
     vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
+    finalizadaEn: carga.finalizadaEn ? carga.finalizadaEn.toISOString() : null,
   };
 }
 
-export type CargaArchivoResumenDTO = Omit<CargaArchivoResumen, "createdAt" | "vistoBuenoEn"> & {
+export type CargaArchivoResumenDTO = Omit<CargaArchivoResumen, "createdAt" | "vistoBuenoEn" | "finalizadaEn"> & {
   createdAt: string;
   vistoBuenoEn: string | null;
+  finalizadaEn: string | null;
 };
 
 export function aCargaArchivoResumenDTO(carga: CargaArchivoResumen): CargaArchivoResumenDTO {
@@ -59,6 +62,7 @@ export function aCargaArchivoResumenDTO(carga: CargaArchivoResumen): CargaArchiv
     ...carga,
     createdAt: carga.createdAt.toISOString(),
     vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
+    finalizadaEn: carga.finalizadaEn ? carga.finalizadaEn.toISOString() : null,
   };
 }
 
@@ -87,12 +91,25 @@ export function respuestaArchivoInvalido(mensaje: string): NextResponse {
   return respuestaError(mensaje, 400, { campo: "archivo", codigo: "ARCHIVO_INVALIDO" });
 }
 
-export function respuestaCargaConErrores(): NextResponse {
-  return respuestaError("Esta carga tiene errores y no puede recibir visto bueno", 409, {
-    codigo: "CARGA_CON_ERRORES",
-  });
+// Corrección (fin de la autoaprobación): ya existe, para esta combinación (formato, ventana), una
+// carga finalizada por el notificador y todavía sin decidir por un tercero. Mismo criterio que
+// `respuestaSinVentanaAbierta`: no revela más detalle que el necesario, y en la práctica no debería
+// alcanzarse desde la UI (la tarjeta desaparece por completo mientras esté en este estado).
+export function respuestaCargaPendienteDeDecision(): NextResponse {
+  return respuestaError(
+    "Ya existe una carga pendiente de decisión para esta combinación. Espera a que sea aprobada o rechazada.",
+    409,
+    { codigo: "CARGA_PENDIENTE_DECISION" },
+  );
 }
 
-export function respuestaCargaYaAprobada(): NextResponse {
-  return respuestaError("Esta carga ya fue aprobada", 409, { codigo: "YA_APROBADA" });
+// Extensión "solicitudes de reemplazo": ya existe una carga aprobada vigente para esta combinación
+// y no hay una autorización de reemplazo vigente. Mismo criterio que `respuestaSinVentanaAbierta`:
+// no detalla si nunca se pidió el reemplazo, si fue rechazado o si ya venció.
+export function respuestaReemplazoNoAutorizado(): NextResponse {
+  return respuestaError(
+    "Ya existe una carga aprobada para esta combinación. Solicita un reemplazo y espera su aprobación antes de volver a subir.",
+    409,
+    { codigo: "REEMPLAZO_NO_AUTORIZADO" },
+  );
 }

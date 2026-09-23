@@ -7,7 +7,17 @@ import { listarCargasPropias } from "@/modules/reporte-excel/application/use-cas
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { listarVentanasDisponiblesParaNotificador } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasDisponiblesParaNotificador";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
-import { PanelCargaArchivo, type CargaResumenVista, type CombinacionCargaVista } from "./panel-carga-archivo";
+import { listarSolicitudesReemplazoPropias } from "@/modules/solicitudes-reemplazo/application/use-cases/ListarSolicitudesReemplazoPropias";
+import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
+import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
+import { BannerReaperturaCarga } from "@/shared/components/BannerReaperturaCarga";
+import {
+  PanelCargaArchivo,
+  type CargaResumenVista,
+  type CombinacionCargaVista,
+  type SolicitudReemplazoPropiaVista,
+} from "./panel-carga-archivo";
 
 export default async function NotificadorPage() {
   // El proxy ya garantiza una sesión de perfil notificador antes de llegar aquí; estas comprobaciones
@@ -31,13 +41,15 @@ export default async function NotificadorPage() {
   // carga publicada y abierta ahora mismo (RF-15 ampliación), tampoco. `PanelCargaArchivo` muestra
   // un único mensaje genérico cuando el arreglo de combinaciones viene vacío, sin distinguir la
   // causa.
-  const [formatos, cargasPropias, ventanasDisponibles] = await Promise.all([
+  const [formatos, cargasPropias, ventanasDisponibles, solicitudesPropias, reaperturasVigentes] = await Promise.all([
     prismaFormatoExcelRepository.listarAsignadosAUsuario(sesion.sub),
     listarCargasPropias(
       { usuarioId: sesion.sub, pagina: 1, tamano: 25 },
       { repositorio: prismaCargaArchivoRepository },
     ),
     listarVentanasDisponiblesParaNotificador({ repositorio: prismaVentanaCargaRepository }),
+    listarSolicitudesReemplazoPropias(sesion.sub, { repositorio: prismaSolicitudReemplazoCargaRepository }),
+    listarReaperturasVigentesPropias(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
   ]);
 
   // Una entrada por cada par (formato asignado, ventana disponible) cuyo formato coincide
@@ -59,18 +71,16 @@ export default async function NotificadorPage() {
     ...carga,
     createdAt: carga.createdAt.toISOString(),
     vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
+    finalizadaEn: carga.finalizadaEn ? carga.finalizadaEn.toISOString() : null,
   }));
 
-  // Mismo filtro que `PanelCargaArchivo` aplica en el cliente tras un visto bueno: se repite aquí
-  // para que una combinación ya aprobada en una sesión anterior tampoco aparezca en el primer
-  // render (sin este filtro, se vería un instante hasta que el cliente vuelva a pedir "Mis
-  // cargas").
-  const combinacionesVisibles = combinaciones.filter(
-    (combinacion) =>
-      !cargasIniciales.some(
-        (carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "APROBADA",
-      ),
-  );
+  const ahora = new Date();
+  const solicitudesIniciales: SolicitudReemplazoPropiaVista[] = solicitudesPropias.solicitudes.map((solicitud) => ({
+    id: solicitud.id,
+    cargaArchivoId: solicitud.cargaArchivoId,
+    estado: solicitud.estado,
+    vencida: solicitudVencida(solicitud, ahora),
+  }));
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
@@ -86,7 +96,13 @@ export default async function NotificadorPage() {
         </div>
       </section>
 
-      <PanelCargaArchivo combinaciones={combinacionesVisibles} cargasIniciales={cargasIniciales} />
+      <BannerReaperturaCarga reaperturas={reaperturasVigentes} />
+
+      <PanelCargaArchivo
+        combinaciones={combinaciones}
+        cargasIniciales={cargasIniciales}
+        solicitudesIniciales={solicitudesIniciales}
+      />
     </div>
   );
 }

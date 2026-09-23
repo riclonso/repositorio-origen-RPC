@@ -28,7 +28,11 @@ export default async function RevisorLayout({ children }: { children: ReactNode 
           perfil={identidad?.perfilNombre}
         />
       </aside>
-      <main className="min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:p-7">{children}</main>
+      {/* `relative`: sin esto, un descendiente `position: absolute` (p.ej. `<caption class="sr-only">`
+          de cualquier tabla) toma como contenedor el `<body>` en vez de este `<main>` que scrollea,
+          y su posición estática se calcula con el layout sin scrollear — inflando la altura del
+          documento y dejando un espacio en blanco al hacer scroll de la ventana del navegador. */}
+      <main className="relative min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:p-7">{children}</main>
     </div>
   );
 }

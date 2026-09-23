@@ -3,7 +3,14 @@
 // binario fuera hace imposible filtrarlo por descuido. El único lugar que sí lo necesita usa
 // `CargaArchivoParaDescarga`, más abajo.
 
-export const ESTADOS_CARGA_ARCHIVO = ["CON_ERRORES", "PENDIENTE_VISTO_BUENO", "APROBADA"] as const;
+export const ESTADOS_CARGA_ARCHIVO = [
+  "CON_ERRORES",
+  "PENDIENTE_VISTO_BUENO",
+  "APROBADA",
+  // Nuevo (rechazo de cargas aprobadas): una `APROBADA` que un ADMIN/REVISOR_REPOSITORIO rechazó
+  // unilateralmente. Irreversible, mismo criterio que el visto bueno.
+  "RECHAZADA",
+] as const;
 export type EstadoCargaArchivo = (typeof ESTADOS_CARGA_ARCHIVO)[number];
 
 export const TIPOS_ERROR_CARGA_ARCHIVO = [
@@ -56,9 +63,24 @@ export type CargaArchivo = {
   estado: EstadoCargaArchivo;
   vistoBuenoEn: Date | null;
   vistoBuenoPorId: string | null;
+  // No nulo cuando el notificador ya "finalizó y envió" esta carga (paso que reemplaza a la
+  // autoaprobación): habilita a ADMIN/REVISOR_REPOSITORIO a aprobarla o rechazarla, y bloquea una
+  // subida nueva para la misma combinación (formato, ventana) mientras no se decida.
+  finalizadaEn: Date | null;
   createdAt: Date;
   updatedAt: Date;
   errores: ErrorCargaArchivo[];
+  // Denormalizado vía join a `CargaArchivoRechazo`, no nulo solo cuando `estado = RECHAZADA`.
+  rechazo: InfoRechazoCargaArchivo | null;
+};
+
+// Detalle del rechazo, embebido en `CargaArchivo`/`CargaArchivoResumen` cuando corresponde. El
+// motivo SÍ viaja aquí (a diferencia de `logs/auditoria.txt`, que nunca lo registra): es
+// información de negocio visible para quien tiene acceso a la carga.
+export type InfoRechazoCargaArchivo = {
+  motivo: string;
+  rechazadoEn: Date;
+  rechazadoPorNombre: string;
 };
 
 // Vista liviana para los listados: sin el binario ni el detalle de errores fila por fila.
@@ -77,7 +99,12 @@ export type CargaArchivoResumen = {
   cantidadErrores: number;
   estado: EstadoCargaArchivo;
   vistoBuenoEn: Date | null;
+  // Ver comentario en `CargaArchivo.finalizadaEn`: se expone en el resumen para que el notificador
+  // pueda ocultar por completo la tarjeta de una combinación (formato, ventana) mientras esté
+  // finalizada y pendiente de decisión (`panel-carga-archivo.tsx`).
+  finalizadaEn: Date | null;
   createdAt: Date;
+  rechazo: InfoRechazoCargaArchivo | null;
 };
 
 export type DatosNuevoErrorCargaArchivo = {
@@ -98,6 +125,46 @@ export type DatosNuevaCargaArchivo = {
   cantidadErrores: number;
   estado: EstadoCargaArchivo;
   errores: DatosNuevoErrorCargaArchivo[];
+  // Extensión "solicitudes de reemplazo": si la subida consume una autorización de reemplazo
+  // vigente (`SolicitudReemplazoCarga` APROBADA y utilizable), su id viaja aquí para que el
+  // repositorio marque la solicitud como usada en la MISMA operación atómica que crea esta carga
+  // (se consume por el intento en sí, exista o no error de validación en él).
+  solicitudReemplazoAConsumirId?: string | null;
+  // Nuevo (rechazo de cargas aprobadas): si la subida consume una reapertura vigente
+  // (`CargaArchivoRechazo` con `reaperturaVigente()` true), su id viaja aquí para que el
+  // repositorio marque `reaperturaConsumidaEn`/`reaperturaConsumidaPorCargaArchivoId` en la MISMA
+  // operación atómica que crea esta carga. Se consume por el intento en sí, exista o no error de
+  // validación en él, mismo criterio que `solicitudReemplazoAConsumirId`. Nunca ambos a la vez
+  // (una combinación (formato, ventana) o exige reemplazo consentido o tiene una reapertura por
+  // rechazo, no las dos: la reapertura solo se ofrece cuando `SIN_VENTANA_ABIERTA` sería el
+  // rechazo, es decir, cuando NO hay ya una carga `APROBADA` vigente).
+  cargaArchivoRechazoAConsumirId?: string | null;
+};
+
+// Contenido binario ya resuelto, previo a dar visto bueno: lo usa `DarVistoBueno` (extensión de
+// publicación hacia el revisor) para reparsear el archivo y construir el detalle de filas antes de
+// abrir la transacción de escritura. A diferencia de `CargaArchivoParaDescarga`, no exige
+// `estado = APROBADA` (todavía no lo está en el momento en que se necesita).
+export type ContenidoCargaArchivo = {
+  contenidoArchivo: Buffer;
+  tipoContenidoArchivo: string;
+};
+
+// Una fila de datos ya validada, lista para publicarse como `CargaArchivoPublicadaFila`.
+export type FilaParaPublicar = {
+  numeroFila: number;
+  valores: Record<string, ValorCeldaArchivo>;
+};
+
+// Datos que `DarVistoBueno` resuelve en `application/` (parseo del archivo, resolución de si esta
+// carga reemplaza a una anterior) antes de pedirle al repositorio que ejecute, en una sola
+// transacción, la transición de estado y la publicación hacia el revisor.
+export type DatosPublicacionCarga = {
+  filas: FilaParaPublicar[];
+  // No nulo cuando esta carga nació de un reemplazo consumido: identifica la carga APROBADA
+  // anterior cuya publicación debe desactivarse, con el motivo que el notificador escribió al
+  // pedir el reemplazo (`SolicitudReemplazoCarga.motivo`).
+  reemplazo: { cargaArchivoIdAnterior: string; motivo: string } | null;
 };
 
 export type FiltroListadoCargasPropias = {
@@ -118,9 +185,34 @@ export type FiltroListadoCargasAprobadas = {
   tamano: number;
 };
 
+// Nuevo (fin de la autoaprobación, RF-20 ampliado): filtro de la tabla "Notificaciones de archivos
+// pendientes de aprobación o rechazo" del detalle de una ventana. A diferencia de
+// `FiltroListadoCargasAprobadas`, trae TANTO `APROBADA` COMO `PENDIENTE_VISTO_BUENO` ya finalizada
+// (`finalizadaEn` no nulo) de esa ventana; el repositorio aplica siempre ese `WHERE` compuesto,
+// nunca filtrado en la UI.
+export type FiltroListadoCargasPendientesODecididas = {
+  ventanaCargaId: string;
+  pagina: number;
+  tamano: number;
+};
+
 export type PaginaCargas = {
   filas: CargaArchivoResumen[];
   total: number;
+};
+
+// Nuevo (rechazo de cargas aprobadas): filtro de la sección "Rechazadas" del detalle de una
+// ventana (`/dashboard/ventanas-carga/[id]`, `/revisor/ventanas-carga/[id]`), mismo criterio que
+// `FiltroListadoCargasAprobadas`.
+export type FiltroListadoCargasRechazadas = {
+  ventanaCargaId?: string;
+  pagina: number;
+  tamano: number;
+};
+
+export type DatosRechazoCargaArchivo = {
+  rechazadoPorId: string;
+  motivo: string;
 };
 
 // Único tipo que SÍ carga el binario. Lo usa exclusivamente el endpoint de descarga, y solo

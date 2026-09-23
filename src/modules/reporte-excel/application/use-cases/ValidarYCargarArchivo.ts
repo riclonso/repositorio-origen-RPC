@@ -2,6 +2,7 @@ import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/rep
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
+import type { SolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
 import {
   TOPE_ERRORES_PERSISTIDOS,
   TOPE_FILAS_DATOS,
@@ -11,6 +12,7 @@ import {
   type ValorCeldaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import { reaperturaVigente } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import { ValidadoresTipoDato, celdaVacia } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 import {
   crearRastreadorFilasDuplicadas,
@@ -45,7 +47,16 @@ export type ResultadoValidarYCargarArchivo =
   // RF-15 (ampliación): la ventana existe y está abierta, pero es un borrador (no publicada). Se
   // trata igual que `SIN_VENTANA_ABIERTA` de cara al notificador (misma respuesta HTTP genérica):
   // no debe revelarse que existe un borrador.
-  | { ok: false; motivo: "VENTANA_NO_PUBLICADA" };
+  | { ok: false; motivo: "VENTANA_NO_PUBLICADA" }
+  // Extensión "solicitudes de reemplazo": ya existe una carga `APROBADA` vigente para esta
+  // combinación (formato, ventana) y no hay ninguna `SolicitudReemplazoCarga` aprobada y todavía
+  // utilizable que autorice volver a subir.
+  | { ok: false; motivo: "REEMPLAZO_NO_AUTORIZADO" }
+  // Corrección (fin de la autoaprobación): ya existe, para esta combinación (formato, ventana), una
+  // carga `PENDIENTE_VISTO_BUENO` que el notificador ya finalizó y envió, y que todavía nadie
+  // decidió (aprobó o rechazó). Defensa de servidor: el mecanismo PRINCIPAL para evitar llegar
+  // aquí es de UI (la tarjeta desaparece por completo mientras esté en este estado).
+  | { ok: false; motivo: "CARGA_PENDIENTE_DECISION" };
 
 function normalizarNombre(nombre: string): string {
   return nombre.trim().toLowerCase();
@@ -79,6 +90,7 @@ export async function validarYCargarArchivo(
     repositorio: CargaArchivoRepository;
     repositorioFormatosExcel: FormatoExcelRepository;
     repositorioVentanasCarga: VentanaCargaRepository;
+    repositorioSolicitudesReemplazo: SolicitudReemplazoCargaRepository;
     lector: LectorArchivoReporte;
   },
 ): Promise<ResultadoValidarYCargarArchivo> {
@@ -108,14 +120,68 @@ export async function validarYCargarArchivo(
     datos.formatoExcelId,
   );
 
-  if (!ventana || !estaAbierta(ventana, new Date())) {
+  if (!ventana) {
     return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
+  }
+
+  // Nuevo (rechazo de cargas aprobadas): una ventana ya vencida sigue habilitando la subida si el
+  // notificador tiene una reapertura vigente (su carga anterior para esta combinación fue
+  // rechazada, y el plazo de reapertura no expiró). Se consume por el intento en sí, exista o no
+  // error de validación en él, mismo criterio que una autorización de reemplazo.
+  let cargaArchivoRechazoAConsumirId: string | null = null;
+
+  if (!estaAbierta(ventana, new Date())) {
+    const reapertura = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
+      datos.usuarioId,
+      ventana.id,
+    );
+
+    if (reapertura && reaperturaVigente(reapertura, { fechaVencimiento: ventana.fechaVencimiento }, new Date())) {
+      cargaArchivoRechazoAConsumirId = reapertura.id;
+    } else {
+      return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
+    }
   }
 
   // RF-15 (ampliación): una ventana en borrador (no publicada) no debe habilitar subidas, aunque
   // esté dentro de su rango de fechas.
   if (!ventana.publicada) {
     return { ok: false, motivo: "VENTANA_NO_PUBLICADA" };
+  }
+
+  // Corrección (fin de la autoaprobación): defensa de servidor, barato primero. Si ya existe una
+  // `PENDIENTE_VISTO_BUENO` finalizada de esta combinación todavía sin decidir, no se admite una
+  // subida nueva hasta que ADMIN/REVISOR_REPOSITORIO la apruebe o la rechace.
+  const cargaPendienteFinalizada = await dependencias.repositorio.obtenerPendienteFinalizadaPorUsuarioYVentana(
+    datos.usuarioId,
+    ventana.id,
+  );
+
+  if (cargaPendienteFinalizada) {
+    return { ok: false, motivo: "CARGA_PENDIENTE_DECISION" };
+  }
+
+  // Extensión "solicitudes de reemplazo": si ya existe una carga APROBADA vigente para esta
+  // combinación (formato, ventana), esta subida es un intento de REEMPLAZO y exige una
+  // autorización previa. Barato primero, antes de leer el archivo completo.
+  const cargaAprobadaVigente = await dependencias.repositorio.obtenerAprobadaVigentePorUsuarioYVentana(
+    datos.usuarioId,
+    ventana.id,
+  );
+
+  let solicitudReemplazoAConsumirId: string | null = null;
+
+  if (cargaAprobadaVigente) {
+    const solicitud = await dependencias.repositorioSolicitudesReemplazo.obtenerAprobadaUtilizablePorCarga(
+      cargaAprobadaVigente.id,
+      new Date(),
+    );
+
+    if (!solicitud) {
+      return { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" };
+    }
+
+    solicitudReemplazoAConsumirId = solicitud.id;
   }
 
   const { encabezados, filas } = await dependencias.lector.leer(
@@ -241,6 +307,10 @@ export async function validarYCargarArchivo(
     cantidadErrores: errores.length,
     estado,
     errores: erroresAcotados,
+    // Se consume por el intento en sí, exista o no error de validación en él (sección 5.4 del
+    // diseño): así no quedan solicitudes "fantasma" reutilizables indefinidamente en reintentos.
+    solicitudReemplazoAConsumirId,
+    cargaArchivoRechazoAConsumirId,
   });
 
   return { ok: true, carga };

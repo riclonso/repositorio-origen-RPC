@@ -3,6 +3,7 @@ import { ViewTransition } from "react";
 import type { VentanaCargaConEstado } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { formatearFechaCalendario } from "@/shared/utils/fecha";
 import { ListadoCargasVentana } from "@/shared/components/ListadoCargasVentana";
+import { ListadoCargasRechazadasVentana } from "@/shared/components/ListadoCargasRechazadasVentana";
 import { FormularioAlertasVentana } from "@/shared/components/FormularioAlertasVentana";
 import { FormularioPlantillaAlertaVentana } from "@/shared/components/FormularioPlantillaAlertaVentana";
 import { TablaNotificadoresPendientesVentana } from "@/shared/components/TablaNotificadoresPendientesVentana";
@@ -97,34 +98,72 @@ export async function DetalleVentanaCarga({
 
   return (
     <ViewTransition>
-      <div className="flex flex-col gap-6">
-        <div>
+      <div className="flex flex-col gap-8">
+        <div className="rounded-2xl border border-gob-accent bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.35)]">
           <Link
             href={rutaVolver}
             className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
           >
             {textoVolver}
           </Link>
-          <h1 className="mt-2 text-xl font-semibold text-gob-black">
-            Cargas aprobadas — Ventana {ventana.anio}
-          </h1>
-          <p className="mt-2 text-sm text-gob-gray-a">
-            Formato: {ventana.formatoExcelNombre} · Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
-            {formatearFechaCalendario(ventana.fechaVencimiento)}
-          </p>
+          <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-primary">
+                Ventana de carga
+              </p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-gob-black">
+                Cargas aprobadas — Ventana {ventana.anio}
+              </h1>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-gob-accent bg-gob-tertiary/10 px-3 py-1 text-xs font-semibold text-gob-black">
+                {ventana.formatoExcelNombre}
+              </span>
+              <span className="rounded-full border border-gob-accent bg-gob-tertiary/10 px-3 py-1 text-xs font-semibold text-gob-black">
+                Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
+                {formatearFechaCalendario(ventana.fechaVencimiento)}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <ListadoCargasVentana
-          ventanaCargaId={ventana.id}
-          pagina={pagina}
-          tamano={tamano}
-          construirHref={construirHref}
-        />
+        <section aria-labelledby="titulo-cargas-aprobadas" className="flex flex-col gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-gray-a">Detalle</p>
+            <h2 id="titulo-cargas-aprobadas" className="mt-1 text-lg font-bold text-gob-black">
+              Notificaciones de archivos
+            </h2>
+          </div>
 
-        <section aria-labelledby="titulo-alertas-ventana" className="flex flex-col gap-4">
-          <h2 id="titulo-alertas-ventana" className="text-lg font-semibold text-gob-black">
-            Alertas por email
-          </h2>
+          <ListadoCargasVentana
+            ventanaCargaId={ventana.id}
+            pagina={pagina}
+            tamano={tamano}
+            construirHref={construirHref}
+          />
+        </section>
+
+        <section aria-labelledby="titulo-cargas-rechazadas" className="flex flex-col gap-4 border-t border-gob-accent pt-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-gray-a">Detalle</p>
+            <h2 id="titulo-cargas-rechazadas" className="mt-1 text-lg font-bold text-gob-black">
+              Rechazadas
+            </h2>
+          </div>
+
+          <ListadoCargasRechazadasVentana ventanaCargaId={ventana.id} />
+        </section>
+
+        <section
+          aria-labelledby="titulo-alertas-ventana"
+          className="flex flex-col gap-4 border-t border-gob-accent pt-8"
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-gray-a">Notificaciones</p>
+            <h2 id="titulo-alertas-ventana" className="mt-1 text-lg font-bold text-gob-black">
+              Alertas por email
+            </h2>
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <FormularioAlertasVentana
@@ -141,8 +180,10 @@ export async function DetalleVentanaCarga({
             correoDisponible={vistaAlertas.correoDisponible}
           />
 
-          <div className="rounded-lg border border-gob-accent bg-white p-4">
-            <h3 className="text-sm font-semibold text-gob-black">Totales del historial</h3>
+          <div className="rounded-lg border border-gob-accent border-l-4 border-l-gob-primary bg-white p-4 shadow-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-gob-gray-a">
+              Totales del historial
+            </h3>
             <div className="mt-3">
               <ResumenTotalesAlertasVentana totales={vistaAlertas.totales} />
             </div>

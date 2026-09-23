@@ -39,6 +39,15 @@ const schema = z
     SMTP_PASSWORD: z.string().min(1, "SMTP_PASSWORD no puede estar vacía").optional(),
     SMTP_FROM: z.string().min(1, "SMTP_FROM no puede estar vacía").optional(),
     SMTP_REJECT_UNAUTHORIZED: booleanoSchema.optional(),
+    // Buzón compartido del equipo revisor (confirmación de carga aprobada). Opcional: si no está
+    // configurado, el correo de confirmación se envía individualmente a cada usuario activo con
+    // perfil REVISOR_REPOSITORIO (ver `VistoBuenoCargaMailer.ts`), nunca a todos en el mismo
+    // To/CC. `z.preprocess` normaliza el string vacío a `undefined` antes de validar el formato de
+    // correo, mismo patrón de "todo o nada" que el resto de variables opcionales de este archivo.
+    BUZON_COMPARTIDO_REVISOR_EMAIL: z.preprocess(
+      (valor) => (valor === "" ? undefined : valor),
+      z.email("BUZON_COMPARTIDO_REVISOR_EMAIL debe ser un correo válido").optional(),
+    ),
   })
   // Validación de todo o nada: el peor escenario posible es una configuración a medias que
   // arranca sin quejarse y falla en cada envío. Con esto, o el grupo está completo o no está,
@@ -83,6 +92,7 @@ export const env = schema.parse({
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   SMTP_FROM: process.env.SMTP_FROM,
   SMTP_REJECT_UNAUTHORIZED: process.env.SMTP_REJECT_UNAUTHORIZED,
+  BUZON_COMPARTIDO_REVISOR_EMAIL: process.env.BUZON_COMPARTIDO_REVISOR_EMAIL,
 });
 
 export type ConfigSmtp = {

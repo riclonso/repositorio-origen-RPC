@@ -17,6 +17,11 @@ export interface UsuarioRepository {
   ): Promise<CampoUnico | null>;
   // Cuenta administradores activos por CÓDIGO de perfil, no por el nombre visible.
   contarAdminsActivos(): Promise<number>;
+  // Todos los usuarios activos de un perfil dado (por CÓDIGO), una sola consulta, sin N+1. Lo usa
+  // el correo de confirmación de carga aprobada (buzón compartido del equipo revisor) cuando
+  // `BUZON_COMPARTIDO_REVISOR_EMAIL` no está configurada: el correo va INDIVIDUAL a cada uno,
+  // nunca todos en el mismo To/CC.
+  listarActivosPorPerfil(perfilCodigo: string): Promise<Pick<Usuario, "id" | "nombres" | "email">[]>;
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;
   cambiarEstado(id: string, activo: boolean): Promise<Usuario>;

@@ -262,6 +262,14 @@ export const prismaUsuarioRepository: UsuarioRepository = {
     });
   },
 
+  async listarActivosPorPerfil(perfilCodigo) {
+    return prisma.usuario.findMany({
+      where: { perfilCodigo, activo: true },
+      select: { id: true, nombres: true, email: true },
+      orderBy: { apellidos: "asc" },
+    });
+  },
+
   async crear(datos) {
     try {
       // Nido de una sola escritura: Prisma crea el usuario y sus filas de

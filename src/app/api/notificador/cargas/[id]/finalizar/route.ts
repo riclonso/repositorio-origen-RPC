@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
-import { darVistoBueno } from "@/modules/reporte-excel/application/use-cases/DarVistoBueno";
+import { finalizarYEnviarCarga } from "@/modules/reporte-excel/application/use-cases/FinalizarYEnviarCarga";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import {
@@ -9,16 +9,16 @@ import {
   aCargaArchivoDTO,
   exigirNotificador,
   idCargaArchivoSchema,
-  respuestaCargaConErrores,
-  respuestaCargaYaAprobada,
   respuestaError,
   respuestaSinAcceso,
 } from "@/app/api/notificador/cargas/_lib/http";
 
-const ACCION = "CARGA_ARCHIVO_VISTO_BUENO" as const;
+const ACCION = "CARGA_ARCHIVO_FINALIZADA" as const;
 
-// Solo el mismo notificador que subió el archivo puede confirmarlo, y es irreversible: no hay
-// endpoint ni UI para deshacerlo.
+// Reemplaza al viejo "dar visto bueno" del propio notificador (corrección: fin de la
+// autoaprobación). Solo el mismo notificador que subió el archivo puede finalizarlo y enviarlo a
+// decisión de un tercero; es irreversible: no hay endpoint ni UI para deshacerlo, y no admite doble
+// finalización.
 export async function POST(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso] = await Promise.all([contexto.params, exigirNotificador()]);
 
@@ -42,7 +42,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
   }
 
   try {
-    const resultado = await darVistoBueno(idValido.data, acceso.sesion.sub, {
+    const resultado = await finalizarYEnviarCarga(idValido.data, acceso.sesion.sub, {
       repositorio: prismaCargaArchivoRepository,
     });
 
@@ -54,15 +54,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
         cargaArchivoId: idValido.data,
       });
 
-      if (resultado.motivo === "NO_ENCONTRADO") {
-        return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
-      }
-
-      if (resultado.motivo === "CARGA_CON_ERRORES") {
-        return respuestaCargaConErrores();
-      }
-
-      return respuestaCargaYaAprobada();
+      return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
 
     auditarCargaArchivo(acceso.sesion, request, {
@@ -74,7 +66,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
 
     return NextResponse.json({ carga: aCargaArchivoDTO(resultado.carga) });
   } catch (error) {
-    logger.error("Error al dar visto bueno a una carga de archivo", {
+    logger.error("Error al finalizar y enviar una carga de archivo", {
       error: error instanceof Error ? error.message : String(error),
     });
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);

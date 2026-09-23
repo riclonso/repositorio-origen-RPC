@@ -1,6 +1,18 @@
 import { z } from "zod";
 import { ESTADOS_CARGA_ARCHIVO } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { LONGITUD_MAXIMA_MOTIVO_RECHAZO } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import { anioVentanaCargaSchema } from "@/modules/ventanas-carga/schemas/ventana-carga.schema";
+
+// Rechazo unilateral de una carga ya aprobada: el motivo es obligatorio (no vacío tras `trim()`),
+// mismo criterio y mismo tope que `SolicitudReemplazoCarga.motivo`.
+export const rechazarCargaSchema = z.object({
+  motivo: z
+    .string()
+    .trim()
+    .min(1, "Ingresa el motivo del rechazo")
+    .max(LONGITUD_MAXIMA_MOTIVO_RECHAZO, `El motivo no puede superar los ${LONGITUD_MAXIMA_MOTIVO_RECHAZO} caracteres`),
+});
+export type RechazarCargaInput = z.infer<typeof rechazarCargaSchema>;
 
 // El archivo en sí NO se valida con Zod (viaje binario dentro de un `multipart/form-data`): se
 // valida fuera, en el Route Handler, igual que `formatos-excel/route.ts` (extensión, tamaño y

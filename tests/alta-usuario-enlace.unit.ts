@@ -42,6 +42,7 @@ async function probarAltaSinContrasena() {
         obtenerPorId: async () => null,
         buscarConflicto: async () => null,
         contarAdminsActivos: async () => 1,
+        listarActivosPorPerfil: async () => [],
         crear: async (datos) => {
           datosPersistidos = datos;
           return {
