@@ -13,6 +13,7 @@ import {
   Key,
   LinkSimple,
   ListBullets,
+  Lock,
   PencilSimple,
   Prohibit,
   SealCheck,
@@ -20,6 +21,8 @@ import {
   TextItalic,
   Trash,
   UploadSimple,
+  User,
+  WarningCircle,
   X,
   type Icon,
 } from "@phosphor-icons/react";
@@ -57,6 +60,14 @@ export const IconoNoCumplido = crearIcono(X, 14);
 
 export const IconoOjo = crearIcono(Eye, TAMANO_CAMPO);
 export const IconoOjoTachado = crearIcono(EyeSlash, TAMANO_CAMPO);
+
+// Ícono izquierdo de los campos de RUT y contraseña en las pantallas públicas (login,
+// recuperación): refuerza qué tipo de dato se pide sin agregar texto adicional.
+export const IconoUsuario = crearIcono(User, TAMANO_CAMPO);
+export const IconoCandado = crearIcono(Lock, TAMANO_CAMPO);
+
+// Estado de error en formularios públicos: el ícono, no solo el color, marca la alerta.
+export const IconoAdvertencia = crearIcono(WarningCircle, TAMANO_CAMPO);
 
 // RF-14: carga y validación de archivos de reporte.
 export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);

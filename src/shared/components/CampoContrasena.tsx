@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { InputHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode } from "react";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { IconoOjo, IconoOjoTachado } from "@/shared/components/iconos";
 
@@ -10,9 +10,10 @@ type CampoContrasenaProps = {
   etiqueta: string;
   ayuda?: string;
   error?: string | null;
+  icono?: ReactNode;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type">;
 
-export function CampoContrasena({ id, etiqueta, ayuda, error, ...atributos }: CampoContrasenaProps) {
+export function CampoContrasena({ id, etiqueta, ayuda, error, icono, ...atributos }: CampoContrasenaProps) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -21,6 +22,7 @@ export function CampoContrasena({ id, etiqueta, ayuda, error, ...atributos }: Ca
       etiqueta={etiqueta}
       ayuda={ayuda}
       error={error}
+      icono={icono}
       type={visible ? "text" : "password"}
       adorno={
         <button

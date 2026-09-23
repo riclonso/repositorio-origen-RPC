@@ -7,6 +7,9 @@ type CampoTextoProps = {
   error?: string | null;
   // Contenido superpuesto al input (por ejemplo, el botón de mostrar contraseña).
   adorno?: ReactNode;
+  // Ícono a la izquierda del valor (por ejemplo, usuario/candado en las pantallas públicas).
+  // Decorativo: la etiqueta ya identifica el campo para lectores de pantalla.
+  icono?: ReactNode;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "id">;
 
 export function CampoTexto({
@@ -15,6 +18,7 @@ export function CampoTexto({
   ayuda,
   error,
   adorno,
+  icono,
   className = "",
   ...atributos
 }: CampoTextoProps) {
@@ -29,6 +33,11 @@ export function CampoTexto({
       </label>
 
       <div className="relative">
+        {icono ? (
+          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gob-gray-a">
+            {icono}
+          </span>
+        ) : null}
         <input
           id={id}
           aria-invalid={error ? true : undefined}
@@ -37,7 +46,7 @@ export function CampoTexto({
             error
               ? "border-gob-danger focus:border-gob-danger focus:ring-gob-danger/30"
               : "border-gob-accent focus:border-gob-primary focus:ring-gob-primary/30"
-          } ${adorno ? "pr-10" : ""} ${className}`}
+          } ${adorno ? "pr-10" : ""} ${icono ? "pl-10" : ""} ${className}`}
           {...atributos}
         />
         {adorno}
