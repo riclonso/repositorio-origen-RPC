@@ -35,8 +35,8 @@ export function PestanasEnviosAlertaVentana({
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div role="tablist" aria-label="Historial de envíos de alertas" className="flex flex-wrap gap-2 border-b border-gob-accent">
+    <div className="flex flex-col gap-5">
+      <div role="tablist" aria-label="Historial de envíos de alertas" className="flex flex-wrap gap-1 border-b-2 border-gob-neutral">
         {pestanas.map((pestana) => (
           <button
             key={pestana.id}
@@ -46,13 +46,13 @@ export function PestanasEnviosAlertaVentana({
             aria-selected={activa === pestana.id}
             aria-controls={`panel-envios-${pestana.id}`}
             onClick={() => setActiva(pestana.id)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`-mb-0.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
               activa === pestana.id
                 ? "border-gob-primary text-gob-primary"
                 : "border-transparent text-gob-gray-a hover:text-gob-black"
             }`}
           >
-            {pestana.etiqueta} ({pestana.total})
+            {pestana.etiqueta} <span className="font-bold text-gob-primary">({pestana.total})</span>
           </button>
         ))}
       </div>

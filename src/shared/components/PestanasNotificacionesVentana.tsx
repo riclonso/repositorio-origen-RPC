@@ -49,15 +49,15 @@ export function PestanasNotificacionesVentana({
   ];
 
   return (
-    <section aria-labelledby="titulo-notificaciones-ventana" className="flex flex-col gap-4">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-gray-a">Detalle</p>
-        <h2 id="titulo-notificaciones-ventana" className="mt-1 text-lg font-bold text-gob-black">
+    <section aria-labelledby="titulo-notificaciones-ventana" className="flex flex-col gap-5">
+      <div className="space-y-2">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Detalle</p>
+        <h2 id="titulo-notificaciones-ventana" className="text-2xl font-bold text-gob-black">
           Notificaciones
         </h2>
       </div>
 
-      <div role="tablist" aria-label="Notificaciones de la ventana" className="flex flex-wrap gap-2 border-b border-gob-accent">
+      <div role="tablist" aria-label="Notificaciones de la ventana" className="flex flex-wrap gap-1 border-b-2 border-gob-neutral">
         {pestanas.map((pestana) => (
           <button
             key={pestana.id}
@@ -67,13 +67,13 @@ export function PestanasNotificacionesVentana({
             aria-selected={activa === pestana.id}
             aria-controls={`panel-${pestana.id}`}
             onClick={() => setActiva(pestana.id)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`-mb-0.5 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
               activa === pestana.id
                 ? "border-gob-primary text-gob-primary"
                 : "border-transparent text-gob-gray-a hover:text-gob-black"
             }`}
           >
-            {pestana.etiqueta} ({pestana.total})
+            {pestana.etiqueta} <span className="font-bold text-gob-primary">({pestana.total})</span>
           </button>
         ))}
       </div>

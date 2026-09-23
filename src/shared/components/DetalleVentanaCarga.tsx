@@ -116,27 +116,27 @@ export async function DetalleVentanaCarga({
   return (
     <ViewTransition>
       <div className="flex flex-col gap-8">
-        <div className="rounded-2xl border border-gob-accent bg-white p-6 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.35)]">
+        <div className="rounded-2xl border border-gob-neutral bg-white p-6 shadow-lg">
           <Link
             href={rutaVolver}
-            className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+            className="text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
           >
             {textoVolver}
           </Link>
-          <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-primary">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">
                 Ventana de carga
               </p>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-gob-black">
+              <h1 className="mt-2 text-3xl font-bold tracking-tight text-gob-black">
                 Cargas aprobadas — Ventana {ventana.anio}
               </h1>
             </div>
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-gob-accent bg-gob-tertiary/10 px-3 py-1 text-xs font-semibold text-gob-black">
+              <span className="rounded-full border border-gob-primary bg-blue-100 px-3 py-1.5 text-xs font-bold text-gob-primary">
                 {ventana.formatoExcelNombre}
               </span>
-              <span className="rounded-full border border-gob-accent bg-gob-tertiary/10 px-3 py-1 text-xs font-semibold text-gob-black">
+              <span className="rounded-full border border-gob-gray-a bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gob-black">
                 Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
                 {formatearFechaCalendario(ventana.fechaVencimiento)}
               </span>
@@ -168,11 +168,11 @@ export async function DetalleVentanaCarga({
 
         <section
           aria-labelledby="titulo-alertas-ventana"
-          className="flex flex-col gap-4 border-t border-gob-accent pt-8"
+          className="flex flex-col gap-6 border-t-2 border-gob-primary pt-8"
         >
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gob-gray-a">Notificaciones</p>
-            <h2 id="titulo-alertas-ventana" className="mt-1 text-lg font-bold text-gob-black">
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Notificaciones</p>
+            <h2 id="titulo-alertas-ventana" className="text-2xl font-bold text-gob-black">
               Alertas por email
             </h2>
           </div>
