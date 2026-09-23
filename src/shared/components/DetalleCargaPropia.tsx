@@ -32,7 +32,7 @@ export function DetalleCargaPropia({ carga }: DetalleCargaPropiaProps) {
           </p>
         </div>
 
-        <dl className="grid grid-cols-1 gap-4 rounded-lg border border-gob-accent bg-white p-4 text-sm sm:grid-cols-4">
+        <dl className="grid grid-cols-1 gap-4 rounded-lg border border-gob-accent bg-white p-4 text-sm sm:grid-cols-5">
           <div>
             <dt className="text-gob-gray-a">Estado</dt>
             <dd className="font-medium text-gob-black">{ETIQUETAS_ESTADO[carga.estado]}</dd>
@@ -40,6 +40,18 @@ export function DetalleCargaPropia({ carga }: DetalleCargaPropiaProps) {
           <div>
             <dt className="text-gob-gray-a">Filas de datos</dt>
             <dd className="font-medium text-gob-black">{carga.cantidadFilasDatos}</dd>
+          </div>
+          <div>
+            <dt className="text-gob-gray-a">Total de errores</dt>
+            <dd className="font-medium text-gob-black">
+              {carga.errores.length > 0 ? (
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gob-danger px-2 text-xs font-bold text-white">
+                  {carga.errores.length}
+                </span>
+              ) : (
+                "0"
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-gob-gray-a">Subido el</dt>
