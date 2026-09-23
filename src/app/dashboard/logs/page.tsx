@@ -83,7 +83,12 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-gob-black">Registros del sistema</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-gob-black">Registros del sistema</h1>
+            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-gob-primary px-2.5 text-xs font-bold text-white">
+              {total}
+            </span>
+          </div>
           <p className="mt-2 max-w-prose text-sm text-gob-gray-a">{activa.descripcion}</p>
         </div>
         <BotonActualizar />
