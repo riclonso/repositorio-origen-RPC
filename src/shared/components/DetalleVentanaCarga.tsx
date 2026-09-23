@@ -116,7 +116,7 @@ export async function DetalleVentanaCarga({
   return (
     <ViewTransition>
       <div className="flex flex-col gap-8">
-        <div className="rounded-2xl border border-gob-neutral bg-white p-8 shadow-lg">
+        <div className="rounded-2xl border border-gob-neutral bg-sky-50 p-8 shadow-lg">
           <Link
             href={rutaVolver}
             className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro mb-6"
@@ -130,15 +130,15 @@ export async function DetalleVentanaCarga({
                 Ventana de carga
               </p>
               <h1 className="text-4xl font-bold tracking-tight text-gob-black leading-tight">
-                Cargas — Ventana {ventana.anio}
+                 Carga {ventana.anio}
               </h1>
             </div>
 
-            <div className="flex flex-col gap-3 lg:items-end">
-              <span className="rounded-full border border-gob-primary bg-blue-100 px-4 py-2 text-xs font-bold text-gob-primary w-fit">
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <span className="w-fit rounded-full border border-gob-primary bg-blue-100 px-4 py-2 text-xs font-bold text-gob-primary">
                 {ventana.formatoExcelNombre}
               </span>
-              <span className="rounded-full border border-gob-gray-a bg-gray-100 px-4 py-2 text-xs font-semibold text-gob-black w-fit lg:w-auto">
+              <span className="w-fit rounded-full border border-gob-gray-a bg-gray-100 px-4 py-2 text-xs font-semibold text-gob-black">
                 Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
                 {formatearFechaCalendario(ventana.fechaVencimiento)}
               </span>
