@@ -84,14 +84,14 @@ export default async function NotificadorPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
-      <section className="flex flex-col justify-between gap-5 border-b border-[#dce5ef] pb-6 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-sm font-medium text-[#3973a6]">Registro Poblacional de Cáncer</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.045em] text-[#172b4d]">Hola, {usuario.nombres}</h1>
-          <p className="mt-2 text-sm text-[#617388]">Centro de notificación y reporte de información del RPC.</p>
+      <section className="flex flex-col justify-between gap-6 border-b border-gob-neutral pb-8 sm:flex-row sm:items-end">
+        <div className="space-y-3">
+          <p className="text-sm font-semibold uppercase tracking-wide text-gob-primary">Registro Poblacional de Cáncer</p>
+          <h1 className="text-4xl font-bold tracking-tight text-gob-black">Hola, {usuario.nombres}</h1>
+          <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">Centro de notificación y reporte de información del RPC.</p>
         </div>
-        <div className="flex items-center gap-2 self-start rounded-xl border border-[#dce5ef] bg-white px-3 py-2 text-sm font-medium text-[#496176] sm:self-auto">
-          <ShieldCheck size={17} weight="duotone" aria-hidden="true" className="text-[#3973a6]" />
+        <div className="flex items-center gap-2 self-start rounded-xl border border-gob-primary bg-gob-primary px-4 py-3 text-sm font-semibold text-white shadow-sm sm:self-auto">
+          <ShieldCheck size={18} weight="duotone" aria-hidden="true" className="text-white" />
           Acceso autorizado
         </div>
       </section>

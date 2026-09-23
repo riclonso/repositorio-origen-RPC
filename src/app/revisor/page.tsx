@@ -20,26 +20,13 @@ export default async function RevisorPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gob-black">Bienvenido/a, {usuario.nombres}</h1>
-        <p className="mt-2 text-sm text-gob-gray-a">
+    <div className="space-y-8">
+      <div className="space-y-3">
+        <h1 className="text-4xl font-bold text-gob-black">Bienvenido/a, {usuario.nombres}</h1>
+        <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">
           Panel de revisión de cargas del Registro Poblacional de Cáncer.
         </p>
       </div>
-
-      <section
-        aria-labelledby="titulo-cargas"
-        className="rounded-lg border border-dashed border-gob-accent bg-white p-6"
-      >
-        <h2 id="titulo-cargas" className="text-base font-semibold text-gob-tertiary">
-          Cargas aprobadas
-        </h2>
-        <p className="mt-2 text-sm text-gob-gray-a">
-          Revisa en &quot;Cargas aprobadas&quot; los archivos a los que un notificador ya dio
-          visto bueno.
-        </p>
-      </section>
 
       <TableroSeguimientoVentanas rutaBase="/revisor/ventanas-carga" />
     </div>
