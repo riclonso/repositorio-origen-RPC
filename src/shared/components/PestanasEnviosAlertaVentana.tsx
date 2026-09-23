@@ -30,8 +30,8 @@ export function PestanasEnviosAlertaVentana({
   const [activa, setActiva] = useState<PestanaId>("automaticos");
 
   const pestanas: DefinicionPestana[] = [
-    { id: "automaticos", etiqueta: "Envíos automáticos", total: totalAutomaticos, contenido: enviosAutomaticos },
-    { id: "manuales", etiqueta: "Envíos manuales", total: totalManuales, contenido: enviosManuales },
+    { id: "automaticos", etiqueta: "Envíos alertas automáticos", total: totalAutomaticos, contenido: enviosAutomaticos },
+    { id: "manuales", etiqueta: "Envíos alertas manuales", total: totalManuales, contenido: enviosManuales },
   ];
 
   return (

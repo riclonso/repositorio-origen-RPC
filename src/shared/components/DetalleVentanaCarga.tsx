@@ -186,14 +186,6 @@ export async function DetalleVentanaCarga({
             <FormularioPlantillaAlertaVentana ventanaCargaId={ventana.id} plantillaAlerta={ventana.plantillaAlerta} />
           </div>
 
-          <div className="rounded-lg border border-gob-accent border-l-4 border-l-gob-primary bg-white p-4 shadow-sm">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gob-gray-a">
-              Totales del historial
-            </h3>
-            <div className="mt-3">
-              <ResumenTotalesAlertasVentana totales={vistaAlertas.totales} />
-            </div>
-          </div>
 
           <PestanasEnviosAlertaVentana
             enviosAutomaticos={
