@@ -19,7 +19,7 @@ export default async function NotificadorLayout({ children }: { children: ReactN
       </div>
       {/* La navegación ocupa la columna completa en escritorio; en móvil se mantiene bajo el
           encabezado como barra horizontal para preservar el área de trabajo. */}
-      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#177710] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
           enlaces={ENLACES_NOTIFICADOR}
           titulo="Notificación"

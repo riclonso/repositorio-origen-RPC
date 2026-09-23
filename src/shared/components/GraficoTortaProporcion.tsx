@@ -23,7 +23,7 @@ export function GraficoTortaProporcion({ completado, total }: GraficoTortaPropor
         // Ángulo dinámico: no expresable como clase estática de Tailwind, de ahí el `style`
         // inline. `gob-primary` para la porción que ya reportó, `gob-neutral` para el resto.
         style={{
-          background: `conic-gradient(var(--color-gob-primary) 0deg ${angulo}deg, var(--color-gob-neutral) ${angulo}deg 360deg)`,
+          background: `conic-gradient(#91EBA6 0deg ${angulo}deg, var(--color-gob-neutral) ${angulo}deg 360deg)`,
         }}
       />
       {/* Leyenda textual: el color no es el único portador de la información (accesibilidad). */}

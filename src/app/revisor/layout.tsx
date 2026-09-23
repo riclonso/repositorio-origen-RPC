@@ -20,7 +20,7 @@ export default async function RevisorLayout({ children }: { children: ReactNode 
       {/* Mismo shell que `/dashboard` y `/notificador`: la navegación es la primera columna en
           escritorio para llegar al borde superior, y bajo md vuelve a ser una barra horizontal bajo
           el encabezado sin restar ancho al contenido. */}
-      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#3f84d8] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
           enlaces={ENLACES_REVISOR}
           titulo="Revisión"

@@ -71,9 +71,9 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
 
       <Link
         href={`${rutaBase}/${resumen.ventanaCargaId}?origen=inicio`}
-        className="text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
+        className="text-sm font-semibold text-sky-500 underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
       >
-        Ver detalle →
+        Ver detalle
       </Link>
     </article>
   );
