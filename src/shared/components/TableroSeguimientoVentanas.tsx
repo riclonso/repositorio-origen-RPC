@@ -26,14 +26,17 @@ export async function TableroSeguimientoVentanas({ rutaBase }: TableroSeguimient
   });
 
   return (
-    <section aria-labelledby="titulo-seguimiento-ventanas" className="flex flex-col gap-4">
-      <h2 id="titulo-seguimiento-ventanas" className="text-base font-semibold text-gob-tertiary">
-        Ventanas de carga abiertas
+    <section aria-labelledby="titulo-seguimiento-ventanas" className="flex flex-col gap-5 pt-2">
+      <h2 id="titulo-seguimiento-ventanas" className="text-lg font-bold text-gob-primary">
+        Ventanas de carga activas
+        <span className="ml-3 inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-gob-primary px-2.5 text-xs font-bold text-white">
+          {resumenes.length}
+        </span>
       </h2>
 
       {resumenes.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-gob-accent bg-white p-6 text-sm text-gob-gray-a">
-          No hay ventanas de carga abiertas en este momento.
+        <p className="rounded-lg border border-gob-neutral bg-gob-neutral/30 p-6 text-base font-medium text-gob-black">
+          No hay ventanas de carga activas en este momento.
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
