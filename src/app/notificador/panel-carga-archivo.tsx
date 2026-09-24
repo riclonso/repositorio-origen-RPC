@@ -10,6 +10,7 @@ import type { EstadoSolicitudReemplazoCarga } from "@/modules/solicitudes-reempl
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { Boton } from "@/shared/components/Boton";
+import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import { IconoAprobado, IconoSubir } from "@/shared/components/iconos";
@@ -355,19 +356,11 @@ function TarjetaCargaArchivo({
       ) : null}
 
       <div className="mt-4 flex flex-col gap-4 sm:max-w-md">
-        <div className="flex flex-col gap-2">
-          <label htmlFor={idArchivo} className="text-sm font-medium text-gob-black">
-            Archivo (.xlsx o .csv, máximo 10 MB)
-          </label>
-          <input
-            id={idArchivo}
-            type="file"
-            accept=".xlsx,.csv"
-            disabled={subiendo}
-            onChange={(evento) => setArchivo(evento.target.files?.[0] ?? null)}
-            className="w-full rounded-md border border-gob-accent bg-white px-3 py-2 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30 disabled:bg-gob-neutral"
-          />
-        </div>
+        <CargadorArchivo
+          id={idArchivo}
+          disabled={subiendo}
+          onArchivo={(archivo) => setArchivo(archivo)}
+        />
 
         {errorSubida ? (
           <p role="alert" className="text-sm font-medium text-gob-danger">
