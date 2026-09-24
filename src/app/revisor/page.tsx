@@ -20,13 +20,16 @@ export default async function RevisorPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-3">
-        <h1 className="text-4xl font-bold text-gob-black">Bienvenido/a, {usuario.nombres}</h1>
-        <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">
-          Panel de revisión de cargas del Registro Poblacional de Cáncer.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-8 pb-8">
+      <section className="border-b border-gob-accent/30 pb-8">
+        <div className="space-y-3">
+          <p className="text-sm font-semibold uppercase tracking-wide text-gob-primary">Panel de Revisión</p>
+          <h1 className="text-4xl font-bold tracking-tight text-gob-tertiary">Bienvenido/a, {usuario.nombres}</h1>
+          <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">
+            Revisión y validación de cargas del Registro Poblacional de Cáncer.
+          </p>
+        </div>
+      </section>
 
       <TableroSeguimientoVentanas rutaBase="/revisor/ventanas-carga" />
     </div>

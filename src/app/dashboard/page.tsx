@@ -81,16 +81,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
-      <section className="flex flex-col justify-between gap-5 border-b border-[#dce5ef] pb-6 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-sm font-medium text-[#3973a6]">Administración del repositorio</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-[-0.045em] text-[#172b4d]">
-            Buenos días, {usuario.nombres}
+      <section className="flex flex-col justify-between gap-5 border-b border-gob-accent/30 pb-8 sm:flex-row sm:items-end">
+        <div className="space-y-3">
+          <p className="text-sm font-semibold uppercase tracking-wide text-gob-primary">Administración del repositorio</p>
+          <h1 className="text-4xl font-bold tracking-tight text-gob-tertiary">
+            Bienvenido/a, {usuario.nombres}
           </h1>
-          <p className="mt-2 text-sm text-[#617388]">Resumen operativo de cuentas y accesos del sistema.</p>
+          <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">Resumen operativo de cuentas, accesos y actividad del sistema.</p>
         </div>
-        <div className="flex items-center gap-2 self-start rounded-xl border border-[#dce5ef] bg-white px-3 py-2 text-sm font-medium text-[#496176] sm:self-auto">
-          <Clock size={17} weight="bold" aria-hidden="true" className="text-[#3973a6]" />
+        <div className="flex items-center gap-2 self-start rounded-lg border border-gob-primary/20 bg-blue-50 px-4 py-3 text-sm font-medium text-gob-primary sm:self-auto">
+          <Clock size={17} weight="bold" aria-hidden="true" />
           Actualizado ahora
         </div>
       </section>
@@ -136,16 +136,16 @@ export default async function DashboardPage() {
         </article>
 
         <article className="card-sistema p-5 sm:p-6">
-          <FileText size={22} weight="duotone" aria-hidden="true" className="text-[#3973a6]" />
-          <h2 className="mt-5 text-lg font-semibold text-[#1d3657]">Actividad administrativa</h2>
-          <p className="mt-2 text-sm leading-6 text-[#617388]">Consulta los registros de auditoría para revisar las acciones realizadas en el repositorio.</p>
-          <Link href="/dashboard/logs" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#1d4778] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#14375f] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1d4778]">
+          <FileText size={22} weight="duotone" aria-hidden="true" className="text-gob-primary" />
+          <h2 className="mt-5 text-lg font-semibold text-gob-tertiary">Registros de auditoría</h2>
+          <p className="mt-2 text-sm leading-6 text-gob-gray-a">Consulta los registros de auditoría y accesos para revisar las acciones administrativas.</p>
+          <Link href="/dashboard/logs" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-gob-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gob-primary-oscuro active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
             Ver registros
             <ArrowUpRight size={17} weight="bold" aria-hidden="true" />
           </Link>
-          <div className="mt-6 flex items-center gap-2 rounded-xl bg-[#eef6f1] px-3 py-3 text-sm text-[#286948]">
+          <div className="mt-6 flex items-center gap-2 rounded-lg bg-gob-success/10 px-3 py-3 text-sm text-gob-success">
             <CheckCircle size={19} weight="fill" aria-hidden="true" />
-            La información se actualiza desde la base de datos.
+            Los datos se sincronizan en tiempo real.
           </div>
         </article>
       </section>

@@ -10,6 +10,7 @@ import {
   Circle,
   Eye,
   EyeSlash,
+  FileText,
   Gear,
   Key,
   LinkSimple,
@@ -74,6 +75,7 @@ export const IconoAdvertencia = crearIcono(WarningCircle, TAMANO_CAMPO);
 // RF-14: carga y validación de archivos de reporte.
 export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);
 export const IconoAprobado = crearIcono(SealCheck, TAMANO_ACCION);
+export const IconoDocumento = crearIcono(FileText, TAMANO_ACCION);
 
 // RF-17: barra del editor de texto enriquecido de la plantilla de alerta
 // (`EditorTextoEnriquecidoLimitado`).
