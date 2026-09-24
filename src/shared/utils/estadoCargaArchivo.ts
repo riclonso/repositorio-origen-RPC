@@ -15,7 +15,7 @@ export const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
 // diverja entre vistas.
 export const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
   CON_ERRORES: "bg-gob-danger text-white border-gob-danger",
-  PENDIENTE_VISTO_BUENO: "border-gob-tertiary text-gob-tertiary bg-white",
-  APROBADA: "border-gob-primary text-gob-primary bg-white",
+  PENDIENTE_VISTO_BUENO: "bg-gob-success text-white border-gob-success",
+  APROBADA: "bg-gob-primary text-white border-gob-primary",
   RECHAZADA: "bg-gob-danger text-white border-gob-danger",
 };
