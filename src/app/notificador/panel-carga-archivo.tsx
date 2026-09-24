@@ -391,7 +391,9 @@ function TarjetaCargaArchivo({
         <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
           {resultado.cantidadErrores === 0 ? (
             <>
-              
+              <p className="text-sm font-medium text-gob-success">
+                 {resultado.cantidadFilasDatos} filas de datos validadas
+              </p>
               {resultado.finalizadaEn ? (
                 <p role="status" className="text-sm font-medium text-gob-tertiary">
                   Pendiente de aprobación.

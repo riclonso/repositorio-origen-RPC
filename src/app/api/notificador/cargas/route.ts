@@ -113,6 +113,16 @@ export async function POST(request: Request) {
     return respuestaArchivoInvalido("Selecciona un archivo para subir");
   }
 
+  if (archivo.size === 0) {
+    auditarCargaArchivo(acceso.sesion, request, {
+      accion: "CARGA_ARCHIVO_REGISTRADA",
+      resultado: "RECHAZADO",
+      motivo: "ARCHIVO_INVALIDO",
+      formatoExcelId: datos.data.formatoExcelId,
+    });
+    return respuestaArchivoInvalido("El archivo está vacío. Selecciona un archivo con datos");
+  }
+
   // Primer filtro, barato: rechaza una extensión no soportada sin leer el archivo completo.
   if (!tipoContenidoDesdeNombre(archivo.name)) {
     auditarCargaArchivo(acceso.sesion, request, {
