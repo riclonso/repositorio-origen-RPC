@@ -19,6 +19,11 @@ export const TIPOS_ERROR_CARGA_ARCHIVO = [
   "VALOR_REQUERIDO_VACIO",
   "TIPO_DATO_INVALIDO",
   "REGLA_VALIDACION",
+  // Estructural: el archivo trae la fila de encabezados pero ninguna fila de datos debajo. Sin
+  // esto, un archivo así pasaba el `forEach` de validación sin ejecutarse ni una vez y quedaba
+  // como `PENDIENTE_VISTO_BUENO` con 0 errores, sin que ninguna regla de columna requerida llegara
+  // a evaluarse.
+  "SIN_FILAS_DATOS",
 ] as const;
 export type TipoErrorCargaArchivo = (typeof TIPOS_ERROR_CARGA_ARCHIVO)[number];
 

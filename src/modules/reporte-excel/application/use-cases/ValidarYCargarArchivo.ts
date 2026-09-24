@@ -226,6 +226,18 @@ export async function validarYCargarArchivo(
     encabezadosPresentes.has(normalizarNombre(columna.nombre)),
   );
 
+  // Estructural: encabezados sin ninguna fila de datos debajo. Sin este chequeo, el `forEach` de
+  // abajo simplemente no itera y el archivo queda como `PENDIENTE_VISTO_BUENO` con 0 errores,
+  // dejando pasar un archivo que nunca llegó a validar sus columnas requeridas.
+  if (filas.length === 0) {
+    errores.push({
+      numeroFila: 0,
+      columna: null,
+      tipoError: "SIN_FILAS_DATOS",
+      mensaje: "El archivo no tiene filas de datos, solo la fila de encabezados",
+    });
+  }
+
   const filasAValidar = filas.slice(0, TOPE_FILAS_DATOS);
 
   // Reglas `FILA_DUPLICADA` del formato: a diferencia del resto, necesitan memoria entre filas

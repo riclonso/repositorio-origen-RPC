@@ -324,6 +324,8 @@ enum TipoErrorCargaArchivo {
   VALOR_REQUERIDO_VACIO
   TIPO_DATO_INVALIDO
   REGLA_VALIDACION
+  // Estructural: el archivo trae la fila de encabezados pero ninguna fila de datos debajo.
+  SIN_FILAS_DATOS
 }
 
 // El binario se persiste igual que `FormatoExcel.contenidoPlantilla` (`Bytes`, sin cifrado
