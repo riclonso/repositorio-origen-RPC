@@ -3,7 +3,7 @@ import { MarcoPublico } from "@/shared/components/MarcoPublico";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Ingresar - Repositorio RPC - SEREMI de Salud Biobío",
+  title: "Ingresar - Repositorio REM - SEREMI de Salud Biobío",
 };
 
 type LoginPageProps = {
@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { restablecida } = await searchParams;
 
   return (
-    <MarcoPublico titulo="Repositorio RPC" subtitulo="SEREMI de Salud Biobío">
+    <MarcoPublico titulo="Repositorio Regional de Carga de Información Oncológica" subtitulo="SEREMI de Salud Biobío">
       {restablecida === "1" ? (
         <p
           role="status"
