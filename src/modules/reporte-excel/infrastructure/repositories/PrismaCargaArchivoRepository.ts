@@ -306,6 +306,24 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
           data: { reaperturaConsumidaEn: ahora, reaperturaConsumidaPorCargaArchivoId: idNuevo },
         }),
       );
+
+      // Cualquier OTRO rechazo sin consumir de esta misma combinación (usuario, ventana) queda
+      // superado por esta subida (p.ej. dos reemplazos aprobados sucesivos sobre la misma ventana
+      // antes de subir el archivo nuevo): se marca resuelto igual, pero sin apuntarlo a esta carga
+      // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1, ya la usa
+      // el `updateMany` de arriba con `cargaArchivoRechazoAConsumirId`). Sin esto, un rechazo viejo
+      // suelto seguía apareciendo en `BannerReaperturaCarga` (`/notificador`) como una segunda
+      // alerta duplicada para la misma `ventanaCargaId`.
+      operaciones.push(
+        prisma.cargaArchivoRechazo.updateMany({
+          where: {
+            id: { not: datos.cargaArchivoRechazoAConsumirId },
+            reaperturaConsumidaEn: null,
+            cargaArchivo: { usuarioId: datos.usuarioId, ventanaCargaId: datos.ventanaCargaId },
+          },
+          data: { reaperturaConsumidaEn: ahora },
+        }),
+      );
     }
 
     const [registro] = (await prisma.$transaction(operaciones)) as [RegistroDetalle, ...unknown[]];

@@ -128,19 +128,30 @@ export async function validarYCargarArchivo(
   // notificador tiene una reapertura vigente (su carga anterior para esta combinación fue
   // rechazada, y el plazo de reapertura no expiró). Se consume por el intento en sí, exista o no
   // error de validación en él, mismo criterio que una autorización de reemplazo.
+  //
+  // La búsqueda de una reapertura pendiente se hace SIEMPRE, no solo cuando la ventana ya venció:
+  // si la ventana sigue abierta y el notificador ya tenía una carga rechazada sin consumir para
+  // esta misma combinación, esta subida también debe consumirla. Sin esto, el banner
+  // `BannerReaperturaCarga` de "tu carga fue rechazada" quedaba visible indefinidamente en el caso
+  // más común (ventana todavía abierta), porque `reaperturaConsumidaEn` nunca se fijaba.
   let cargaArchivoRechazoAConsumirId: string | null = null;
 
-  if (!estaAbierta(ventana, new Date())) {
-    const reapertura = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
-      datos.usuarioId,
-      ventana.id,
-    );
+  const reaperturaPendiente = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
+    datos.usuarioId,
+    ventana.id,
+  );
+  const reaperturaEsVigente =
+    reaperturaPendiente !== null &&
+    reaperturaVigente(reaperturaPendiente, { fechaVencimiento: ventana.fechaVencimiento }, new Date());
 
-    if (reapertura && reaperturaVigente(reapertura, { fechaVencimiento: ventana.fechaVencimiento }, new Date())) {
-      cargaArchivoRechazoAConsumirId = reapertura.id;
+  if (!estaAbierta(ventana, new Date())) {
+    if (reaperturaEsVigente) {
+      cargaArchivoRechazoAConsumirId = reaperturaPendiente.id;
     } else {
       return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
     }
+  } else if (reaperturaEsVigente) {
+    cargaArchivoRechazoAConsumirId = reaperturaPendiente.id;
   }
 
   // RF-15 (ampliación): una ventana en borrador (no publicada) no debe habilitar subidas, aunque
