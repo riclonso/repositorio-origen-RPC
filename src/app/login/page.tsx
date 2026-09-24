@@ -7,20 +7,23 @@ export const metadata: Metadata = {
 };
 
 type LoginPageProps = {
-  searchParams: Promise<{ restablecida?: string }>;
+  searchParams: Promise<{ restablecida?: string; motivo?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { restablecida } = await searchParams;
+  const { restablecida, motivo } = await searchParams;
+  const contrasenaActualizada = motivo === "contrasena-actualizada";
 
   return (
     <MarcoPublico titulo="Repositorio Regional de Carga de Información Oncológica" subtitulo="SEREMI de Salud Biobío">
-      {restablecida === "1" ? (
+      {restablecida === "1" || contrasenaActualizada ? (
         <p
           role="status"
           className="mb-5 rounded-md border border-gob-accent bg-gob-neutral px-3 py-2 text-sm font-medium text-gob-gray-a"
         >
-          Tu contraseña quedó guardada. Ingresa con la contraseña nueva.
+          {contrasenaActualizada
+            ? "Tu contraseña se actualizó. Inicia sesión nuevamente."
+            : "Tu contraseña quedó guardada. Ingresa con la contraseña nueva."}
         </p>
       ) : null}
 

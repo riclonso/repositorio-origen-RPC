@@ -15,7 +15,7 @@ export default async function NotificadorLayout({ children }: { children: ReactN
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
-        <EncabezadoPanel />
+        <EncabezadoPanel rutaBase="/notificador" />
       </div>
       {/* La navegación ocupa la columna completa en escritorio; en móvil se mantiene bajo el
           encabezado como barra horizontal para preservar el área de trabajo. */}

@@ -17,3 +17,7 @@ function crearLoggerArchivo(nombreArchivo: string, nivel: string): Logger {
 export const logger = crearLoggerArchivo("errores.txt", "error");
 
 export const loggerAuditoria = crearLoggerArchivo("auditoria.txt", "info");
+
+// RF-07: rastro de todo intento de inicio de sesión, exitoso y fallido. Nivel `info`, mismo
+// criterio que `loggerAuditoria`: no son errores del sistema.
+export const loggerAccesos = crearLoggerArchivo("accesos.txt", "info");

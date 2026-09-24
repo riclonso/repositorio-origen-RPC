@@ -15,7 +15,7 @@ export default async function RevisorLayout({ children }: { children: ReactNode 
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
-        <EncabezadoPanel />
+        <EncabezadoPanel rutaBase="/revisor" />
       </div>
       {/* Mismo shell que `/dashboard` y `/notificador`: la navegación es la primera columna en
           escritorio para llegar al borde superior, y bajo md vuelve a ser una barra horizontal bajo

@@ -81,6 +81,22 @@ export async function exigirNotificador(): Promise<AccesoNotificador> {
   return { ok: true, sesion };
 }
 
+export type AccesoSesion = { ok: true; sesion: SesionPayload } | { ok: false; estado: 401 };
+
+// Guard mínimo: solo exige una sesión válida, sin exigir un perfil concreto. Lo usan endpoints
+// de autoservicio sobre la PROPIA cuenta (p. ej. `/api/cuenta/**`), donde cualquier perfil
+// autenticado tiene acceso por definición y la única autorización que importa es "es tu propia
+// cuenta" (garantizada porque el `id` siempre sale de `sesion.sub`, nunca del cliente).
+export async function exigirSesion(): Promise<AccesoSesion> {
+  const sesion = await obtenerSesionActual();
+
+  if (!sesion) {
+    return { ok: false, estado: 401 };
+  }
+
+  return { ok: true, sesion };
+}
+
 export type AccesoAdminORevisor =
   | { ok: true; sesion: SesionPayload }
   | { ok: false; estado: 401 }

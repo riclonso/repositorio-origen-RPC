@@ -1,5 +1,9 @@
 import Link from "next/link";
-import type { FiltroListadoUsuarios, Usuario } from "@/modules/usuarios/domain/entities/Usuario";
+import {
+  estaBloqueada,
+  type FiltroListadoUsuarios,
+  type Usuario,
+} from "@/modules/usuarios/domain/entities/Usuario";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { PaginacionUsuarios } from "@/shared/components/PaginacionUsuarios";
@@ -14,10 +18,25 @@ const formateadorFecha = new Intl.DateTimeFormat("es-CL", {
   year: "numeric",
 });
 
+// Fecha y hora del vencimiento del bloqueo, para el tooltip del chip "Bloqueada" en
+// `TablaUsuarios`. Igual que `formateadorFecha`, con zona horaria fija en el servidor para que la
+// hidratación no dependa de la zona del equipo del funcionario.
+const formateadorFechaHora = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 const CLASES_ENLACE_VACIO =
   "inline-flex items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary";
 
-function aFilaVista(usuario: Usuario): FilaUsuarioVista {
+// `ahora` se calcula una sola vez en `ListadoUsuarios` y se reutiliza para las 20-100 filas de la
+// página (nunca `new Date()` por fila): mismo criterio de "un solo reloj de pared por petición"
+// que el resto del proyecto (RF-10, RF-15).
+function aFilaVista(usuario: Usuario, ahora: Date): FilaUsuarioVista {
   return {
     id: usuario.id,
     nombres: usuario.nombres,
@@ -30,6 +49,9 @@ function aFilaVista(usuario: Usuario): FilaUsuarioVista {
     activo: usuario.activo,
     tieneContrasena: usuario.tieneContrasena,
     creadoEl: formateadorFecha.format(usuario.createdAt),
+    bloqueada: estaBloqueada(usuario, ahora),
+    vecesBloqueada: usuario.vecesBloqueada,
+    bloqueadaHastaTexto: usuario.bloqueadaHasta ? formateadorFechaHora.format(usuario.bloqueadaHasta) : null,
   };
 }
 
@@ -63,6 +85,7 @@ export async function ListadoUsuarios({
 }: ListadoUsuariosProps) {
   const resultado = await listarUsuarios(filtro, { repositorio: prismaUsuarioRepository });
   const { filas, paginacion } = resultado;
+  const ahora = new Date();
 
   const hayFiltros =
     filtro.termino !== undefined || filtro.perfil !== undefined || filtro.activo !== undefined;
@@ -83,7 +106,7 @@ export async function ListadoUsuarios({
       {filas.length > 0 ? (
         <>
           <TablaUsuarios
-            filas={filas.map(aFilaVista)}
+            filas={filas.map((fila) => aFilaVista(fila, ahora))}
             actorId={actorId}
             descripcion={descripcionTabla}
             rutaBase={rutaBase}

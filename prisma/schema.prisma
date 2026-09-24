@@ -39,6 +39,25 @@ model Usuario {
   activo         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
+  // Invalidación de sesión: se incrementa cada vez que cambia `contrasenaHash` (fijado manual por
+  // el admin, autoservicio propio, o consumo de un enlace de contraseña), en las tres transacciones
+  // que escriben el hash. El JWT emitido en el login lleva un claim `sesionVersion` con el valor
+  // vigente al emitir; `verificarSesion()` lo compara contra esta columna y devuelve `null` si no
+  // coincide, cerrando cualquier sesión abierta con la contraseña anterior. Desplegar esta columna
+  // invalida además, una única vez, TODAS las sesiones activas del sistema: todo JWT emitido antes
+  // de este cambio no trae el claim `sesionVersion` nuevo, mismo efecto colateral ya asumido con el
+  // renombre del claim `rol`→`perfil` en `JwtService.ts` (RF-09).
+  sesionVersion    Int       @default(0)
+  // Bloqueo progresivo por intentos fallidos de login (ver `DURACIONES_BLOQUEO_MINUTOS` en
+  // `modules/auth/domain/entities/User.ts`). `intentosFallidos` son los fallos CONSECUTIVOS del
+  // ciclo actual: se resetea a 0 en un login exitoso y también al activarse un bloqueo (arranca un
+  // ciclo nuevo). `vecesBloqueada` es monotónico de por vida (nunca se resetea, ni con login
+  // exitoso ni con un desbloqueo manual del administrador): determina la duración del PRÓXIMO
+  // bloqueo. `bloqueadaHasta` nulo = sin bloqueo vigente.
+  intentosFallidos Int       @default(0)
+  bloqueadaHasta   DateTime? @db.Timestamp(3)
+  vecesBloqueada   Int       @default(0)
+
   // Relación inversa exigida por Prisma. NUNCA usarla con `include`: el listado de usuarios
   // arrastraría los tokens de cada fila (mismo motivo ya anotado en Perfil.usuarios).
   tokensRecuperacion TokenRecuperacion[]

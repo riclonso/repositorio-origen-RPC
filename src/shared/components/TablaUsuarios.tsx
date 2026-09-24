@@ -6,7 +6,7 @@ import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoContrasena, IconoEditar } from "@/shared/components/iconos";
+import { IconoContrasena, IconoDesbloquear, IconoEditar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
 
@@ -24,9 +24,61 @@ export type FilaUsuarioVista = {
   activo: boolean;
   tieneContrasena: boolean;
   creadoEl: string;
+  // Bloqueo progresivo por intentos fallidos de login. `bloqueada` ya viene calculado desde el
+  // servidor (contra el `ahora` de esa petición); `vecesBloqueada` alimenta el tooltip del chip;
+  // `bloqueadaHastaTexto` es la fecha/hora ya formateada en el servidor, o `null` sin bloqueo.
+  bloqueada: boolean;
+  vecesBloqueada: number;
+  bloqueadaHastaTexto: string | null;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del usuario. Intenta nuevamente.";
+const MENSAJE_ERROR_DESBLOQUEO = "No se pudo desbloquear la cuenta. Intenta nuevamente.";
+
+type ControlEstadoCuentaProps = {
+  fila: FilaUsuarioVista;
+  esPropia: boolean;
+  puedeGestionarCuenta: boolean;
+  persona: string;
+  onCambiarEstado: () => void;
+};
+
+// Extraído de `AccionesFila` para mantener la complejidad de esa función dentro de un rango
+// legible: es la única parte con tres desenlaces posibles (cuenta propia / gestionable / ajena
+// sin permiso), el resto de `AccionesFila` son botones independientes con un solo `if`.
+//
+// Una cuenta no puede desactivarse a sí misma, así que en la fila propia NO se muestra el
+// interruptor: mostrarlo bloqueado invitaba a intentarlo. En su lugar, una etiqueta neutra indica
+// que es la cuenta en uso. El interruptor reemplaza a la columna Estado (muestra y cambia el
+// estado a la vez); el texto al lado mantiene el estado legible sin depender del color.
+function ControlEstadoCuenta({
+  fila,
+  esPropia,
+  puedeGestionarCuenta,
+  persona,
+  onCambiarEstado,
+}: ControlEstadoCuentaProps) {
+  if (esPropia) {
+    return <span className="text-sm text-gob-gray-a">Tu cuenta</span>;
+  }
+
+  const etiquetaEstado = fila.activo ? "Activo" : "Inactivo";
+
+  if (!puedeGestionarCuenta) {
+    return <span className="w-16 text-sm text-gob-gray-a">{etiquetaEstado}</span>;
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      <Interruptor
+        activado={fila.activo}
+        etiqueta={`Cuenta de ${persona} activa`}
+        onCambiar={onCambiarEstado}
+      />
+      <span className="w-16 text-sm text-gob-gray-a">{etiquetaEstado}</span>
+    </span>
+  );
+}
 
 type AccionesFilaProps = {
   fila: FilaUsuarioVista;
@@ -34,9 +86,17 @@ type AccionesFilaProps = {
   rutaBase: string;
   actorEsAdmin: boolean;
   onCambiarEstado: () => void;
+  onDesbloquear: () => void;
 };
 
-function AccionesFila({ fila, esPropia, rutaBase, actorEsAdmin, onCambiarEstado }: AccionesFilaProps) {
+function AccionesFila({
+  fila,
+  esPropia,
+  rutaBase,
+  actorEsAdmin,
+  onCambiarEstado,
+  onDesbloquear,
+}: AccionesFilaProps) {
   const persona = nombreCompleto(fila);
 
   // Un actor sin perfil ADMIN (área /revisor) no puede editar, cambiar la contraseña ni
@@ -68,27 +128,21 @@ function AccionesFila({ fila, esPropia, rutaBase, actorEsAdmin, onCambiarEstado 
         />
       ) : null}
 
-      {/* Una cuenta no puede desactivarse a sí misma, así que en la fila propia NO se muestra el
-          interruptor: mostrarlo bloqueado invitaba a intentarlo. En su lugar, una etiqueta neutra
-          indica que es la cuenta en uso. El interruptor reemplaza a la columna Estado (muestra y
-          cambia el estado a la vez); el texto al lado mantiene el estado legible sin depender del
-          color. */}
-      {esPropia ? (
-        <span className="text-sm text-gob-gray-a">Tu cuenta</span>
-      ) : puedeGestionarCuenta ? (
-        <span className="flex items-center gap-2">
-          <Interruptor
-            activado={fila.activo}
-            etiqueta={`Cuenta de ${persona} activa`}
-            onCambiar={onCambiarEstado}
-          />
-          <span className="w-16 text-sm text-gob-gray-a">
-            {fila.activo ? "Activo" : "Inactivo"}
-          </span>
-        </span>
-      ) : (
-        <span className="w-16 text-sm text-gob-gray-a">{fila.activo ? "Activo" : "Inactivo"}</span>
-      )}
+      {puedeGestionarCuenta && fila.bloqueada ? (
+        <BotonIcono
+          etiqueta={`Desbloquear la cuenta de ${persona}`}
+          Icono={IconoDesbloquear}
+          onClick={onDesbloquear}
+        />
+      ) : null}
+
+      <ControlEstadoCuenta
+        fila={fila}
+        esPropia={esPropia}
+        puedeGestionarCuenta={puedeGestionarCuenta}
+        persona={persona}
+        onCambiarEstado={onCambiarEstado}
+      />
     </div>
   );
 }
@@ -97,6 +151,26 @@ function ChipPendiente() {
   return (
     <span className="mt-1 block w-fit rounded-full bg-[#fff5e3] px-2 py-0.5 text-xs font-semibold text-[#7a4b10]">
       Pendiente de activación
+    </span>
+  );
+}
+
+// Texto del tooltip: cuenta cuántas veces se ha bloqueado la cuenta EN TOTAL (histórico
+// monotónico, ver `vecesBloqueada` en `modules/usuarios/domain/entities/Usuario.ts`), junto a la
+// fecha/hora hasta la que dura el bloqueo VIGENTE.
+function tituloChipBloqueada(fila: FilaUsuarioVista): string {
+  const veces = fila.vecesBloqueada === 1 ? "1 vez" : `${fila.vecesBloqueada} veces`;
+  const hasta = fila.bloqueadaHastaTexto ? ` Bloqueada hasta ${fila.bloqueadaHastaTexto}.` : "";
+  return `Bloqueada ${veces} en total.${hasta}`;
+}
+
+function ChipBloqueada({ fila }: { fila: FilaUsuarioVista }) {
+  return (
+    <span
+      title={tituloChipBloqueada(fila)}
+      className="mt-1 block w-fit rounded-full bg-gob-danger/10 px-2 py-0.5 text-xs font-semibold text-gob-danger"
+    >
+      Bloqueada
     </span>
   );
 }
@@ -110,6 +184,7 @@ const COLUMNAS: ColumnaTabla<FilaUsuarioVista>[] = [
       <>
         <span>{nombreCompleto(fila)}</span>
         {!fila.tieneContrasena ? <ChipPendiente /> : null}
+        {fila.bloqueada ? <ChipBloqueada fila={fila} /> : null}
       </>
     ),
   },
@@ -152,6 +227,10 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [objetivoDesbloqueo, setObjetivoDesbloqueo] = useState<FilaUsuarioVista | null>(null);
+  const [procesandoDesbloqueo, setProcesandoDesbloqueo] = useState(false);
+  const [errorDesbloqueo, setErrorDesbloqueo] = useState<string | null>(null);
+
   function cerrarDialogo() {
     if (procesando) return;
     setObjetivo(null);
@@ -187,6 +266,39 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
     }
   }
 
+  function cerrarDialogoDesbloqueo() {
+    if (procesandoDesbloqueo) return;
+    setObjetivoDesbloqueo(null);
+    setErrorDesbloqueo(null);
+  }
+
+  async function confirmarDesbloqueo() {
+    if (!objetivoDesbloqueo) return;
+
+    setProcesandoDesbloqueo(true);
+    setErrorDesbloqueo(null);
+
+    try {
+      const respuesta = await fetch(`/api/usuarios/${objetivoDesbloqueo.id}/desbloqueo`, {
+        method: "POST",
+      });
+
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        setProcesandoDesbloqueo(false);
+        setErrorDesbloqueo(datos?.error ?? MENSAJE_ERROR_DESBLOQUEO);
+        return;
+      }
+
+      setProcesandoDesbloqueo(false);
+      setObjetivoDesbloqueo(null);
+      router.refresh();
+    } catch {
+      setProcesandoDesbloqueo(false);
+      setErrorDesbloqueo(MENSAJE_ERROR_DESBLOQUEO);
+    }
+  }
+
   return (
     <>
       <TablaPanel
@@ -202,12 +314,14 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
             rutaBase={rutaBase}
             actorEsAdmin={actorEsAdmin}
             onCambiarEstado={() => setObjetivo(fila)}
+            onDesbloquear={() => setObjetivoDesbloqueo(fila)}
           />
         )}
         tarjeta={(fila) => (
           <>
             <p className="font-semibold text-gob-black">{nombreCompleto(fila)}</p>
             {!fila.tieneContrasena ? <ChipPendiente /> : null}
+            {fila.bloqueada ? <ChipBloqueada fila={fila} /> : null}
             <p className="mt-1 tabular-nums">{fila.rut}</p>
             <p className="break-all">{fila.email}</p>
             <p className="mt-1">
@@ -220,6 +334,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
                 rutaBase={rutaBase}
                 actorEsAdmin={actorEsAdmin}
                 onCambiarEstado={() => setObjetivo(fila)}
+                onDesbloquear={() => setObjetivoDesbloqueo(fila)}
               />
             </div>
           </>
@@ -243,6 +358,23 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
         error={error}
         onConfirmar={confirmarCambioEstado}
         onCancelar={cerrarDialogo}
+      />
+
+      <DialogoConfirmacion
+        abierto={objetivoDesbloqueo !== null}
+        titulo="Desbloquear cuenta"
+        descripcion={
+          objetivoDesbloqueo
+            ? `${nombreCompleto(objetivoDesbloqueo)} podrá volver a intentar iniciar sesión de inmediato.`
+            : ""
+        }
+        textoConfirmar="Desbloquear"
+        textoConfirmando="Desbloqueando..."
+        variante="primario"
+        procesando={procesandoDesbloqueo}
+        error={errorDesbloqueo}
+        onConfirmar={confirmarDesbloqueo}
+        onCancelar={cerrarDialogoDesbloqueo}
       />
     </>
   );

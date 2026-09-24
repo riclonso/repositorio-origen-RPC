@@ -15,7 +15,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
-        <EncabezadoPanel />
+        <EncabezadoPanel rutaBase="/dashboard" />
       </div>
       {/* En escritorio la navegación es la primera columna para que llegue al borde superior,
           como el shell analítico de referencia. Bajo md vuelve a ser una barra horizontal bajo

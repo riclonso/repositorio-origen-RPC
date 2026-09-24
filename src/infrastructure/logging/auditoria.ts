@@ -6,11 +6,21 @@ export type AccionAuditoria =
   | "USUARIO_ACTIVADO"
   | "USUARIO_DESACTIVADO"
   // El administrador emitió un enlace de contraseña (al crear, al restablecer o al reenviar).
-  // Reemplaza a la fijación directa de contraseña por el admin, que ya no ocurre.
   | "ENLACE_CONTRASENA_ENVIADO"
-  // Se conserva SOLO para poder leer el histórico anterior a esta entrega: ya no se emite (el
-  // admin dejó de fijar contraseñas de terceros). No usar en eventos nuevos.
+  // El administrador fija MANUALMENTE la contraseña de un tercero (RF-16, segunda opción junto a
+  // `ENLACE_CONTRASENA_ENVIADO`): `PUT /api/usuarios/[id]/contrasena`. Nota histórica: un
+  // comentario anterior en este archivo decía que esta acción "ya no se emite" — eso describía un
+  // estado intermedio del proyecto anterior a RF-16, que reintrodujo el fijado manual como
+  // alternativa al enlace; el comentario quedó desactualizado y se corrige aquí. Distinta de
+  // `CONTRASENA_PROPIA_ACTUALIZADA` (la propia persona cambia su contraseña).
   | "CONTRASENA_RESTABLECIDA"
+  // La propia persona cambia su contraseña desde "Mi perfil" (autoservicio, `PUT
+  // /api/cuenta/contrasena`), a diferencia de `CONTRASENA_RESTABLECIDA` (un administrador la fija
+  // para un tercero). `actorId === usuarioObjetivoId` siempre, por construcción.
+  | "CONTRASENA_PROPIA_ACTUALIZADA"
+  // Desbloqueo manual de una cuenta con bloqueo vigente por intentos fallidos de login, desde el
+  // mantenedor de usuarios (`POST /api/usuarios/[id]/desbloqueo`).
+  | "CUENTA_DESBLOQUEADA"
   | "RECUPERACION_SOLICITADA"
   | "RECUPERACION_COMPLETADA"
   | "FORMATO_EXCEL_CREADO"
@@ -158,7 +168,13 @@ export type MotivoAuditoria =
   | "CREACION"
   | "REESTABLECIMIENTO"
   | "REENVIO"
-  | "ACTIVACION";
+  | "ACTIVACION"
+  // De `CONTRASENA_PROPIA_ACTUALIZADA` (rechazo): la contraseña actual ingresada no coincide con
+  // la almacenada (o la cuenta, por alguna razón, no tiene contraseña que comparar — mismo motivo
+  // por anti-enumeración, ver `cambiarContrasenaPropia`).
+  | "CONTRASENA_ACTUAL_INCORRECTA"
+  // De `CONTRASENA_PROPIA_ACTUALIZADA` (rechazo): la nueva contraseña coincide con la actual.
+  | "CONTRASENA_IGUAL_A_ACTUAL";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.

@@ -1,5 +1,6 @@
 import type {
   CampoUnico,
+  CredencialUsuario,
   DatosEdicionUsuario,
   DatosNuevoUsuario,
   FiltroListadoUsuarios,
@@ -25,7 +26,19 @@ export interface UsuarioRepository {
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;
   cambiarEstado(id: string, activo: boolean): Promise<Usuario>;
-  // Fija el hash de la contraseña de forma directa (fijado manual por el administrador). Debe
-  // invalidar, en la misma transacción, los enlaces de contraseña vigentes de esa cuenta.
+  // Fija el hash de la contraseña de forma directa (fijado manual por el administrador, o
+  // autoservicio propio). Debe invalidar, en la misma transacción, los enlaces de contraseña
+  // vigentes de esa cuenta, e incrementar `sesionVersion` para cerrar cualquier sesión abierta
+  // con la contraseña anterior.
   actualizarContrasena(id: string, contrasenaHash: string): Promise<void>;
+  // Select angosto que SÍ expone el hash: único punto de `modules/usuarios/` que lo hace, y solo
+  // lo usa `cambiarContrasenaPropia` para verificar la contraseña actual antes de reemplazarla.
+  // NUNCA reutilizar `SELECCION_USUARIO` (no trae el hash) ni exponer este método fuera de ese
+  // caso de uso.
+  obtenerCredencialPorId(id: string): Promise<CredencialUsuario | null>;
+  // Desbloqueo MANUAL desde el mantenedor: limpia `intentosFallidos`/`bloqueadaHasta`.
+  // `vecesBloqueada` NO se toca (decisión deliberada, ver `DesbloquearUsuario.ts`): es monotónico
+  // de por vida y determina la duración del PRÓXIMO bloqueo, con o sin desbloqueos manuales de por
+  // medio.
+  desbloquear(id: string): Promise<void>;
 }

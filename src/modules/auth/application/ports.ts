@@ -6,7 +6,7 @@ export interface VerificadorContrasena {
 }
 
 export interface EmisorSesion {
-  emitir(usuario: Pick<User, "id" | "perfilCodigo">): Promise<string>;
+  emitir(usuario: Pick<User, "id" | "perfilCodigo" | "sesionVersion">): Promise<string>;
 }
 
 // `application/` nunca importa bcrypt: la política de hasheo del proyecto (12 rondas) entra

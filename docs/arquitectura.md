@@ -1763,3 +1763,113 @@ tipo `AccionAuditoria` solo para poder leer el histórico ya escrito antes de es
 `actorRol`/`rolAnterior` de la época pre-RF-09) — ningún código nuevo la emite. `CARGA_ARCHIVO_RECHAZADA`
 gana un campo opcional `estadoOrigenRechazo` (`PENDIENTE_VISTO_BUENO` | `APROBADA`) para que el
 histórico distinga de qué estado vino cada rechazo, ahora que puede ser cualquiera de los dos.
+
+## Perfil propio, cambio de contraseña, invalidación de sesión y bloqueo progresivo de cuentas (RF-21)
+
+### La sesión JWT deja de ser puramente stateless: `verificarSesion()` ahora consulta BD
+
+Hasta esta entrega, `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) validaba
+un token solo con criterios LOCALES: firma, expiración y forma de los claims (`sub`, `perfil`). Nunca
+tocaba la base de datos, así que el costo de autenticar una petición era constante y no dependía de
+Postgres estar disponible. Esa propiedad se pierde a partir de aquí: el token ahora lleva un tercer
+claim, `sesionVersion`, y `verificarSesion()` lo compara contra `usuario.sesionVersion` en la base
+antes de dar el token por válido. Es el mismo mecanismo de invalidación que el renombre del claim
+`perfil` de RF-09 (ver más arriba), pero MÁS FINO: en vez de invalidar todas las sesiones del sistema
+de una vez, invalida las de una cuenta puntual, en el momento en que:
+
+* la propia persona cambia su contraseña (`cambiarContrasenaPropia`, autoservicio de esta entrega),
+* un administrador la fija manualmente para un tercero (`restablecerContrasena`, RF-16), o
+* la persona consume un enlace de contraseña (`PrismaPasswordResetTokenRepository.consumir`, RF-10/RF-13).
+
+Los tres caminos incrementan `usuario.sesionVersion` en la MISMA transacción que escriben el hash
+nuevo (dos de ellos ya comparten `PrismaUsuarioRepository.actualizarContrasena`; el consumo del
+enlace replica el incremento en su propia transacción de `modules/auth/`, documentado con un
+comentario cruzado en ambos archivos: si se cambia uno, revisar el otro).
+
+**Costo aceptado:** cada verificación de sesión (proxy, Route Handlers, Server Components que llaman
+`obtenerSesionActual()`) hace ahora una consulta `SELECT sesionVersion FROM usuario WHERE id = ...`,
+envuelta en `cache()` de React para deduplicarla dentro del mismo render/petición. Esa memoización
+solo opera dentro de un scope de render de Next (Server Components, Route Handlers); llamada desde
+`src/proxy.ts` (que no es una función de render de React) `cache()` no dedupe nada — cada llamada
+ejecuta la consulta— pero tampoco hay riesgo de fuga entre peticiones de usuarios distintos: sin un
+scope de render activo, React no memoiza en absoluto (se verificó empíricamente, ver commit de esta
+entrega), así que el peor caso es una consulta de más por petición, nunca un valor cacheado servido
+a la sesión equivocada.
+
+**Efecto colateral aceptado (igual que RF-09):** desplegar la columna `sesionVersion` invalida, una
+única vez, TODAS las sesiones activas del sistema — todo JWT emitido antes de este cambio no trae el
+claim, así que la comprobación de forma en `verificarSesion()` ya lo descarta sin necesidad de ir a
+la base.
+
+**Limitación que se mantiene:** cambiar el PERFIL de una persona o desactivar su cuenta (`activo`)
+sigue sin invalidar su sesión — solo un cambio de `contrasenaHash` la invalida. La limitación de RF-09
+("cambiar el perfil no surte efecto hasta que el token expira, máximo 8 horas") sigue vigente para
+esos dos casos; esta entrega solo cierra la ventana para el cambio de contraseña.
+
+### Bloqueo progresivo de cuentas por intentos fallidos de login
+
+Dos contadores en `Usuario`/`User`, con semántica deliberadamente distinta:
+
+* `intentosFallidos`: fallos CONSECUTIVOS del ciclo actual. Se resetea a 0 en un login exitoso Y al
+  activarse un bloqueo nuevo (arranca un ciclo nuevo desde cero).
+* `vecesBloqueada`: cuántas veces la cuenta ha sido bloqueada en TODA su historia. Es monotónico de
+  por vida — nunca se resetea, ni con un login exitoso ni con un desbloqueo manual del administrador
+  — y determina la duración del PRÓXIMO bloqueo: `DURACIONES_BLOQUEO_MINUTOS = [1, 3, 5, 15]`
+  (`modules/auth/domain/entities/User.ts`), indexado por `vecesBloqueada` con techo en el último
+  valor (una cuenta bloqueada 10 veces sigue bloqueándose 15 minutos, no más).
+
+**Por qué es una sola sentencia SQL cruda.** `registrarIntentoFallido()` (`PrismaUserRepository.ts`)
+necesita, atómicamente, decidir "¿este intento llega al máximo?" y si es así incrementar
+`vecesBloqueada` Y calcular `bloqueadaHasta` a partir del NUEVO valor de `vecesBloqueada`, todo contra
+el estado que la fila tiene en ESE instante. Expresarlo con el API tipado de Prisma exigiría leer la
+fila, decidir en JavaScript y escribir en una sentencia aparte — una ventana de carrera entre dos
+peticiones de login simultáneas contra la misma cuenta (mismo motivo ya documentado para
+`PrismaPasswordResetTokenRepository.consumir()` en RF-10). El `UPDATE ... CASE ... RETURNING` corre
+como una única sentencia, indivisible por definición.
+
+**Por qué la cuenta bloqueada no se toca de nuevo mientras dura el bloqueo.** `LoginUser.ts` revisa
+`cuentaBloqueada(usuario, ahora)` ANTES de verificar la contraseña. Si ya está bloqueada, no llama a
+`registrarIntentoFallido`: sumar un intento más durante el bloqueo no aporta nada y arriesgaría, al
+vencer el bloqueo, arrancar el próximo ciclo con un conteo ya adelantado. La verificación de
+contraseña contra `HASH_RELLENO` igual se ejecuta, por el mismo motivo de tiempo constante que el
+resto de las ramas de fallo de este caso de uso (anti-enumeración).
+
+**Por qué el mensaje de bloqueo se arma en el Route Handler y no en el caso de uso.** Mismo criterio
+que `MENSAJE_ERROR_GENERICO`: `LoginUser.ts` devuelve datos (`bloqueadaHasta`), no texto. El cálculo
+de minutos restantes usa el mismo `ahora` que ya viajaba como parámetro al caso de uso, para que el
+número mostrado sea consistente con el que decidió si había o no bloqueo (nunca `new Date()` una
+segunda vez). La respuesta HTTP sigue siendo 401 (no se introdujo 423) y con el mismo shape
+`{ error: string }` que el resto de los fallos de login.
+
+**Desbloqueo manual.** `DesbloquearUsuario.ts` (mantenedor de usuarios) limpia
+`intentosFallidos`/`bloqueadaHasta` pero DELIBERADAMENTE no toca `vecesBloqueada`: un desbloqueo
+manual no debe reiniciar la progresión de duraciones, o el administrador podría usarlo para resetear
+a una cuenta comprometida de vuelta al bloqueo de 1 minuto indefinidamente. Auditado con
+`CUENTA_DESBLOQUEADA`, incluyendo el caso `SIN_EFECTO` (el bloqueo ya había vencido solo) — mismo
+criterio que los `SIN_EFECTO` de RF-10: un camino que hacia afuera es indistinguible del éxito debe
+dejar rastro igual.
+
+### `logs/accesos.txt` (RF-07): versión mínima
+
+Se implementa en esta entrega el logger y la función `registrarAcceso()`
+(`infrastructure/logging/accesos.ts`), con el esquema de campos ya definido en `CLAUDE.md`, conectado
+desde `app/api/auth/login/route.ts`. El motivo `usuario_inactivo` queda declarado en el tipo
+`EventoAcceso` pero esta entrega no lo emite: `LoginUser.ts` colapsa "RUT inexistente", "cuenta
+pendiente de activación" y "cuenta inactiva" en un único motivo interno `CREDENCIALES_INVALIDAS`
+(mismo criterio anti-enumeración que el resto del caso de uso, ninguna de esas tres situaciones debe
+ser distinguible desde afuera), así que no hay una señal que distinguir hacia el log tampoco. Separar
+esas ramas en `LoginUser.ts` para poblar `usuario_inactivo` queda fuera de esta entrega.
+
+### Patrón de UI nuevo: "menu button" (WAI-ARIA) para el menú de configuración de la cuenta
+
+`MenuConfiguracionUsuario.tsx` (montado en `EncabezadoPanel`, que gana la prop `rutaBase` para
+enlazar a `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena`) es el primer menú desplegable
+propiamente dicho del proyecto: hasta ahora no existía ningún patrón `role="menu"`. Se implementó el
+patrón "menu button" de la WAI-ARIA Authoring Practices en vez de `<details>/<summary>` (usado en
+otras partes del proyecto para contenido colapsable) porque `<details>` no expone semántica de menú
+a un lector de pantalla ni permite mover el foco al primer ítem al abrir — ambos comportamientos
+esperables de un menú de acciones. Estado local con `useState` (no Zustand: nada de este menú se
+comparte entre componentes); cierre con Escape, cierre al clic fuera (listener en `document`, no en
+el contenedor) y devolución de foco al botón disparador al cerrar, igual que la trampa de foco nativa
+que ya usa `DialogoConfirmacion` con `<dialog>`. Cualquier menú desplegable nuevo del proyecto debería
+seguir este mismo patrón en vez de introducir uno distinto.

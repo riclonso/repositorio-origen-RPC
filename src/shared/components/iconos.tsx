@@ -10,10 +10,12 @@ import {
   Circle,
   Eye,
   EyeSlash,
+  Gear,
   Key,
   LinkSimple,
   ListBullets,
   Lock,
+  LockOpen,
   PencilSimple,
   Prohibit,
   SealCheck,
@@ -79,3 +81,11 @@ export const IconoNegrita = crearIcono(TextB, TAMANO_ACCION);
 export const IconoCursiva = crearIcono(TextItalic, TAMANO_ACCION);
 export const IconoListaVinetas = crearIcono(ListBullets, TAMANO_ACCION);
 export const IconoEnlace = crearIcono(LinkSimple, TAMANO_ACCION);
+
+// Disparador del menú "Mi perfil / Cambiar contraseña" del encabezado de cada panel
+// (`MenuConfiguracionUsuario`). Es un botón con texto oculto (`sr-only`) que lo acompaña, así
+// que sigue siendo decorativo.
+export const IconoConfiguracion = crearIcono(Gear, TAMANO_CAMPO);
+// Acción "Desbloquear cuenta" del mantenedor de usuarios, sobre una fila con bloqueo por
+// intentos fallidos vigente.
+export const IconoDesbloquear = crearIcono(LockOpen, TAMANO_ACCION);
