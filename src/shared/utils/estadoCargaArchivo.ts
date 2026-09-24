@@ -14,8 +14,8 @@ export const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
 // `shared/components/BadgeEstadoCarga.tsx`: un único lugar evita que la paleta de cada estado
 // diverja entre vistas.
 export const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
-  CON_ERRORES: "border-gob-danger text-gob-danger",
-  PENDIENTE_VISTO_BUENO: "border-gob-tertiary text-gob-tertiary",
-  APROBADA: "border-gob-primary text-gob-primary",
-  RECHAZADA: "border-gob-danger text-gob-danger",
+  CON_ERRORES: "bg-gob-danger text-white border-gob-danger",
+  PENDIENTE_VISTO_BUENO: "border-gob-tertiary text-gob-tertiary bg-white",
+  APROBADA: "border-gob-primary text-gob-primary bg-white",
+  RECHAZADA: "bg-gob-danger text-white border-gob-danger",
 };
