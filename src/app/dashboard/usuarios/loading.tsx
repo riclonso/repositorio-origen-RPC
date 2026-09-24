@@ -1,4 +1,4 @@
-import { EsqueletoTablaUsuarios } from "./esqueleto-tabla-usuarios";
+import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 
 export default function CargandoUsuarios() {
   return (

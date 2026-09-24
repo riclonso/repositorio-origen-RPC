@@ -223,7 +223,12 @@ export const prismaPasswordResetTokenRepository: PasswordResetTokenRepository = 
 
         await transaccion.usuario.update({
           where: { id: usuario.id },
-          data: { contrasenaHash },
+          // `sesionVersion` se incrementa junto con el hash: los otros dos caminos que cambian
+          // `contrasenaHash` (fijado manual admin y autoservicio propio, ambos vía
+          // `PrismaUsuarioRepository.actualizarContrasena`) ya lo hacen, así que los tres caminos
+          // quedan simétricos y cualquier sesión abierta con la contraseña anterior deja de ser
+          // válida (ver `JwtService.verificarSesion`).
+          data: { contrasenaHash, sesionVersion: { increment: 1 } },
           select: { id: true },
         });
 

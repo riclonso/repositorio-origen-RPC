@@ -7,6 +7,7 @@ import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastruc
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 import { lectorArchivoReporteExcelJs } from "@/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
+import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import { extraerIp } from "@/shared/utils/peticion";
 import {
@@ -21,8 +22,10 @@ import {
   aCargaArchivoResumenDTO,
   exigirNotificador,
   respuestaArchivoInvalido,
+  respuestaCargaPendienteDeDecision,
   respuestaError,
   respuestaFormatoNoAsignado,
+  respuestaReemplazoNoAutorizado,
   respuestaSinAcceso,
   respuestaSinVentanaAbierta,
   tipoContenidoDesdeArchivo,
@@ -110,6 +113,16 @@ export async function POST(request: Request) {
     return respuestaArchivoInvalido("Selecciona un archivo para subir");
   }
 
+  if (archivo.size === 0) {
+    auditarCargaArchivo(acceso.sesion, request, {
+      accion: "CARGA_ARCHIVO_REGISTRADA",
+      resultado: "RECHAZADO",
+      motivo: "ARCHIVO_INVALIDO",
+      formatoExcelId: datos.data.formatoExcelId,
+    });
+    return respuestaArchivoInvalido("El archivo está vacío. Selecciona un archivo con datos");
+  }
+
   // Primer filtro, barato: rechaza una extensión no soportada sin leer el archivo completo.
   if (!tipoContenidoDesdeNombre(archivo.name)) {
     auditarCargaArchivo(acceso.sesion, request, {
@@ -177,6 +190,7 @@ export async function POST(request: Request) {
         repositorio: prismaCargaArchivoRepository,
         repositorioFormatosExcel: prismaFormatoExcelRepository,
         repositorioVentanasCarga: prismaVentanaCargaRepository,
+        repositorioSolicitudesReemplazo: prismaSolicitudReemplazoCargaRepository,
         lector: lectorArchivoReporteExcelJs,
       },
     );
@@ -197,6 +211,14 @@ export async function POST(request: Request) {
       });
       if (resultado.motivo === "FORMATO_NO_ASIGNADO") {
         return respuestaFormatoNoAsignado();
+      }
+
+      if (resultado.motivo === "REEMPLAZO_NO_AUTORIZADO") {
+        return respuestaReemplazoNoAutorizado();
+      }
+
+      if (resultado.motivo === "CARGA_PENDIENTE_DECISION") {
+        return respuestaCargaPendienteDeDecision();
       }
 
       // `SIN_VENTANA_ABIERTA` y `VENTANA_NO_PUBLICADA` comparten la misma respuesta genérica: no

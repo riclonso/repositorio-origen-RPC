@@ -3,6 +3,12 @@ import { ViewTransition } from "react";
 import type { VentanaCargaConEstado } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { formatearFechaCalendario } from "@/shared/utils/fecha";
 import { ListadoCargasVentana } from "@/shared/components/ListadoCargasVentana";
+import { ListadoCargasRechazadasVentana } from "@/shared/components/ListadoCargasRechazadasVentana";
+import { PestanasNotificacionesVentana } from "@/shared/components/PestanasNotificacionesVentana";
+import { PestanasEnviosAlertaVentana } from "@/shared/components/PestanasEnviosAlertaVentana";
+import { listarCargasPendientesODecididas } from "@/modules/reporte-excel/application/use-cases/ListarCargasPendientesODecididas";
+import { listarCargasRechazadas } from "@/modules/reporte-excel/application/use-cases/ListarCargasRechazadas";
+import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { FormularioAlertasVentana } from "@/shared/components/FormularioAlertasVentana";
 import { FormularioPlantillaAlertaVentana } from "@/shared/components/FormularioPlantillaAlertaVentana";
 import { TablaNotificadoresPendientesVentana } from "@/shared/components/TablaNotificadoresPendientesVentana";
@@ -75,15 +81,27 @@ export async function DetalleVentanaCarga({
   paginaAlertasAutomaticas,
   paginaAlertasManuales,
 }: DetalleVentanaCargaProps) {
-  const vistaAlertas = await obtenerVistaAlertasVentana(
-    ventana,
-    { paginaAutomatica: paginaAlertasAutomaticas, paginaManual: paginaAlertasManuales, tamano: TAMANO_PAGINA_ALERTAS },
-    {
-      repositorioVentanas: prismaVentanaCargaRepository,
-      repositorioAlertas: prismaAlertaNotificacionRepository,
-      enviadorCorreo: alertaVentanaMailer,
-    },
-  );
+  const [vistaAlertas, resultadoArchivo, resultadoRechazadas] = await Promise.all([
+    obtenerVistaAlertasVentana(
+      ventana,
+      { paginaAutomatica: paginaAlertasAutomaticas, paginaManual: paginaAlertasManuales, tamano: TAMANO_PAGINA_ALERTAS },
+      {
+        repositorioVentanas: prismaVentanaCargaRepository,
+        repositorioAlertas: prismaAlertaNotificacionRepository,
+        enviadorCorreo: alertaVentanaMailer,
+      },
+    ),
+    // Solo para el contador de la pestaña: `ListadoCargasVentana`/`ListadoCargasRechazadasVentana`
+    // hacen su propio fetch (con la paginación real) para renderizar las filas.
+    listarCargasPendientesODecididas(
+      { ventanaCargaId: ventana.id, pagina: 1, tamano: 1 },
+      { repositorio: prismaCargaArchivoRepository },
+    ),
+    listarCargasRechazadas(
+      { ventanaCargaId: ventana.id, pagina: 1, tamano: 1 },
+      { repositorio: prismaCargaArchivoRepository },
+    ),
+  ]);
 
   const automaticas = aPaginaVista(vistaAlertas.lotesAutomaticos, vistaAlertas.destinatariosPorLote);
   const manuales = aPaginaVista(vistaAlertas.lotesManuales, vistaAlertas.destinatariosPorLote);
@@ -97,34 +115,69 @@ export async function DetalleVentanaCarga({
 
   return (
     <ViewTransition>
-      <div className="flex flex-col gap-6">
-        <div>
+      <div className="flex flex-col gap-8">
+        <div className="rounded-2xl border border-gob-neutral bg-sky-50 p-8 shadow-lg">
           <Link
             href={rutaVolver}
-            className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+            className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro mb-6"
           >
             {textoVolver}
           </Link>
-          <h1 className="mt-2 text-xl font-semibold text-gob-black">
-            Cargas aprobadas — Ventana {ventana.anio}
-          </h1>
-          <p className="mt-2 text-sm text-gob-gray-a">
-            Formato: {ventana.formatoExcelNombre} · Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
-            {formatearFechaCalendario(ventana.fechaVencimiento)}
-          </p>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+            <div className="lg:col-span-2 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">
+                Ventana de carga
+              </p>
+              <h1 className="text-4xl font-bold tracking-tight text-gob-black leading-tight">
+                 Carga {ventana.anio}
+              </h1>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <span className="w-fit rounded-full border border-gob-primary bg-blue-100 px-4 py-2 text-xs font-bold text-gob-primary">
+                {ventana.formatoExcelNombre}
+              </span>
+              <span className="w-fit rounded-full border border-gob-gray-a bg-gray-100 px-4 py-2 text-xs font-semibold text-gob-black">
+                Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
+                {formatearFechaCalendario(ventana.fechaVencimiento)}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <ListadoCargasVentana
-          ventanaCargaId={ventana.id}
-          pagina={pagina}
-          tamano={tamano}
-          construirHref={construirHref}
+        <PestanasNotificacionesVentana
+          notificacionesArchivo={
+            <ListadoCargasVentana
+              ventanaCargaId={ventana.id}
+              pagina={pagina}
+              tamano={tamano}
+              construirHref={construirHref}
+            />
+          }
+          totalArchivo={resultadoArchivo.paginacion.total}
+          notificacionesRechazadas={<ListadoCargasRechazadasVentana ventanaCargaId={ventana.id} />}
+          totalRechazadas={resultadoRechazadas.paginacion.total}
+          notificadoresPendientes={
+            <TablaNotificadoresPendientesVentana
+              ventanaCargaId={ventana.id}
+              pendientes={pendientesVista}
+              correoDisponible={vistaAlertas.correoDisponible}
+            />
+          }
+          totalNotificadoresPendientes={pendientesVista.length}
         />
 
-        <section aria-labelledby="titulo-alertas-ventana" className="flex flex-col gap-4">
-          <h2 id="titulo-alertas-ventana" className="text-lg font-semibold text-gob-black">
-            Alertas por email
-          </h2>
+        <section
+          aria-labelledby="titulo-alertas-ventana"
+          className="flex flex-col gap-6 border-t-2 border-gob-primary pt-8"
+        >
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Notificaciones</p>
+            <h2 id="titulo-alertas-ventana" className="text-2xl font-bold text-gob-black">
+              Alertas por email
+            </h2>
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <FormularioAlertasVentana
@@ -135,37 +188,32 @@ export async function DetalleVentanaCarga({
             <FormularioPlantillaAlertaVentana ventanaCargaId={ventana.id} plantillaAlerta={ventana.plantillaAlerta} />
           </div>
 
-          <TablaNotificadoresPendientesVentana
-            ventanaCargaId={ventana.id}
-            pendientes={pendientesVista}
-            correoDisponible={vistaAlertas.correoDisponible}
-          />
 
-          <div className="rounded-lg border border-gob-accent bg-white p-4">
-            <h3 className="text-sm font-semibold text-gob-black">Totales del historial</h3>
-            <div className="mt-3">
-              <ResumenTotalesAlertasVentana totales={vistaAlertas.totales} />
-            </div>
-          </div>
-
-          <TablaLotesAlertaVentana
-            titulo="Envíos automáticos"
-            lotes={automaticas.lotes}
-            pagina={paginaAlertasAutomaticas}
-            tamano={TAMANO_PAGINA_ALERTAS}
-            total={automaticas.total}
-            parametroPagina="paginaAutomatica"
-            mensajeVacio="Todavía no se ha enviado ninguna alerta automática en esta ventana."
-          />
-
-          <TablaLotesAlertaVentana
-            titulo="Envíos manuales"
-            lotes={manuales.lotes}
-            pagina={paginaAlertasManuales}
-            tamano={TAMANO_PAGINA_ALERTAS}
-            total={manuales.total}
-            parametroPagina="paginaManual"
-            mensajeVacio="Todavía no se ha enviado ninguna alerta manual en esta ventana."
+          <PestanasEnviosAlertaVentana
+            enviosAutomaticos={
+              <TablaLotesAlertaVentana
+                titulo="Envíos automáticos"
+                lotes={automaticas.lotes}
+                pagina={paginaAlertasAutomaticas}
+                tamano={TAMANO_PAGINA_ALERTAS}
+                total={automaticas.total}
+                parametroPagina="paginaAutomatica"
+                mensajeVacio="Todavía no se ha enviado ninguna alerta automática en esta ventana."
+              />
+            }
+            totalAutomaticos={automaticas.total}
+            enviosManuales={
+              <TablaLotesAlertaVentana
+                titulo="Envíos manuales"
+                lotes={manuales.lotes}
+                pagina={paginaAlertasManuales}
+                tamano={TAMANO_PAGINA_ALERTAS}
+                total={manuales.total}
+                parametroPagina="paginaManual"
+                mensajeVacio="Todavía no se ha enviado ninguna alerta manual en esta ventana."
+              />
+            }
+            totalManuales={manuales.total}
           />
         </section>
       </div>

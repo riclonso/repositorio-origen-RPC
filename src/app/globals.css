@@ -52,3 +52,23 @@ body {
   background: #ffffff;
   box-shadow: 0 10px 30px rgba(27, 57, 92, 0.04);
 }
+
+/* Entrada sutil de la tarjeta en las pantallas públicas (login, recuperación): un desvanecimiento
+   corto, no una animación vistosa. Desactivada bajo prefers-reduced-motion, mismo criterio que el
+   resto del sistema (tema bloqueado en claro, sin efectos que dependan de JS). */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-aparecer {
+    animation: aparecer 0.35s ease-out;
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

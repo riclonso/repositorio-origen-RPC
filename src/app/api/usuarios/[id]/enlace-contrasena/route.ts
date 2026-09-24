@@ -10,14 +10,15 @@ import { auditarDesenlaceEnlace } from "@/app/api/usuarios/_lib/auditarEnlace";
 import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idUsuarioSchema,
   respuestaError,
+  respuestaPerfilAdminRestringido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
 export async function POST(request: Request, contexto: { params: Promise<{ id: string }> }) {
-  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdmin()]);
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
 
   if (!acceso.ok) {
     if (acceso.estado === 403) {
@@ -39,7 +40,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
   }
 
   try {
-    const resultado = await emitirEnlaceContrasena(idValido.data, {
+    const resultado = await emitirEnlaceContrasena(idValido.data, acceso.sesion.perfil, {
       repositorioUsuarios: prismaUserRepository,
       repositorioTokens: prismaPasswordResetTokenRepository,
       generadorToken: tokenService,
@@ -55,6 +56,10 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
 
     if (resultado.estado === "NO_ENCONTRADO") {
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+    }
+
+    if (resultado.estado === "PERFIL_ADMIN_RESTRINGIDO") {
+      return respuestaPerfilAdminRestringido();
     }
 
     if (resultado.estado === "CUENTA_INACTIVA") {

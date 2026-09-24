@@ -18,17 +18,18 @@ import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
   aUsuarioDTO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaDuplicado,
   respuestaError,
   respuestaFormatoExcelInvalido,
+  respuestaPerfilAdminRestringido,
   respuestaPerfilInvalido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
 // Las lecturas no se auditan: llenarían el archivo sin aportar trazabilidad de cambios.
 export async function GET(request: Request) {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     if (acceso.estado === 403) {
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const resultado = await crearUsuario(datos.data, {
+    const resultado = await crearUsuario(datos.data, acceso.sesion.perfil, {
       repositorio: prismaUsuarioRepository,
       repositorioPerfiles: prismaPerfilRepository,
       repositorioFormatosExcel: prismaFormatoExcelRepository,
@@ -98,6 +99,16 @@ export async function POST(request: Request) {
 
       if (resultado.motivo === "FORMATO_INVALIDO") {
         return respuestaFormatoExcelInvalido();
+      }
+
+      if (resultado.motivo === "PERFIL_ADMIN_RESTRINGIDO") {
+        auditarUsuario(acceso.sesion, request, {
+          accion: "USUARIO_CREADO",
+          resultado: "RECHAZADO",
+          motivo: "PERFIL_ADMIN_RESTRINGIDO",
+        });
+
+        return respuestaPerfilAdminRestringido();
       }
 
       auditarUsuario(acceso.sesion, request, {
@@ -125,7 +136,7 @@ export async function POST(request: Request) {
     const usuarioCreadoId = resultado.usuario.id;
     after(async () => {
       try {
-        const enlace = await emitirEnlaceContrasena(usuarioCreadoId, {
+        const enlace = await emitirEnlaceContrasena(usuarioCreadoId, sesion.perfil, {
           repositorioUsuarios: prismaUserRepository,
           repositorioTokens: prismaPasswordResetTokenRepository,
           generadorToken: tokenService,

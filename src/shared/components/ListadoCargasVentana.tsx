@@ -1,4 +1,4 @@
-import { listarCargasAprobadas } from "@/modules/reporte-excel/application/use-cases/ListarCargasAprobadas";
+import { listarCargasPendientesODecididas } from "@/modules/reporte-excel/application/use-cases/ListarCargasPendientesODecididas";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 import { Paginacion } from "@/shared/components/Paginacion";
@@ -12,16 +12,17 @@ type ListadoCargasVentanaProps = {
 };
 
 // Server Component compartido entre `/dashboard/ventanas-carga/[id]` y
-// `/revisor/ventanas-carga/[id]`: lista las cargas ya APROBADAS de una ventana puntual. El filtro
-// `estado = APROBADA` + `ventanaCargaId` se aplica siempre a nivel de consulta SQL
-// (`listarAprobadas` en `PrismaCargaArchivoRepository`), nunca en la UI.
+// `/revisor/ventanas-carga/[id]`: lista las cargas `APROBADA` y `PENDIENTE_VISTO_BUENO` ya
+// finalizadas de una ventana puntual (corrección: fin de la autoaprobación, ver
+// `ListarCargasPendientesODecididas`). El filtro se aplica siempre a nivel de consulta SQL
+// (`listarPendientesODecididas` en `PrismaCargaArchivoRepository`), nunca en la UI.
 export async function ListadoCargasVentana({
   ventanaCargaId,
   pagina,
   tamano,
   construirHref,
 }: ListadoCargasVentanaProps) {
-  const resultado = await listarCargasAprobadas(
+  const resultado = await listarCargasPendientesODecididas(
     { ventanaCargaId, pagina, tamano },
     { repositorio: prismaCargaArchivoRepository },
   );
@@ -31,15 +32,17 @@ export async function ListadoCargasVentana({
     usuarioNombre: carga.usuarioNombre,
     usuarioRut: carga.usuarioRut,
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
+    estado: carga.estado,
     fechaReporte: formatearFechaHora(carga.createdAt),
   }));
 
   if (filas.length === 0) {
     return (
       <div className="mt-6 rounded-lg border border-gob-accent bg-white p-8 text-center">
-        <p className="text-base font-semibold text-gob-black">Aún no hay cargas aprobadas</p>
+        <p className="text-base font-semibold text-gob-black">Aún no hay notificaciones</p>
         <p className="mt-2 text-sm text-gob-gray-a">
-          Cuando un notificador dé visto bueno a una carga de esta ventana, aparecerá aquí.
+          Cuando un notificador finalice y envíe una carga de esta ventana, aparecerá aquí para su
+          aprobación o rechazo.
         </p>
       </div>
     );

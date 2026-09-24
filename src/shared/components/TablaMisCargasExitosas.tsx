@@ -141,6 +141,11 @@ function FilaGrupoCargaExitosa({
     <tr className="align-top transition-colors hover:bg-gob-neutral/50">
       <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
         {grupo.vigente.nombreArchivoOriginal}
+        {grupo.vigente.rechazo ? (
+          <span className="mt-1 block rounded-md border border-gob-danger bg-white px-2 py-1 text-xs font-medium text-gob-danger">
+            Rechazada: {grupo.vigente.rechazo.motivo}
+          </span>
+        ) : null}
         <HistorialReemplazadas reemplazadas={grupo.reemplazadas} rutaBase={rutaBase} />
       </th>
       <td className="px-3 py-2 text-gob-gray-a">{grupo.formatoExcelNombre}</td>

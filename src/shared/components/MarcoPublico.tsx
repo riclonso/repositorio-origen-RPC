@@ -11,19 +11,23 @@ type MarcoPublicoProps = {
 // iguales sin copiar el marcado.
 export function MarcoPublico({ titulo, subtitulo, children }: MarcoPublicoProps) {
   return (
-    <div className="flex flex-1 flex-col bg-gob-neutral">
-      <header className="bg-gob-tertiary px-6 py-4">
+    <div className="flex flex-1 flex-col bg-linear-to-b from-gob-neutral to-white">
+      <header className="border-b border-gob-primary-oscuro/20 bg-gob-primary px-6 py-4 shadow-sm">
         <p className="text-sm font-medium tracking-wide text-white">Gobierno de Chile</p>
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="card-sistema w-full max-w-sm p-8">
-          <div className="mb-6 text-center">
-            <h1 className="text-xl font-semibold text-gob-black">{titulo}</h1>
-            {subtitulo ? <p className="mt-1 text-sm text-gob-gray-a">{subtitulo}</p> : null}
-          </div>
+        <div className="w-full max-w-sm animate-aparecer overflow-hidden rounded-2xl border border-[#e6edf5] bg-white shadow-[0_10px_30px_rgba(27,57,92,0.08)]">
+          <div className="h-1.5 bg-gob-primary" aria-hidden="true" />
 
-          {children}
+          <div className="p-8">
+            <div className="mb-6 text-center">
+              <h1 className="text-xl font-semibold text-gob-black">{titulo}</h1>
+              {subtitulo ? <p className="mt-1 text-sm text-gob-gray-a">{subtitulo}</p> : null}
+            </div>
+
+            {children}
+          </div>
         </div>
       </main>
     </div>

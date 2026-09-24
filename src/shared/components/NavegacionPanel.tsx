@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
+  ArrowsClockwise,
   Buildings,
   CalendarBlank,
   CheckCircle,
@@ -47,7 +48,14 @@ function calcularHrefActivo(rutaActual: string, enlaces: readonly EnlacePanel[])
 // de modo que cada panel aporta los suyos sin duplicar el marcado ni la lógica de estado activo.
 export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
   const rutaActual = usePathname();
-  const hrefActivo = calcularHrefActivo(rutaActual, enlaces);
+  const searchParams = useSearchParams();
+  // `TarjetaSeguimientoVentana` enlaza al detalle de una ventana con `?origen=inicio` cuando se
+  // entra desde el tablero de seguimiento de Inicio (en vez de desde la tabla de "Ventanas de
+  // carga"). Sin este chequeo, `calcularHrefActivo` marcaría "Ventanas de carga" como activo por
+  // prefijo de ruta, aunque la persona nunca pasó por esa sección — el primer enlace de cada panel
+  // es siempre su índice ("Panel"/"Inicio", ver `nav-enlaces.ts` de cada área).
+  const vieneDeInicio = searchParams.get("origen") === "inicio";
+  const hrefActivo = vieneDeInicio ? (enlaces[0]?.href ?? null) : calcularHrefActivo(rutaActual, enlaces);
   const iconos = {
     Inicio: House,
     Panel: House,
@@ -56,6 +64,8 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
     "Ventanas de carga": CalendarBlank,
     "Cargas aprobadas": CheckCircle,
     "Mis cargas": Tray,
+    Solicitudes: ArrowsClockwise,
+    "Mis solicitudes": ArrowsClockwise,
     Establecimientos: Buildings,
     "Tipos de establecimiento": Tag,
     Logs: FileText,

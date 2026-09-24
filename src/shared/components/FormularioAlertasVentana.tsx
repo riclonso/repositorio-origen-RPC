@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
+import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
 
@@ -29,6 +30,8 @@ export function FormularioAlertasVentana({
   );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mostrarDialogoReset, setMostrarDialogoReset] = useState(false);
+  const [reseteando, setReseteando] = useState(false);
 
   async function guardar() {
     const ambosVacios = dias.trim() === "" && intervalo.trim() === "";
@@ -63,6 +66,37 @@ export function FormularioAlertasVentana({
       setError(MENSAJE_ERROR_GENERICO);
     } finally {
       setGuardando(false);
+    }
+  }
+
+  async function resetear() {
+    setReseteando(true);
+    setError(null);
+
+    try {
+      const respuesta = await fetch(`/api/dashboard/ventanas-carga/${ventanaCargaId}/alertas/configuracion`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diasAnticipacionInicio: null,
+          intervaloRepeticionDias: null,
+        }),
+      });
+
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        setError(datos?.error ?? MENSAJE_ERROR_GENERICO);
+        return;
+      }
+
+      setDias("");
+      setIntervalo("");
+      setMostrarDialogoReset(false);
+      router.refresh();
+    } catch {
+      setError(MENSAJE_ERROR_GENERICO);
+    } finally {
+      setReseteando(false);
     }
   }
 
@@ -107,15 +141,39 @@ export function FormularioAlertasVentana({
         </p>
       ) : null}
 
-      <Boton
-        variante="primario"
-        className="mt-4 w-fit"
-        cargando={guardando}
-        textoCargando="Guardando..."
-        onClick={() => void guardar()}
-      >
-        Guardar configuración
-      </Boton>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Boton
+          variante="primario"
+          className="w-fit"
+          cargando={guardando}
+          textoCargando="Guardando..."
+          onClick={() => void guardar()}
+        >
+          Guardar configuración
+        </Boton>
+        <Boton
+          variante="secundario"
+          className="w-fit"
+          cargando={reseteando}
+          textoCargando="Reseteando..."
+          onClick={() => setMostrarDialogoReset(true)}
+          disabled={guardando || reseteando}
+        >
+          Resetear configuración
+        </Boton>
+      </div>
+
+      <DialogoConfirmacion
+        abierto={mostrarDialogoReset}
+        titulo="Resetear configuración de alertas"
+        descripcion="¿Estás seguro de que deseas resetear toda la configuración de alertas automáticas? Se limpiarán los días de anticipación e intervalo de repetición, y el envío automático se desactivará."
+        textoConfirmar="Resetear"
+        textoConfirmando="Reseteando..."
+        variante="peligro"
+        procesando={reseteando}
+        onConfirmar={() => void resetear()}
+        onCancelar={() => setMostrarDialogoReset(false)}
+      />
     </section>
   );
 }

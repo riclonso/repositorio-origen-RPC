@@ -3,6 +3,7 @@ import { prisma } from "@/infrastructure/database/prisma";
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type {
   CampoUnico,
+  CredencialUsuario,
   FiltroListadoUsuarios,
   FormatoExcelAsignado,
   Usuario,
@@ -28,6 +29,8 @@ const SELECCION_USUARIO = {
   perfil: { select: { nombre: true } },
   activo: true,
   createdAt: true,
+  bloqueadaHasta: true,
+  vecesBloqueada: true,
   formatosAsignados: {
     select: { formatoExcel: { select: { id: true, nombre: true } } },
     orderBy: { formatoExcel: { nombre: "asc" } },
@@ -46,6 +49,8 @@ type RegistroUsuario = {
   perfil: { nombre: string };
   activo: boolean;
   createdAt: Date;
+  bloqueadaHasta: Date | null;
+  vecesBloqueada: number;
   formatosAsignados: { formatoExcel: FormatoExcelAsignado }[];
 };
 
@@ -66,6 +71,8 @@ function aUsuario(registro: RegistroUsuario): Usuario {
     tieneContrasena: registro.contrasenaHash !== null,
     createdAt: registro.createdAt,
     formatosExcel: registro.formatosAsignados.map((asignacion) => asignacion.formatoExcel),
+    bloqueadaHasta: registro.bloqueadaHasta,
+    vecesBloqueada: registro.vecesBloqueada,
   };
 }
 
@@ -163,6 +170,8 @@ type FilaListado = {
   perfilNombre: string;
   activo: boolean;
   createdAt: Date;
+  bloqueadaHasta: Date | null;
+  vecesBloqueada: number;
 };
 
 // El listado NO pasa por `aUsuario` porque el hash no sale del motor: aquí `tieneContrasena` ya
@@ -183,6 +192,13 @@ function aUsuarioDesdeFila(fila: FilaListado): Usuario {
     tieneContrasena: Boolean(fila.tieneContrasena),
     createdAt: fila.createdAt instanceof Date ? fila.createdAt : new Date(fila.createdAt),
     formatosExcel: [],
+    bloqueadaHasta:
+      fila.bloqueadaHasta === null
+        ? null
+        : fila.bloqueadaHasta instanceof Date
+          ? fila.bloqueadaHasta
+          : new Date(fila.bloqueadaHasta),
+    vecesBloqueada: Number(fila.vecesBloqueada),
   };
 }
 
@@ -201,7 +217,8 @@ export const prismaUsuarioRepository: UsuarioRepository = {
       prisma.$queryRaw<FilaListado[]>`
         SELECT u."id", u."nombres", u."apellidos", u."rut", u."email", u."username",
                (u."contrasenaHash" IS NOT NULL) AS "tieneContrasena",
-               u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt"
+               u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt",
+               u."bloqueadaHasta", u."vecesBloqueada"
         FROM "usuario" u
         JOIN "perfil" p ON p."codigo" = u."perfilCodigo"
         WHERE ${predicado}
@@ -259,6 +276,14 @@ export const prismaUsuarioRepository: UsuarioRepository = {
   contarAdminsActivos() {
     return prisma.usuario.count({
       where: { perfilCodigo: CODIGO_PERFIL_ADMIN, activo: true },
+    });
+  },
+
+  async listarActivosPorPerfil(perfilCodigo) {
+    return prisma.usuario.findMany({
+      where: { perfilCodigo, activo: true },
+      select: { id: true, nombres: true, email: true },
+      orderBy: { apellidos: "asc" },
     });
   },
 
@@ -326,15 +351,18 @@ export const prismaUsuarioRepository: UsuarioRepository = {
   },
 
   // Invariante del proyecto: TODO cambio de `usuario.contrasenaHash` invalida los enlaces de
-  // contraseña vigentes de esa cuenta. Se hace cumplir aquí, en la misma transacción que escribe
-  // el hash, para el camino del fijado manual por el administrador. El otro punto que escribe el
-  // hash es `PrismaPasswordResetTokenRepository.consumir` (cuando la persona usa el enlace); si se
-  // cambia una, revisar la otra.
+  // contraseña vigentes de esa cuenta Y cierra cualquier sesión abierta con la contraseña
+  // anterior (`sesionVersion` incremental, ver `JwtService.verificarSesion`). Se hace cumplir
+  // aquí, en la misma transacción que escribe el hash. Este método lo usan TRES caminos: el
+  // fijado manual por el administrador (RF-16), el autoservicio propio
+  // (`cambiarContrasenaPropia`) y, indirectamente, el consumo de un enlace de contraseña
+  // (`PrismaPasswordResetTokenRepository.consumir`, que NO llama a este método pero replica la
+  // misma invariante en su propia transacción — si se cambia una, revisar la otra).
   async actualizarContrasena(id, contrasenaHash) {
     await prisma.$transaction([
       prisma.usuario.update({
         where: { id },
-        data: { contrasenaHash },
+        data: { contrasenaHash, sesionVersion: { increment: 1 } },
         select: { id: true },
       }),
       prisma.tokenRecuperacion.updateMany({
@@ -342,5 +370,23 @@ export const prismaUsuarioRepository: UsuarioRepository = {
         data: { invalidadoEn: new Date() },
       }),
     ]);
+  },
+
+  async obtenerCredencialPorId(id): Promise<CredencialUsuario | null> {
+    return prisma.usuario.findUnique({
+      where: { id },
+      select: { id: true, contrasenaHash: true },
+    });
+  },
+
+  async desbloquear(id) {
+    await prisma.usuario.update({
+      where: { id },
+      // `vecesBloqueada` NO se toca: es monotónico de por vida (ver comentario en
+      // `UsuarioRepository.desbloquear`), un desbloqueo manual no reinicia la progresión de
+      // duraciones del próximo bloqueo.
+      data: { intentosFallidos: 0, bloqueadaHasta: null },
+      select: { id: true },
+    });
   },
 };

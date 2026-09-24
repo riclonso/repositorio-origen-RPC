@@ -21,10 +21,10 @@ export default async function CargasDashboardPage({ searchParams }: CargasDashbo
   const filtro = analisis.success ? analisis.data : { ...FILTRO_LISTADO_CARGAS_POR_DEFECTO };
 
   return (
-    <div>
-      <div>
-        <h1 className="text-xl font-semibold text-gob-black">Cargas aprobadas</h1>
-        <p className="mt-2 text-sm text-gob-gray-a">
+    <div className="space-y-8">
+      <div className="space-y-3">
+        <h1 className="text-4xl font-bold text-gob-black">Cargas aprobadas</h1>
+        <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">
           Archivos de reporte a los que su notificador ya dio visto bueno.
         </p>
       </div>

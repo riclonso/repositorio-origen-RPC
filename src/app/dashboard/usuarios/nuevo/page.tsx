@@ -5,9 +5,10 @@ import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/reposi
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
-import { aOpcionesPerfil } from "../opciones-perfil";
-import { aOpcionesFormatoExcel } from "../opciones-formato-excel";
-import { UsuarioForm } from "../usuario-form";
+import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
+import { UsuarioForm } from "@/shared/components/UsuarioForm";
+import { RUTA_USUARIOS_DASHBOARD } from "../ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Nuevo usuario - Repositorio RPC - SEREMI de Salud Biobío",
@@ -43,6 +44,7 @@ export default async function NuevoUsuarioPage() {
         modo="crear"
         endpoint="/api/usuarios"
         metodo="POST"
+        rutaBase={RUTA_USUARIOS_DASHBOARD}
         valoresIniciales={{
           nombres: "",
           apellidos: "",

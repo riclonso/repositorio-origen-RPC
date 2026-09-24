@@ -39,6 +39,25 @@ model Usuario {
   activo         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
+  // Invalidación de sesión: se incrementa cada vez que cambia `contrasenaHash` (fijado manual por
+  // el admin, autoservicio propio, o consumo de un enlace de contraseña), en las tres transacciones
+  // que escriben el hash. El JWT emitido en el login lleva un claim `sesionVersion` con el valor
+  // vigente al emitir; `verificarSesion()` lo compara contra esta columna y devuelve `null` si no
+  // coincide, cerrando cualquier sesión abierta con la contraseña anterior. Desplegar esta columna
+  // invalida además, una única vez, TODAS las sesiones activas del sistema: todo JWT emitido antes
+  // de este cambio no trae el claim `sesionVersion` nuevo, mismo efecto colateral ya asumido con el
+  // renombre del claim `rol`→`perfil` en `JwtService.ts` (RF-09).
+  sesionVersion    Int       @default(0)
+  // Bloqueo progresivo por intentos fallidos de login (ver `DURACIONES_BLOQUEO_MINUTOS` en
+  // `modules/auth/domain/entities/User.ts`). `intentosFallidos` son los fallos CONSECUTIVOS del
+  // ciclo actual: se resetea a 0 en un login exitoso y también al activarse un bloqueo (arranca un
+  // ciclo nuevo). `vecesBloqueada` es monotónico de por vida (nunca se resetea, ni con login
+  // exitoso ni con un desbloqueo manual del administrador): determina la duración del PRÓXIMO
+  // bloqueo. `bloqueadaHasta` nulo = sin bloqueo vigente.
+  intentosFallidos Int       @default(0)
+  bloqueadaHasta   DateTime? @db.Timestamp(3)
+  vecesBloqueada   Int       @default(0)
+
   // Relación inversa exigida por Prisma. NUNCA usarla con `include`: el listado de usuarios
   // arrastraría los tokens de cada fila (mismo motivo ya anotado en Perfil.usuarios).
   tokensRecuperacion TokenRecuperacion[]
@@ -53,6 +72,16 @@ model Usuario {
   // historial completo de cargas de cada fila.
   cargasArchivo       CargaArchivo[] @relation("CargasSubidasPorUsuario")
   cargasVistoBuenoPor CargaArchivo[] @relation("CargasConVistoBuenoDe")
+
+  // Relaciones inversas de la publicación de cargas aprobadas hacia el revisor y de las
+  // solicitudes de reemplazo, exigidas por Prisma. NUNCA usarlas con `include` en el listado de
+  // usuarios, mismo motivo que `cargasArchivo`: arrastrarían el historial completo de cada fila.
+  publicacionesCargaCreadas       CargaArchivoPublicada[]   @relation("PublicacionesCargaCreadasPor")
+  solicitudesReemplazoSolicitadas SolicitudReemplazoCarga[] @relation("SolicitudesReemplazoSolicitadasPor")
+  solicitudesReemplazoRevisadas   SolicitudReemplazoCarga[] @relation("SolicitudesReemplazoRevisadasPor")
+  // Relación inversa del rechazo unilateral de cargas aprobadas, exigida por Prisma. NUNCA usarla
+  // con `include` en el listado de usuarios, mismo motivo que `cargasArchivo`.
+  cargasRechazadas                CargaArchivoRechazo[]     @relation("RechazosDecididosPor")
 
   // Relación inversa de RF-15, exigida por Prisma. NUNCA usarla con `include` en el listado de
   // usuarios, mismo motivo que `cargasArchivo`: arrastraría el historial completo de ventanas
@@ -156,6 +185,7 @@ enum TipoReglaValidacionFormatoExcel {
   ALGUNA_COLUMNA_CON_VALOR
   FECHA_DENTRO_DE_VENTANA_VIGENTE
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
+  FILA_DUPLICADA
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de
@@ -205,14 +235,14 @@ model UsuarioFormatoExcel {
 // selector para nuevos establecimientos), no la autorización; desactivar un tipo no toca los
 // establecimientos que ya lo usan.
 model TipoEstablecimiento {
-  id        String   @id @default(uuid())
+  id                String   @id @default(uuid())
   // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
-  nombre    String
+  nombre            String
   // Clave de unicidad DERIVADA de `nombre` (sin tildes, minúsculas, espacios colapsados). La
   // constraint @unique vive aquí y no en `nombre` para que "Clínica" y "clinica" no coexistan.
-  nombreNormalizado String @unique
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  nombreNormalizado String   @unique
+  activo            Boolean  @default(true)
+  createdAt         DateTime @default(now())
 
   // Relación inversa exigida por Prisma. NUNCA usarla con `include` en el listado de
   // establecimientos: cargaría los establecimientos de cada tipo (N+1). El nombre del tipo se
@@ -225,14 +255,14 @@ model TipoEstablecimiento {
 // Establecimiento de salud que reporta al RPC. El RUT (de empresa) es el único identificador
 // único: dos establecimientos pueden compartir nombre. El tipo viaja por clave foránea.
 model Establecimiento {
-  id        String   @id @default(uuid())
-  rut       String   @unique
+  id        String              @id @default(uuid())
+  rut       String              @unique
   nombre    String
   direccion String
   tipoId    String
   tipo      TipoEstablecimiento @relation(fields: [tipoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  activo    Boolean             @default(true)
+  createdAt DateTime            @default(now())
 
   @@map("establecimiento")
 }
@@ -281,6 +311,11 @@ enum EstadoCargaArchivo {
   CON_ERRORES
   PENDIENTE_VISTO_BUENO
   APROBADA
+  // Nuevo (rechazo de cargas aprobadas): una carga ya `APROBADA` que un ADMIN/REVISOR_REPOSITORIO
+  // decidió desactivar unilateralmente. Irreversible, mismo criterio que el visto bueno: no hay
+  // camino de vuelta a `APROBADA`. El detalle del rechazo (motivo, quién, cuándo) vive en
+  // `CargaArchivoRechazo`, 1:1 con esta fila.
+  RECHAZADA
 }
 
 enum TipoErrorCargaArchivo {
@@ -310,17 +345,188 @@ model CargaArchivo {
   cantidadFilasDatos    Int
   cantidadErrores       Int
   estado                EstadoCargaArchivo
-  // El visto bueno es irreversible y solo lo puede dar el mismo usuario que subió el archivo
-  // (regla enforced en `application/`, no aquí).
+  // Corrección RF-14/RF-20: el visto bueno ya NO lo da el notificador dueño de la carga (era una
+  // autoaprobación). `vistoBuenoPorId` ahora identifica a quien realmente aprueba
+  // (ADMIN/REVISOR_REPOSITORIO), nunca al notificador.
   vistoBuenoEn          DateTime?
   vistoBuenoPorId       String?
   vistoBuenoPor         Usuario?           @relation("CargasConVistoBuenoDe", fields: [vistoBuenoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // El notificador ya no aprueba: solo "finaliza y envía" una `PENDIENTE_VISTO_BUENO` para que un
+  // tercero (ADMIN/REVISOR_REPOSITORIO) la decida. No nulo = ya no admite una subida nueva para la
+  // misma combinación (usuarioId, formatoExcelId, ventanaCargaId) hasta que se decida (aprobar o
+  // rechazar). No cambia `estado`: solo marca que el paso del notificador ya se completó.
+  finalizadaEn          DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
 
   errores ErrorCargaArchivo[]
 
+  // Relaciones inversas de la publicación hacia el revisor y de las solicitudes de reemplazo,
+  // exigidas por Prisma. NUNCA usarlas con `include` en listados: arrastrarían el detalle
+  // completo (hasta 20.000 filas) de cada carga.
+  publicacion                      CargaArchivoPublicada?    @relation("PublicacionDeCarga")
+  publicacionesReemplazadasPorEsta CargaArchivoPublicada[]   @relation("PublicacionesReemplazadasPorCarga")
+  solicitudesReemplazo             SolicitudReemplazoCarga[] @relation("SolicitudesDeCarga")
+  solicitudesReemplazoOrigen       SolicitudReemplazoCarga[] @relation("CargaOrigenDeReemplazo")
+
+  // Nuevo (rechazo de cargas aprobadas): 1:1, presente solo si esta carga fue rechazada.
+  rechazo CargaArchivoRechazo? @relation("RechazoDeCarga")
+  // Nuevo: presente solo si esta carga es la que CONSUMIÓ la reapertura de un rechazo anterior (el
+  // notificador subió un archivo nuevo dentro del plazo habilitado por `CargaArchivoRechazo`).
+  reaperturaGenerada CargaArchivoRechazo? @relation("ReaperturaConsumidaPorCarga")
+
   @@map("carga_archivo")
+}
+
+// ============================================================
+// Publicación de cargas aprobadas hacia el perfil revisor
+// ============================================================
+
+// Nuevo (rechazo de cargas aprobadas): distingue por qué se desactivó una `CargaArchivoPublicada`
+// sin depender de inferirlo por la presencia/ausencia de `reemplazadaPorCargaArchivoId` (un
+// rechazo nunca completa esa columna, un reemplazo consentido siempre la completa). Nullable:
+// permanece `null` mientras `activo = true`.
+enum TipoDesactivacionCargaPublicada {
+  REEMPLAZO
+  RECHAZO
+}
+
+// CABECERA: una fila por carga aprobada. Todo lo que aplica a la carga completa (visibilidad,
+// reemplazo/rechazo) vive aquí, no en el detalle. 1:1 con `CargaArchivo`. Baja lógica vía `activo`,
+// nunca borrado físico — mismo criterio que `Perfil.activo`/`FormatoExcel.activo`.
+model CargaArchivoPublicada {
+  id             String       @id @default(uuid())
+  cargaArchivoId String       @unique
+  cargaArchivo   CargaArchivo @relation("PublicacionDeCarga", fields: [cargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  publicadoEn    DateTime @default(now())
+  publicadoPorId String
+  publicadoPor   Usuario  @relation("PublicacionesCargaCreadasPor", fields: [publicadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  // Gobierna la VISIBILIDAD para el revisor, no la existencia: `false` cuando la carga que esta
+  // cabecera representa fue reemplazada por una carga posterior ya aprobada, o rechazada
+  // unilateralmente por un ADMIN/REVISOR_REPOSITORIO.
+  activo Boolean @default(true)
+
+  // Solo se completan cuando `activo` pasa a `false`. `desactivadaEn`/`motivoDesactivacion` sirven
+  // para AMBOS motivos (reemplazo consentido o rechazo unilateral, ver `motivoDesactivacionTipo`);
+  // `reemplazadaPorCargaArchivoId` sigue siendo específico de reemplazo consentido (queda `null` en
+  // un rechazo, que no tiene todavía una carga de reemplazo en el momento de rechazar).
+  desactivadaEn                DateTime?
+  reemplazadaPorCargaArchivoId String?
+  reemplazadaPorCargaArchivo   CargaArchivo?                     @relation("PublicacionesReemplazadasPorCarga", fields: [reemplazadaPorCargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  motivoDesactivacion          String?
+  motivoDesactivacionTipo      TipoDesactivacionCargaPublicada?
+
+  // DETALLE: una fila de esta relación por cada fila de datos del archivo original.
+  filas CargaArchivoPublicadaFila[]
+
+  @@map("carga_archivo_publicada")
+}
+
+// DETALLE: un registro POR CADA FILA de datos del archivo Excel/CSV ya aprobado. `valores` sigue
+// siendo JSONB porque el conjunto de columnas es dinámico por `FormatoExcel` (definidas por el
+// ADMIN, distintas entre formatos) — mismo motivo por el que el resto del motor de validación de
+// RF-14 ya trabaja sobre `Record<nombreColumna, valor>` en vez de columnas SQL tipadas. Se crean
+// todas de una vez con inserción masiva (`createMany`), nunca INSERT por fila.
+model CargaArchivoPublicadaFila {
+  id                      String                @id @default(uuid())
+  cargaArchivoPublicadaId String
+  cargaArchivoPublicada   CargaArchivoPublicada @relation(fields: [cargaArchivoPublicadaId], references: [id], onDelete: Cascade)
+
+  // 1-based, mismo criterio ya usado en `ErrorCargaArchivo.numeroFila`/`ValidarYCargarArchivo`: la
+  // fila de encabezado es la 1, así que la primera fila de datos es la 2.
+  numeroFila Int
+  // `Record<nombreColumna, valor>` de ESA fila. Fechas serializadas como ISO string (Json no admite
+  // `Date`); mismo criterio de tipos que el resto del módulo tras serializar.
+  valores    Json @db.JsonB
+
+  // Constraint de integridad (no puede repetirse un número de fila bajo la misma cabecera), sirve
+  // también como índice de consulta por `cargaArchivoPublicadaId` (prefijo izquierdo del compuesto)
+  // — mismo patrón que `ColumnaFormatoExcel.@@unique([formatoExcelId, orden])`.
+  @@unique([cargaArchivoPublicadaId, numeroFila])
+  @@map("carga_archivo_publicada_fila")
+}
+
+// ============================================================
+// Rechazo unilateral de una carga ya aprobada
+// ============================================================
+
+// A diferencia de `SolicitudReemplazoCarga` (el notificador pide, alguien más decide), aquí quien
+// rechaza decide unilateralmente: no hay "solicitud pendiente" ni dos partes. 1:1 con
+// `CargaArchivo`, irreversible (no hay endpoint para deshacer un rechazo). Habilita una REAPERTURA
+// de la ventana para que el mismo notificador vuelva a subir un archivo para esa combinación
+// (formato, ventana): vigente hasta `fechaVencimiento` de la ventana si esta no había vencido al
+// momento del rechazo, o 5 días adicionales desde el rechazo si ya había vencido (ver
+// `reaperturaVigente()` en `modules/reporte-excel/domain/entities/CargaArchivoRechazo.ts`).
+model CargaArchivoRechazo {
+  id             String       @id @default(uuid())
+  cargaArchivoId String       @unique
+  cargaArchivo   CargaArchivo @relation("RechazoDeCarga", fields: [cargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  // Texto libre, obligatorio. NUNCA se registra en `logs/auditoria.txt` (solo metadata
+  // estructurada), mismo criterio que `SolicitudReemplazoCarga.motivo`.
+  motivo         String
+  rechazadoEn    DateTime @default(now())
+  rechazadoPorId String
+  rechazadoPor   Usuario  @relation("RechazosDecididosPor", fields: [rechazadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  // Se completan cuando el notificador consume la reapertura subiendo un archivo nuevo para esa
+  // combinación (formato, ventana) — exista o no error de validación en ese intento —, en la MISMA
+  // transacción que crea esa nueva `CargaArchivo`. Mismo patrón que
+  // `SolicitudReemplazoCarga.utilizadaEn`/`nuevaCargaArchivoId`.
+  reaperturaConsumidaEn                DateTime?
+  reaperturaConsumidaPorCargaArchivoId String?       @unique
+  reaperturaConsumidaPorCargaArchivo   CargaArchivo? @relation("ReaperturaConsumidaPorCarga", fields: [reaperturaConsumidaPorCargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@map("carga_archivo_rechazo")
+}
+
+// ============================================================
+// Solicitudes de reemplazo de una carga ya aprobada
+// ============================================================
+
+enum EstadoSolicitudReemplazoCarga {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+// Autoriza a un notificador a volver a subir un archivo para una combinación (formato, ventana) que
+// ya tiene una carga APROBADA vigente. La autorización se CONSUME al subir el archivo de reemplazo
+// (`utilizadaEn`/`nuevaCargaArchivoId`) y EXPIRA 5 días después de aprobada si no se usa (calculado
+// en lectura, nunca persistido como estado propio — mismo patrón que
+// `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`).
+model SolicitudReemplazoCarga {
+  id             String       @id @default(uuid())
+  cargaArchivoId String
+  cargaArchivo   CargaArchivo @relation("SolicitudesDeCarga", fields: [cargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  solicitadoPorId String
+  solicitadoPor   Usuario @relation("SolicitudesReemplazoSolicitadasPor", fields: [solicitadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  motivo          String
+
+  estado EstadoSolicitudReemplazoCarga @default(PENDIENTE)
+
+  revisadoPorId      String?
+  revisadoPor        Usuario?  @relation("SolicitudesReemplazoRevisadasPor", fields: [revisadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Se fija junto con `estado`, nunca por separado. Es también el ancla de la expiración:
+  // `revisadoEn + 5 días`.
+  revisadoEn         DateTime?
+  comentarioRevision String?
+
+  // Se completan al CONSUMIR la autorización (subida real del archivo de reemplazo), en la misma
+  // transacción que crea esa nueva `CargaArchivo`.
+  nuevaCargaArchivoId String?
+  nuevaCargaArchivo   CargaArchivo? @relation("CargaOrigenDeReemplazo", fields: [nuevaCargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  utilizadaEn         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("solicitud_reemplazo_carga")
 }
 
 // RF-15: ventana de tiempo (medida en año calendario) durante la cual un notificador puede subir
@@ -411,29 +617,29 @@ enum ResultadoAlertaNotificacion {
 // lote de tamaño 1) comparten el mismo `loteId`. Generado en `application/`, nunca en este
 // repositorio.
 model AlertaNotificacionVentana {
-  id             String                      @id @default(uuid())
-  loteId         String
-  ventanaCargaId String
-  ventanaCarga   VentanaCarga                @relation(fields: [ventanaCargaId], references: [id], onDelete: Restrict)
-  usuarioId      String
-  usuario        Usuario                     @relation("AlertasNotificacionRecibidasPor", fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
-  tipo           TipoAlertaNotificacion
-  resultado      ResultadoAlertaNotificacion
-  asunto         String
+  id              String                      @id @default(uuid())
+  loteId          String
+  ventanaCargaId  String
+  ventanaCarga    VentanaCarga                @relation(fields: [ventanaCargaId], references: [id], onDelete: Restrict)
+  usuarioId       String
+  usuario         Usuario                     @relation("AlertasNotificacionRecibidasPor", fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  tipo            TipoAlertaNotificacion
+  resultado       ResultadoAlertaNotificacion
+  asunto          String
   // HTML final REALMENTE enviado (placeholders ya resueltos, enlace ya resuelto a la URL real,
   // sanitizado dos veces: `sanitizarPlantillaAlertaHtml` al guardar la plantilla/mensaje editado,
   // `sanitizarMensajeResueltoHtml` al enviar). No es la plantilla genérica de la ventana.
-  mensaje        String
+  mensaje         String
   // Solo si `resultado = ERROR`, del ÚLTIMO intento. Saneado con el mismo criterio que
   // `describirFalloEnvio` de RF-10: nunca contiene una dirección de correo.
-  detalleError   String?
-  disparadoPorId String?
-  disparadoPor   Usuario?                    @relation("AlertasNotificacionDisparadasPor", fields: [disparadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  detalleError    String?
+  disparadoPorId  String?
+  disparadoPor    Usuario?                    @relation("AlertasNotificacionDisparadasPor", fields: [disparadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   // Solo para `tipo = AUTOMATICA`: día calendario en UTC "de pared" (mismo criterio que el resto
   // del esquema). Clave de deduplicación junto a `ventanaCargaId`/`usuarioId` (ver índice único
   // parcial agregado a mano en la migración).
-  fechaProgramada DateTime?                  @db.Timestamp(3)
-  createdAt       DateTime                   @default(now())
+  fechaProgramada DateTime?                   @db.Timestamp(3)
+  createdAt       DateTime                    @default(now())
 
   @@map("alerta_notificacion_ventana")
 }

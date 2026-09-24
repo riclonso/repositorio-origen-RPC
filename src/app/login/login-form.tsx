@@ -6,6 +6,7 @@ import { Boton } from "@/shared/components/Boton";
 import { CLASES_ENLACE_PUBLICO } from "@/shared/components/MarcoPublico";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
 import { CampoTexto } from "@/shared/components/CampoTexto";
+import { IconoAdvertencia, IconoCandado, IconoUsuario } from "@/shared/components/iconos";
 
 type LoginState = { error: string | null };
 
@@ -52,6 +53,7 @@ export function LoginForm() {
         etiqueta="RUT"
         autoComplete="username"
         placeholder="12345678-9"
+        icono={<IconoUsuario />}
       />
 
       <CampoContrasena
@@ -59,11 +61,16 @@ export function LoginForm() {
         name="contrasena"
         etiqueta="Contraseña"
         autoComplete="current-password"
+        icono={<IconoCandado />}
       />
 
       {estado.error ? (
-        <p role="alert" className="text-sm font-medium text-gob-danger">
-          {estado.error}
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-gob-danger/30 bg-gob-danger/5 px-3 py-2.5 text-sm font-medium text-gob-danger"
+        >
+          <IconoAdvertencia className="mt-0.5 shrink-0" />
+          <span>{estado.error}</span>
         </p>
       ) : null}
 

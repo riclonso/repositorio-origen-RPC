@@ -17,6 +17,13 @@ export type DesenlaceAuditoriaCargaArchivo = {
   formatoExcelId?: string | null;
   cargaArchivoId?: string | null;
   cantidadErrores?: number | null;
+  // Dueño de la carga afectada. Se completa cuando el actor decide sobre la carga de un TERCERO
+  // (`CARGA_ARCHIVO_RECHAZADA`, `CARGA_ARCHIVO_APROBADA`): las acciones propias del notificador
+  // (registro/finalización) ya identifican al actor, no a un "objetivo" distinto de sí mismo.
+  usuarioObjetivoId?: string | null;
+  usuarioObjetivoRut?: string | null;
+  // Solo se completa en `CARGA_ARCHIVO_RECHAZADA` (ampliación RF-20): de qué estado venía la carga.
+  estadoOrigenRechazo?: "PENDIENTE_VISTO_BUENO" | "APROBADA" | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
@@ -39,11 +46,12 @@ async function construirYRegistrar(
     actorId: sesion.sub,
     actorRut: await resolverRutActor(sesion.sub),
     actorPerfil: sesion.perfil,
-    usuarioObjetivoId: null,
-    usuarioObjetivoRut: null,
+    usuarioObjetivoId: desenlace.usuarioObjetivoId ?? null,
+    usuarioObjetivoRut: desenlace.usuarioObjetivoRut ?? null,
     formatoExcelId: desenlace.formatoExcelId ?? null,
     cargaArchivoId: desenlace.cargaArchivoId ?? null,
     cantidadErrores: desenlace.cantidadErrores ?? null,
+    estadoOrigenRechazo: desenlace.estadoOrigenRechazo ?? null,
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

@@ -10,9 +10,13 @@ import {
   Circle,
   Eye,
   EyeSlash,
+  FileText,
+  Gear,
   Key,
   LinkSimple,
   ListBullets,
+  Lock,
+  LockOpen,
   PencilSimple,
   Prohibit,
   SealCheck,
@@ -20,6 +24,8 @@ import {
   TextItalic,
   Trash,
   UploadSimple,
+  User,
+  WarningCircle,
   X,
   type Icon,
 } from "@phosphor-icons/react";
@@ -58,9 +64,18 @@ export const IconoNoCumplido = crearIcono(X, 14);
 export const IconoOjo = crearIcono(Eye, TAMANO_CAMPO);
 export const IconoOjoTachado = crearIcono(EyeSlash, TAMANO_CAMPO);
 
+// Ícono izquierdo de los campos de RUT y contraseña en las pantallas públicas (login,
+// recuperación): refuerza qué tipo de dato se pide sin agregar texto adicional.
+export const IconoUsuario = crearIcono(User, TAMANO_CAMPO);
+export const IconoCandado = crearIcono(Lock, TAMANO_CAMPO);
+
+// Estado de error en formularios públicos: el ícono, no solo el color, marca la alerta.
+export const IconoAdvertencia = crearIcono(WarningCircle, TAMANO_CAMPO);
+
 // RF-14: carga y validación de archivos de reporte.
 export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);
 export const IconoAprobado = crearIcono(SealCheck, TAMANO_ACCION);
+export const IconoDocumento = crearIcono(FileText, TAMANO_ACCION);
 
 // RF-17: barra del editor de texto enriquecido de la plantilla de alerta
 // (`EditorTextoEnriquecidoLimitado`).
@@ -68,3 +83,11 @@ export const IconoNegrita = crearIcono(TextB, TAMANO_ACCION);
 export const IconoCursiva = crearIcono(TextItalic, TAMANO_ACCION);
 export const IconoListaVinetas = crearIcono(ListBullets, TAMANO_ACCION);
 export const IconoEnlace = crearIcono(LinkSimple, TAMANO_ACCION);
+
+// Disparador del menú "Mi perfil / Cambiar contraseña" del encabezado de cada panel
+// (`MenuConfiguracionUsuario`). Es un botón con texto oculto (`sr-only`) que lo acompaña, así
+// que sigue siendo decorativo.
+export const IconoConfiguracion = crearIcono(Gear, TAMANO_CAMPO);
+// Acción "Desbloquear cuenta" del mantenedor de usuarios, sobre una fila con bloqueo por
+// intentos fallidos vigente.
+export const IconoDesbloquear = crearIcono(LockOpen, TAMANO_ACCION);

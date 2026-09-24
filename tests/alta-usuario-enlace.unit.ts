@@ -16,6 +16,10 @@ const usuarioBase: User = {
   perfilCodigo: "NOTIFICADOR_RPC",
   activo: true,
   createdAt: new Date(),
+  sesionVersion: 0,
+  intentosFallidos: 0,
+  bloqueadaHasta: null,
+  vecesBloqueada: 0,
 };
 
 async function probarAltaSinContrasena() {
@@ -30,6 +34,7 @@ async function probarAltaSinContrasena() {
       perfilCodigo: usuarioBase.perfilCodigo,
       formatosExcelIds: [],
     },
+    "ADMIN",
     {
       repositorioPerfiles: {
         listar: async () => [],
@@ -41,6 +46,7 @@ async function probarAltaSinContrasena() {
         obtenerPorId: async () => null,
         buscarConflicto: async () => null,
         contarAdminsActivos: async () => 1,
+        listarActivosPorPerfil: async () => [],
         crear: async (datos) => {
           datosPersistidos = datos;
           return {
@@ -50,6 +56,8 @@ async function probarAltaSinContrasena() {
             tieneContrasena: false,
             createdAt: usuarioBase.createdAt,
             formatosExcel: [],
+            bloqueadaHasta: null,
+            vecesBloqueada: 0,
           } satisfies Usuario;
         },
         actualizar: async () => {
@@ -59,6 +67,10 @@ async function probarAltaSinContrasena() {
           throw new Error("No esperado");
         },
         actualizarContrasena: async () => {
+          throw new Error("No esperado");
+        },
+        obtenerCredencialPorId: async () => null,
+        desbloquear: async () => {
           throw new Error("No esperado");
         },
       },
@@ -94,11 +106,16 @@ async function probarEnlaceDeActivacion() {
   let contextoCorreo: string | null = null;
   let horasEmitidas = 0;
 
-  const resultado = await emitirEnlaceContrasena(usuarioBase.id, {
+  const resultado = await emitirEnlaceContrasena(usuarioBase.id, "ADMIN", {
     repositorioUsuarios: {
       buscarPorRut: async () => null,
       buscarPorEmail: async () => null,
       buscarPorId: async () => usuarioBase,
+      obtenerVersionSesion: async () => usuarioBase.sesionVersion,
+      registrarIntentoFallido: async () => {
+        throw new Error("No esperado");
+      },
+      resetearIntentosFallidos: async () => undefined,
     },
     generadorToken: {
       generar: () => ({ token: "token-claro", tokenHash: "hash" }),
@@ -137,11 +154,16 @@ async function probarFalloDeEnvioInvalidaToken() {
   let invalidado: string | null = null;
   const tokenId = randomUUID();
 
-  const resultado = await emitirEnlaceContrasena(usuarioBase.id, {
+  const resultado = await emitirEnlaceContrasena(usuarioBase.id, "ADMIN", {
     repositorioUsuarios: {
       buscarPorRut: async () => null,
       buscarPorEmail: async () => null,
       buscarPorId: async () => ({ ...usuarioBase, contrasenaHash: "hash-anterior" }),
+      obtenerVersionSesion: async () => usuarioBase.sesionVersion,
+      registrarIntentoFallido: async () => {
+        throw new Error("No esperado");
+      },
+      resetearIntentosFallidos: async () => undefined,
     },
     generadorToken: {
       generar: () => ({ token: "token-claro", tokenHash: "hash" }),

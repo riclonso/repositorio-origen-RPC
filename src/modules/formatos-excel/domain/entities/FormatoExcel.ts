@@ -31,16 +31,20 @@ export type ColumnaFormatoExcel = {
   tipoDato: TipoDatoColumna;
 };
 
-// Tres tipos de regla: de un conjunto de columnas, al menos una debe traer valor (si todas vienen
-// vacías, se rechaza); o una columna de fecha debe caer dentro del rango de la ventana de carga
-// vigente para esa subida (RF-15); o una "fecha efectiva" calculada a partir de varias columnas
-// debe caer dentro del AÑO de esa ventana (ampliación posterior). Agregar un tipo nuevo es una
-// decisión de producto que exige código nuevo (el evaluador que las ejecuta contra un archivo
-// real), así que vive en este arreglo fijo, mismo criterio que `TIPOS_DATO_COLUMNA`.
+// Cuatro tipos de regla: de un conjunto de columnas, al menos una debe traer valor (si todas
+// vienen vacías, se rechaza); o una columna de fecha debe caer dentro del rango de la ventana de
+// carga vigente para esa subida (RF-15); o una "fecha efectiva" calculada a partir de varias
+// columnas debe caer dentro del AÑO de esa ventana (ampliación posterior); o una fila no puede
+// repetir exactamente los mismos valores (tras `trim()`, comparación case-sensitive) que otra
+// fila anterior del mismo archivo en el mismo conjunto de columnas (ampliación posterior). Agregar
+// un tipo nuevo es una decisión de producto que exige código nuevo (el evaluador que las ejecuta
+// contra un archivo real), así que vive en este arreglo fijo, mismo criterio que
+// `TIPOS_DATO_COLUMNA`.
 export const TIPOS_REGLA_VALIDACION = [
   "ALGUNA_COLUMNA_CON_VALOR",
   "FECHA_DENTRO_DE_VENTANA_VIGENTE",
   "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
+  "FILA_DUPLICADA",
 ] as const;
 
 export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
@@ -56,6 +60,11 @@ export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 // (`modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion.ts`) usa la
 // principal si trae valor; si está vacía, usa la MÁS ANTIGUA de las alternativas que sí traigan
 // una fecha válida. El orden entre alternativas (`columnas[1..]`) no afecta el resultado.
+//
+// Convención de `columnas[]` específica de `FILA_DUPLICADA`: es la clave compuesta que identifica
+// una fila (sin columna principal ni alternativas, a diferencia de la regla anterior); el orden
+// de `columnas[]` sí importa para construir la clave de comparación, aunque el resultado de la
+// regla es el mismo sin importar el orden en que se declararon.
 export type ReglaValidacionFormatoExcel = {
   id: string;
   orden: number;

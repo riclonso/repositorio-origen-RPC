@@ -5,9 +5,9 @@ import { z } from "zod";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { obtenerUsuario } from "@/modules/usuarios/application/use-cases/ObtenerUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
-import { RUTA_USUARIOS } from "../../ruta-usuarios";
-import { EnlaceContrasenaForm } from "./enlace-form";
-import { ContrasenaForm } from "./contrasena-form";
+import { EnlaceContrasenaForm } from "@/shared/components/EnlaceContrasenaForm";
+import { ContrasenaForm } from "@/shared/components/ContrasenaForm";
+import { RUTA_USUARIOS_DASHBOARD } from "../../ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Contraseña de usuario - Repositorio RPC - SEREMI de Salud Biobío",
@@ -51,7 +51,7 @@ export default async function ContrasenaPage({ params }: ContrasenaPageProps) {
             La cuenta está inactiva. Debes activarla antes de definir su contraseña.
           </p>
           <Link
-            href={RUTA_USUARIOS}
+            href={RUTA_USUARIOS_DASHBOARD}
             className="w-fit text-sm font-medium text-gob-primary underline underline-offset-2"
           >
             Volver a usuarios
@@ -74,7 +74,7 @@ export default async function ContrasenaPage({ params }: ContrasenaPageProps) {
                   ? `Enviaremos a ${usuario.email} un enlace de un solo uso para que ${persona} cree su contraseña y active la cuenta.`
                   : `Enviaremos a ${usuario.email} un enlace de un solo uso para que ${persona} elija una contraseña nueva. La contraseña actual seguirá funcionando hasta que use el enlace.`}
               </p>
-              <EnlaceContrasenaForm usuarioId={usuario.id} />
+              <EnlaceContrasenaForm usuarioId={usuario.id} rutaBase={RUTA_USUARIOS_DASHBOARD} />
             </section>
 
             {/* Opción 2: el administrador la fija directamente. */}
@@ -90,13 +90,13 @@ export default async function ContrasenaPage({ params }: ContrasenaPageProps) {
                 {pendiente ? " Esto activa la cuenta de inmediato." : ""} La persona podrá cambiarla
                 después. Cualquier enlace de contraseña pendiente quedará sin efecto.
               </p>
-              <ContrasenaForm usuarioId={usuario.id} />
+              <ContrasenaForm usuarioId={usuario.id} rutaBase={RUTA_USUARIOS_DASHBOARD} />
             </section>
           </div>
 
           <div className="mt-6">
             <Link
-              href={RUTA_USUARIOS}
+              href={RUTA_USUARIOS_DASHBOARD}
               className="text-sm font-medium text-gob-primary underline underline-offset-2"
             >
               Volver a usuarios

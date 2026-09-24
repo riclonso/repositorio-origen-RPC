@@ -9,9 +9,10 @@ import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
-  exigirAdmin,
+  exigirAdminORevisor,
   idUsuarioSchema,
   respuestaError,
+  respuestaPerfilAdminRestringido,
   respuestaSinAcceso,
 } from "@/app/api/usuarios/_lib/http";
 
@@ -23,7 +24,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
   // Independientes entre sí: se resuelven en paralelo para no encadenar latencias.
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 
@@ -53,12 +54,31 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
   }
 
   try {
-    const resultado = await restablecerContrasena(idValido.data, datos.data.contrasena, {
-      repositorio: prismaUsuarioRepository,
-      hasheadorContrasena: hasheadorContrasenaBcrypt,
-    });
+    const resultado = await restablecerContrasena(
+      idValido.data,
+      datos.data.contrasena,
+      acceso.sesion.perfil,
+      {
+        repositorio: prismaUsuarioRepository,
+        hasheadorContrasena: hasheadorContrasenaBcrypt,
+      },
+    );
 
     if (!resultado.ok) {
+      // Se abre por motivo: PERFIL_ADMIN_RESTRINGIDO es 403 (rechazo de autorización) y trae el
+      // RUT objetivo; NO_ENCONTRADO sigue siendo 404 sin RUT (el usuario no existe).
+      if (resultado.motivo === "PERFIL_ADMIN_RESTRINGIDO") {
+        auditarUsuario(acceso.sesion, request, {
+          accion: "CONTRASENA_RESTABLECIDA",
+          resultado: "RECHAZADO",
+          motivo: "PERFIL_ADMIN_RESTRINGIDO",
+          usuarioObjetivoId: idValido.data,
+          usuarioObjetivoRut: resultado.rut,
+        });
+
+        return respuestaPerfilAdminRestringido();
+      }
+
       auditarUsuario(acceso.sesion, request, {
         accion: "CONTRASENA_RESTABLECIDA",
         resultado: "RECHAZADO",

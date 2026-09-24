@@ -1,11 +1,11 @@
 import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import { FILTRO_LISTADO_POR_DEFECTO } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 
-export const RUTA_USUARIOS = "/dashboard/usuarios";
+export const RUTA_USUARIOS_DASHBOARD = "/dashboard/usuarios";
 
 // Construye la URL del listado conservando el filtro vigente y reemplazando solo la página.
 // Se parte del filtro ya validado para no arrastrar parámetros inválidos escritos a mano.
-export function construirRutaUsuarios(
+export function construirRutaUsuariosDashboard(
   filtro: FiltroListadoUsuarios,
   pagina: number = filtro.pagina,
 ): string {
@@ -22,5 +22,5 @@ export function construirRutaUsuarios(
   }
 
   const consulta = parametros.toString();
-  return consulta ? `${RUTA_USUARIOS}?${consulta}` : RUTA_USUARIOS;
+  return consulta ? `${RUTA_USUARIOS_DASHBOARD}?${consulta}` : RUTA_USUARIOS_DASHBOARD;
 }

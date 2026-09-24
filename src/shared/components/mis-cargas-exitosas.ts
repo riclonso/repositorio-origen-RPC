@@ -9,10 +9,13 @@ import { formatearFechaHora } from "@/shared/utils/fecha";
 // props, sin declarar la función.
 
 // Vista liviana de una fila de carga (vigente o reemplazada): fecha ya formateada en el servidor.
+// `rechazo` no nulo cuando esta carga fue rechazada unilateralmente tras su aprobación (ver
+// `CargaArchivoRepository.listarPropiasAprobadas`, que incluye `RECHAZADA` en el histórico).
 export type FilaCargaExitosaVista = {
   id: string;
   nombreArchivoOriginal: string;
   vistoBuenoEl: string;
+  rechazo: { motivo: string; rechazadoEl: string } | null;
 };
 
 // Un grupo por `ventanaCargaId`: la vigente es la fila principal, las reemplazadas quedan como
@@ -31,6 +34,9 @@ function aFilaCargaExitosaVista(carga: GrupoCargaAprobada["vigente"]): FilaCarga
     id: carga.id,
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
     vistoBuenoEl: carga.vistoBuenoEn ? formatearFechaHora(carga.vistoBuenoEn) : "—",
+    rechazo: carga.rechazo
+      ? { motivo: carga.rechazo.motivo, rechazadoEl: formatearFechaHora(carga.rechazo.rechazadoEn) }
+      : null,
   };
 }
 

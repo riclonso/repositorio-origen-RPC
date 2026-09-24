@@ -89,7 +89,7 @@ export async function POST(request: Request) {
           fechaVencimiento: datos.data.fechaVencimiento,
         });
         return respuestaRangoInvalido(
-          "Las fechas deben caer dentro del año declarado y la de vencimiento debe ser posterior a la de apertura",
+          "La fecha de vencimiento debe ser posterior a la fecha de apertura",
         );
       }
 

@@ -1,6 +1,6 @@
 # Resumen técnico
 
-Última actualización: 2026-09-16 (RF-17: alertas por email a notificadores, editor de texto enriquecido con Lexical, scheduler en proceso con node-cron)
+Última actualización: 2026-09-24 (RF-21: perfil propio, cambio de contraseña con invalidación de sesión, bloqueo progresivo de cuenta; RF-07 con versión mínima implementada)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo cambia el stack, agrega un comando de proyecto o cambia una variable de entorno.
@@ -14,7 +14,7 @@
 | Arquitectura backend    | Onion simplificada + modular por dominio (ver [docs/arquitectura.md](arquitectura.md)) |
 | Autenticación           | jose (JWT, HS256, 8h) + bcrypt (12 rondas), vía Route Handler `POST /api/auth/login` |
 | Base de datos           | PostgreSQL + Prisma ORM (`@prisma/adapter-pg`) |
-| Logs                    | Winston, JSON, una instancia por archivo. `logs/errores.txt` (errores del sistema) y `logs/auditoria.txt` (operaciones sobre usuarios, formatos de archivo y cargas de reporte) implementados; `logs/upload.txt` (`infrastructure/logging/logUpload.ts`, rotación NATIVA de Winston) preparado en RF-13 y conectado en RF-14 desde `POST /api/notificador/cargas`; `logs/accesos.txt` (login exitoso y fallido, RF-07) pendiente. `logs/` está en `.gitignore`: contienen RUT e IP. Rotación de `errores.txt`/`auditoria.txt` a cargo del sistema operativo |
+| Logs                    | Winston, JSON, una instancia por archivo. `logs/errores.txt` (errores del sistema), `logs/auditoria.txt` (operaciones sobre usuarios, formatos de archivo y cargas de reporte) y, desde RF-21, `logs/accesos.txt` (`infrastructure/logging/accesos.ts`, `registrarAcceso()`, login exitoso y fallido — versión mínima: el motivo `usuario_inactivo` está declarado pero no se emite todavía) implementados; `logs/upload.txt` (`infrastructure/logging/logUpload.ts`, rotación NATIVA de Winston) preparado en RF-13 y conectado en RF-14 desde `POST /api/notificador/cargas`. `logs/` está en `.gitignore`: contienen RUT e IP. Rotación a cargo del sistema operativo |
 | Estado cliente          | Zustand (solo Client Components; sin stores creados aún) |
 | Validación              | Zod |
 | Estilos                 | Tailwind v4 (CSS-first, `@theme inline`), paleta oficial gob.cl (`gob-*`) |
@@ -62,13 +62,15 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 
 | Módulo               | Estado | Detalle |
 |------------------------|--------|---------|
-| `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación). |
+| `modules/auth/`        | Implementado | Login, JWT, guard de sesión en `proxy.ts`. Desde RF-21, el JWT lleva el claim `sesionVersion` (comparado contra la BD en `verificarSesion()`, memoizado por request con `cache()` de React) y `LoginUser` implementa bloqueo progresivo por intentos fallidos. Ver [docs/arquitectura.md](arquitectura.md#flujo-de-referencia-autenticación) y [#perfil-propio-cambio-de-contraseña-invalidación-de-sesión-y-bloqueo-progresivo-de-cuentas-rf-21](arquitectura.md#perfil-propio-cambio-de-contraseña-invalidación-de-sesión-y-bloqueo-progresivo-de-cuentas-rf-21). |
+| Perfil propio y cambio de contraseña (autoservicio) | Implementado | RF-21: pantallas `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena` en los tres paneles, menú `MenuConfiguracionUsuario` (patrón "menu button") en `EncabezadoPanel`. Endpoint nuevo `PUT /api/cuenta/contrasena` (guard `exigirSesion()`), caso de uso `cambiarContrasenaPropia` en `modules/usuarios/`. Migración `20260924130838_agregar_bloqueo_login_y_sesion_version`. Ver [docs/arquitectura.md](arquitectura.md#perfil-propio-cambio-de-contraseña-invalidación-de-sesión-y-bloqueo-progresivo-de-cuentas-rf-21). |
 | Visor de registros    | Implementado | `/dashboard/logs` (solo ADMIN) lee `logs/errores.txt` y `logs/auditoria.txt` vía `infrastructure/logging/leerLogs.ts`, que lee solo la cola del archivo para acotar memoria. |
 | `modules/perfiles/`    | Implementado | Catálogo de perfiles (RF-09). Solo lectura por ahora: los perfiles se agregan por SQL hasta que exista el mantenedor. |
-| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña. Desde RF-13 también asigna formatos de archivo (N:M) a usuarios NOTIFICADOR_RPC. 4 endpoints con guard propio. Ver [docs/arquitectura.md](arquitectura.md#decisiones-de-diseño-de-rf-06-mantenedor-de-usuarios). |
+| `modules/usuarios/`    | Implementado | Mantenedor de usuarios (RF-06): listar con búsqueda y paginación en servidor, crear, editar, activar/desactivar, restablecer contraseña, reenviar enlace de activación. Desde RF-13 también asigna formatos de archivo (N:M) a usuarios NOTIFICADOR_RPC. Desde RF-21, séptimo endpoint `POST /api/usuarios/[id]/desbloqueo` (caso de uso `desbloquearUsuario`) para levantar manualmente el bloqueo por intentos fallidos de login, sin tocar el contador histórico `vecesBloqueada`; chip "Bloqueada" + tooltip en `TablaUsuarios`. 7 endpoints bajo `app/api/usuarios/` con guard `exigirAdminORevisor()`. Acceso completo y simétrico para ADMIN (`/dashboard/usuarios`) y REVISOR_REPOSITORIO (`/revisor/usuarios`, agregado posterior a RF-15), salvo que un actor sin perfil ADMIN no puede crear, editar, activar/desactivar, restablecer la contraseña ni reenviar el enlace de una cuenta ADMIN, ni asignar el perfil ADMIN a nadie (motivo `PERFIL_ADMIN_RESTRINGIDO`, aplicado en `application/`). Componentes de UI en `shared/components/` con prop `rutaBase` y booleano `actorEsAdmin`. Ver [docs/arquitectura.md](arquitectura.md#acceso-extendido-a-revisor_repositorio-con-restricción-perfil_admin_restringido-posterior-tras-rf-15). |
 | `modules/formatos-excel/` | Implementado | Mantenedor de formatos de archivo (RF-13): define columnas, cuáles son requeridas y su tipo de dato (8 valores desde RF-14: incluye RUT y EMAIL) a partir de una plantilla `.xlsx`/`.csv` subida por quien lo crea; conserva la plantilla para descarga. Extensión: reglas de validación por conjunto de columnas (`ALGUNA_COLUMNA_CON_VALOR`, hasta 100 por formato), gestionadas en la misma pantalla; el evaluador que las ejecuta contra un archivo real se construyó en RF-14. 6 endpoints bajo `app/api/formatos-excel/` con guard `exigirAdminORevisor()`. Acceso completo y simétrico para ADMIN (`/dashboard/formatos-excel`) y REVISOR_REPOSITORIO (`/revisor/formatos-excel`, agregado posterior a RF-15), sin restricción de autoría; los 5 componentes de UI viven en `shared/components/` y reciben `rutaBase` como prop. Ver [docs/arquitectura.md](arquitectura.md#acceso-extendido-a-revisor_repositorio-posterior-a-rf-15). |
 | Panel notificador     | Implementado | Panel del perfil NOTIFICADOR_RPC (RF-12) en `/notificador`, área separada de `/dashboard` (solo ADMIN). Login → despachador `/inicio` que redirige por perfil; proxy protege ambas áreas con chequeo positivo. Desde RF-14 incluye la sección de subida y validación de reportes. Desde RF-15 (y su ampliación posterior), ya no hay `<select>` manuales de formato ni de año: el home muestra una sección de subida automática por cada combinación (formato asignado al notificador, ventana publicada y abierta) cuyo tipo de archivo coincide. Ver [docs/arquitectura.md](arquitectura.md#panel-del-perfil-notificador_rpc-rf-12). |
-| `modules/reporte-excel/` | Implementado | Subida y validación de archivos de reporte por NOTIFICADOR_RPC (RF-14): valida estructura, tipo de dato por celda y reglas de RF-13 contra el archivo subido; resumen de errores por fila; visto bueno irreversible que hace la carga visible para ADMIN (`/dashboard/cargas`) y el nuevo perfil REVISOR_REPOSITORIO (`/revisor`, área top-level nueva). 8 endpoints (5 bajo `/api/notificador/`, 3 bajo `/api/dashboard/cargas/` + equivalentes de solo lectura en `/revisor`). Desde RF-15, cada carga queda asociada a una `VentanaCarga` (`ventanaCargaId`) y la subida exige que exista una ventana abierta para el año elegido. Ver [docs/arquitectura.md](arquitectura.md#subida-y-validación-de-archivos-de-reporte-rf-14). |
+| `modules/reporte-excel/` | Implementado | Subida y validación de archivos de reporte por NOTIFICADOR_RPC (RF-14): valida estructura, tipo de dato por celda y reglas de RF-13 contra el archivo subido; resumen de errores por fila. El notificador "finaliza y envía" la carga sin errores; la aprobación (irreversible) o el rechazo son decisión de ADMIN/REVISOR_REPOSITORIO (corrección posterior de RF-14, ver más abajo), y hacen la carga visible en `/dashboard/cargas` y `/revisor`. Endpoints bajo `/api/notificador/` (incluye `.../finalizar`) y bajo `/api/dashboard/cargas/` (incluye `.../aprobacion` y `.../rechazo`) + equivalentes de solo lectura en `/revisor`. Desde RF-15, cada carga queda asociada a una `VentanaCarga` (`ventanaCargaId`) y la subida exige que exista una ventana abierta para el año elegido. Ver [docs/arquitectura.md](arquitectura.md#subida-y-validación-de-archivos-de-reporte-rf-14). |
+| `modules/solicitudes-reemplazo/` | Implementado | Publicación JSONB de cargas aprobadas hacia el revisor + autorización de reemplazo (RF-19): `CargaArchivoPublicada` (cabecera) + `CargaArchivoPublicadaFila` (una fila por cada fila del archivo, `valores: Json`) se crean atómicamente en el visto bueno; `SolicitudReemplazoCarga` (`PENDIENTE`/`APROBADA`/`RECHAZADA`) autoriza un reemplazo, aprobada por ADMIN o REVISOR_REPOSITORIO, vigente 5 días desde su aprobación (calculado en lectura, sin cron), se consume al subir el archivo de reemplazo. Notifica por correo (plantilla fija, `after()`, no bloqueante) al resolverse. Endpoints bajo `/api/notificador/solicitudes-reemplazo/` y `/api/dashboard/solicitudes-reemplazo/`; secciones "Solicitudes" (`/dashboard`, `/revisor`) y "Mis solicitudes" (`/notificador`). Ver [docs/arquitectura.md](arquitectura.md#publicación-jsonb-de-cargas-aprobadas--solicitudes-de-reemplazo-rf-19). |
 | `modules/ventanas-carga/` | Implementado | Ventanas de tiempo por año que habilitan la subida de reportes (RF-15): ADMIN y REVISOR_REPOSITORIO crean, editan y eliminan ventanas (`fechaApertura`/`fechaVencimiento`; `(anio, formatoExcelId)` único como par solo mientras la ventana no esté eliminada, vía índice único parcial); "abierta" se calcula en cada lectura, sin cron. Eliminar es física sin cargas asociadas o lógica con alguna (decidido por el `ON DELETE RESTRICT`, no por conteo previo), y solo ADMIN puede eliminar cualquiera (REVISOR_REPOSITORIO solo las propias). Ampliación posterior: cada ventana nace como borrador (`publicada = false`) hasta que un ADMIN/REVISOR la publica con un switch dedicado (`PATCH .../publicacion`, sin restricción de ownership); una ventana no publicada o de otro formato queda excluida en el propio `WHERE` de Prisma de lo que ve el notificador, no solo oculta en la UI. **Corrección posterior:** el enum `tipoArchivo` (`EXCEL`/`CSV`) que originalmente declaraba cada ventana se reemplazó por `formatoExcelId`, una referencia directa (relación 1:1) a un `FormatoExcel` concreto — porque el tipo genérico no expresaba las reglas ni el número de columnas requeridas/opcionales reales del formato. `FormatoExcel.tipoArchivo` se mantiene intacto en `modules/formatos-excel/` como dato informativo, solo perdió a `VentanaCarga` como consumidor de matching. 7 endpoints bajo `app/api/dashboard/ventanas-carga/` (agregado `PATCH .../archivado`), pantallas `/dashboard/ventanas-carga` y `/revisor/ventanas-carga` (primera escritura de REVISOR_REPOSITORIO). Nuevo tipo de regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` en `modules/formatos-excel/`. Ampliación posterior: la tabla de ventanas muestra la cantidad de cargas APROBADAS por ventana (`_count` de Prisma, sin N+1) y una acción "Detalle" navega a `/dashboard/ventanas-carga/[id]` / `/revisor/ventanas-carga/[id]` (páginas nuevas, mismo guard de `src/proxy.ts`, sin Route Handler nuevo) con el listado paginado de esas cargas y descarga vía el endpoint ya existente de `reporte-excel`; usa `<ViewTransition>` de `react` (soportado por Next 16 sin instalar `react@canary`). **Ampliación posterior — archivar/desarchivar, buscador y filtro por formato:** `VentanaCarga.archivada` (cuarto eje de estado, independiente de `publicada`/`eliminadaEn`) oculta la ventana de la tabla por defecto; archivar despublica en la misma escritura atómica (`cambiarArchivadoVentanaCarga`/`PATCH .../archivado`), desarchivar no vuelve a publicar sola. `CambiarPublicacionVentanaCarga` rechaza ahora activar la publicación (`publicada: true`) de una ventana archivada con el motivo `VENTANA_ARCHIVADA` (409). La tabla (`TablaVentanasCarga`) ganó un buscador por año/formato y un filtro por formato de archivo (resueltos en cliente, sin endpoint nuevo) y un interruptor "Mostrar archivadas" (apagado por defecto). Ver [docs/arquitectura.md](arquitectura.md#formato-de-archivo-por-ventana-y-publicación-explícita-ampliación-de-rf-15), [#cantidad-de-cargas-por-ventana-y-detalle-de-cargas-aprobadas-ampliación-de-rf-15](arquitectura.md#cantidad-de-cargas-por-ventana-y-detalle-de-cargas-aprobadas-ampliación-de-rf-15) y [#archivar-desarchivar-ventanas-buscador-y-filtro-por-formato-ampliación-de-rf-15](arquitectura.md#archivar-desarchivar-ventanas-buscador-y-filtro-por-formato-ampliación-de-rf-15). **RF-17 (alertas por email):** `diasAnticipacionInicio`/`intervaloRepeticionDias`/`plantillaAlerta` nuevos en `VentanaCarga`; tabla nueva `AlertaNotificacionVentana` agrupada por `loteId`, con índice único parcial de deduplicación del envío automático diario. 4 endpoints nuevos bajo `.../[id]/alertas/`, scheduler `node-cron` vía `src/instrumentation.ts`, editor Lexical acotado a 4 botones. Ver [docs/arquitectura.md](arquitectura.md#alertas-por-email-a-notificadores-rf-17). |
 
 ## Herramientas de calidad y agentes
@@ -206,6 +208,14 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
   reiniciar el proceso después de aplicarla** (mismo caveat de cliente de Prisma en memoria que el
   resto de migraciones de este módulo): `npx prisma generate` + restart, o falla con
   `Unknown argument 'archivada'`.
+* **Ampliación de RF-13/14 (`20260917142311_agregar_regla_fila_duplicada`) es aditiva, sin
+  backfill.** Agrega `FILA_DUPLICADA` a `TipoReglaValidacionFormatoExcel` (`ALTER TYPE ... ADD
+  VALUE`, mismo caveat de siempre: no reversible en la misma transacción si hiciera falta
+  deshacerla). No toca ninguna tabla ni columna existente; ninguna fila puede usar el valor nuevo
+  todavía, así que no hace falta backfill. Admite despliegue rolling. **Requiere reiniciar el
+  proceso después de aplicarla** (mismo caveat de cliente de Prisma en memoria que el resto de
+  migraciones de este módulo): `npx prisma generate` + restart, o falla con `Invalid value for
+  argument tipo` al intentar guardar una regla de este tipo nuevo.
 
 
 ## Recuperación de contraseña (RF-10)
@@ -228,6 +238,7 @@ No hay credenciales institucionales configuradas ni envío real verificado todav
 En Coolify, activar `TRUST_PROXY=true` solamente tras confirmar que Traefik agrega la IP real
 al final de la cadena y que Next no recibe conexiones directas desde internet. El limitador
 por origen es local al proceso; el cupo por cuenta permanece en PostgreSQL entre instancias.
+
 No registrar el parámetro `token` en los access logs del proxy. La página usa `no-referrer`.
 Las sesiones JWT existentes todavía expiran a las 8 horas: este cambio no agrega revocación.
 
@@ -236,3 +247,38 @@ Para pruebas usar exclusivamente PostgreSQL desechable local con todas las migra
 `RF10_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... npx tsx tests/recuperacion.integration.ts`.
 Ejecutar en UTC, America/Santiago y Asia/Tokyo mediante `PGOPTIONS='-c timezone=...'`.
 La prueba SMTP usa solo 127.0.0.1:55440 y no entrega mensajes externos.
+
+## Rechazo de cargas aprobadas y confirmación de visto bueno por correo (RF-20)
+
+`BUZON_COMPARTIDO_REVISOR_EMAIL` (opcional, `src/infrastructure/config/env.ts`): dirección del
+buzón compartido del equipo revisor para el correo de confirmación de una carga aprobada, disparado
+desde `app/api/dashboard/cargas/[id]/aprobacion/route.ts` (diferido con `after()`) — antes vivía en
+`.../visto-bueno/route.ts` (eliminado en la corrección posterior de RF-14: ver más abajo, la
+aprobación ya no la da el propio notificador). Si no está configurada, el correo se envía
+individualmente a cada usuario activo con perfil `REVISOR_REPOSITORIO`
+(`UsuarioRepository.listarActivosPorPerfil`), nunca a todos en el mismo To/CC. El rechazo unilateral
+de una carga aprobada (`POST /api/dashboard/cargas/[id]/rechazo`, guardado por
+`exigirAdminORevisor`) notifica siempre al notificador dueño de la carga y habilita una reapertura de
+su ventana (`CargaArchivoRechazo`, ver `modules/reporte-excel/domain/entities/CargaArchivoRechazo.ts`)
+hasta la fecha de vencimiento original de la ventana, o 5 días adicionales si esta ya había vencido al
+momento del rechazo.
+
+## Fin de la autoaprobación del notificador (corrección de RF-14)
+
+El notificador ya no se autoaprueba: su acción pasa a ser "Finalizar y enviar"
+(`POST /api/notificador/cargas/[id]/finalizar`), que solo marca `finalizadaEn` sin cambiar el
+`estado` de la carga. La aprobación (`POST /api/dashboard/cargas/[id]/aprobacion`, nuevo) y el
+rechazo (`POST /api/dashboard/cargas/[id]/rechazo`, alcance ampliado a `PENDIENTE_VISTO_BUENO`
+finalizada) pasan a ser decisiones de ADMIN/REVISOR_REPOSITORIO, guardadas por
+`exigirAdminORevisor()`. Migración `20260923120000_agregar_finalizadaEn_carga_archivo` agrega la
+columna `finalizadaEn` a `carga_archivo` con backfill (`finalizadaEn = createdAt`) para toda carga
+`PENDIENTE_VISTO_BUENO` que ya existía antes de esta corrección. Detalle completo en
+`docs/arquitectura.md`, sección "Fin de la autoaprobación del notificador...".
+
+Migraciones aditivas: `20260923090000_agregar_estado_rechazada_carga` (nuevo valor de enum
+`RECHAZADA`, en su propia migración por la restricción de PostgreSQL de no usar un valor de enum
+recién creado en la misma transacción) y `20260923090100_agregar_rechazo_carga_archivo` (tabla
+`carga_archivo_rechazo`; rename real de columna en `carga_archivo_publicada`,
+`reemplazadaEn`→`desactivadaEn` y `motivoReemplazo`→`motivoDesactivacion`, para no perder los
+datos ya escritos por RF-19; columna nueva `motivoDesactivacionTipo` con backfill `REEMPLAZO`
+para lo existente).

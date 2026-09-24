@@ -10,9 +10,9 @@ import type {
 // RF-17: badge de estado de alertas. `null` (configurada, sin envíos todavía) no pinta nada: no
 // hay nada útil que decirle al administrador todavía.
 const BADGE_ESTADO_ALERTA: Record<Exclude<EstadoAlertaVentana, null>, { texto: string; clase: string }> = {
-  AVISO_ENVIADO: { texto: "Aviso enviado", clase: "border-gob-primary text-gob-primary" },
-  CON_ERRORES: { texto: "Con errores en el envío", clase: "border-gob-danger text-gob-danger" },
-  NO_CONFIGURADA: { texto: "Alertas no configuradas", clase: "border-gob-gray-a text-gob-gray-a" },
+  AVISO_ENVIADO: { texto: "Aviso enviado", clase: "bg-blue-100 border-gob-primary text-gob-primary" },
+  CON_ERRORES: { texto: "Con errores en el envío", clase: "bg-red-100 border-gob-danger text-gob-danger" },
+  NO_CONFIGURADA: { texto: "Alertas no configuradas", clase: "bg-gray-100 border-gob-gray-a text-gob-gray-a" },
 };
 
 // Tarjeta del tablero de seguimiento (RF-16), una por cada ventana de carga ABIERTA. Compartida
@@ -30,15 +30,15 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
   const badgeAlerta = resumen.estadoAlerta ? BADGE_ESTADO_ALERTA[resumen.estadoAlerta] : null;
 
   return (
-    <article className="flex flex-col gap-4 rounded-lg border border-gob-accent bg-white p-4">
+    <article className="flex flex-col gap-4 rounded-lg border border-gob-neutral bg-white p-5 shadow-md hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-base font-semibold text-gob-tertiary">{resumen.formatoExcelNombre}</h3>
-          <p className="text-sm text-gob-gray-a">Año {resumen.anio}</p>
+          <h3 className="text-base font-bold text-gob-primary">{resumen.formatoExcelNombre}</h3>
+          <p className="text-sm text-gob-gray-a mt-1">Año {resumen.anio}</p>
         </div>
         {badgeAlerta ? (
           <span
-            className={`inline-flex shrink-0 items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${badgeAlerta.clase}`}
+            className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-semibold whitespace-nowrap ${badgeAlerta.clase}`}
           >
             {badgeAlerta.texto}
           </span>
@@ -50,27 +50,30 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
         total={resumen.totalNotificadoresAsignados}
       />
 
-      <p className="text-sm text-gob-gray-a">
-        {resumen.totalNotificadoresReportaron} de {resumen.totalNotificadoresAsignados} notificadores
+      <p className="text-sm font-medium text-gob-black">
+        <span className="text-gob-primary font-bold">{resumen.totalNotificadoresReportaron}</span> de{" "}
+        <span className="text-gob-primary font-bold">{resumen.totalNotificadoresAsignados}</span> notificadores
         reportaron
       </p>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <BarraProgresoVentana
           fraccionTiempoTranscurrido={resumen.fraccionTiempoTranscurrido}
           enRiesgo={resumen.vencimientoProximo}
         />
-        <p className={`text-sm ${resumen.vencimientoProximo ? "font-medium text-gob-danger" : "text-gob-gray-a"}`}>
-          Vence el {formatearFechaCalendario(resumen.fechaVencimiento)} · {resumen.diasRestantes}{" "}
-          {resumen.diasRestantes === 1 ? "día restante" : "días restantes"}
+        <p className={`text-sm font-semibold ${resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-black"}`}>
+          Vence el {formatearFechaCalendario(resumen.fechaVencimiento)}{" "}
+          <span className={`${resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-gray-a"}`}>
+            · {resumen.diasRestantes} {resumen.diasRestantes === 1 ? "día restante" : "días restantes"}
+          </span>
         </p>
       </div>
 
       <Link
         href={`${rutaBase}/${resumen.ventanaCargaId}?origen=inicio`}
-        className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+        className="text-sm font-semibold text-sky-500 underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
       >
-        Detalle
+        Ver detalle
       </Link>
     </article>
   );

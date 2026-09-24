@@ -9,11 +9,11 @@ import {
   FILTRO_LISTADO_POR_DEFECTO,
   listadoUsuariosSchema,
 } from "@/modules/usuarios/schemas/listado-usuarios.schema";
-import { EsqueletoTablaUsuarios } from "./esqueleto-tabla-usuarios";
-import { aOpcionesPerfil } from "./opciones-perfil";
-import { FiltrosUsuarios } from "./filtros-usuarios";
-import { ListadoUsuarios } from "./listado-usuarios";
-import { RUTA_USUARIOS, construirRutaUsuarios } from "./ruta-usuarios";
+import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
+import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import { FiltrosUsuarios } from "@/shared/components/FiltrosUsuarios";
+import { ListadoUsuarios } from "@/shared/components/ListadoUsuarios";
+import { RUTA_USUARIOS_DASHBOARD, construirRutaUsuariosDashboard } from "./ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Repositorio RPC - SEREMI de Salud Biobío",
@@ -44,7 +44,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
   ]);
 
   const actorId = sesion?.sub ?? "";
-  const claveFiltro = construirRutaUsuarios(filtro);
+  const claveFiltro = construirRutaUsuariosDashboard(filtro);
 
   return (
     <div>
@@ -57,7 +57,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         </div>
 
         <Link
-          href={`${RUTA_USUARIOS}/nuevo`}
+          href={`${RUTA_USUARIOS_DASHBOARD}/nuevo`}
           className="inline-flex items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Nuevo usuario
@@ -71,6 +71,7 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
         opcionesPerfil={aOpcionesPerfil(perfiles)}
+        rutaBase={RUTA_USUARIOS_DASHBOARD}
       />
 
       {usuarioCreado || enlaceEnviado || contrasenaDefinida ? (
@@ -89,7 +90,13 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
       {/* La key hace reaparecer el esqueleto en cada búsqueda y en cada salto de página;
           loading.tsx solo cubre la primera entrada al segmento. */}
       <Suspense key={`listado:${claveFiltro}`} fallback={<EsqueletoTablaUsuarios />}>
-        <ListadoUsuarios filtro={filtro} actorId={actorId} />
+        <ListadoUsuarios
+          filtro={filtro}
+          actorId={actorId}
+          rutaBase={RUTA_USUARIOS_DASHBOARD}
+          construirHref={(pagina) => construirRutaUsuariosDashboard(filtro, pagina)}
+          actorEsAdmin
+        />
       </Suspense>
     </div>
   );

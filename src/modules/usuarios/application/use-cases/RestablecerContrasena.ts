@@ -1,9 +1,11 @@
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type { HasheadorContrasena } from "@/modules/usuarios/application/ports";
+import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 
 export type ResultadoRestablecerContrasena =
   | { ok: true; id: string; rut: string }
-  | { ok: false; motivo: "NO_ENCONTRADO" };
+  | { ok: false; motivo: "NO_ENCONTRADO" }
+  | { ok: false; motivo: "PERFIL_ADMIN_RESTRINGIDO"; rut: string };
 
 // Fijado MANUAL de la contraseña por el administrador (convive con el envío de enlace, que la
 // fija la propia persona). Restablecer la propia contraseña SÍ está permitido: de lo contrario el
@@ -15,6 +17,10 @@ export type ResultadoRestablecerContrasena =
 export async function restablecerContrasena(
   id: string,
   contrasena: string,
+  // Perfil de quien ejecuta la operación (ADMIN o REVISOR_REPOSITORIO: ambos tienen acceso al
+  // mantenedor). Se recibe aparte de `dependencias` porque es un dato de identidad del actor, no
+  // una dependencia técnica inyectable.
+  actorPerfilCodigo: string,
   dependencias: {
     repositorio: UsuarioRepository;
     hasheadorContrasena: HasheadorContrasena;
@@ -24,6 +30,11 @@ export async function restablecerContrasena(
 
   if (!usuario) {
     return { ok: false, motivo: "NO_ENCONTRADO" };
+  }
+
+  // Un actor sin perfil ADMIN no puede fijar manualmente la contraseña de una cuenta ADMIN.
+  if (!esPerfilAdministrador(actorPerfilCodigo) && esPerfilAdministrador(usuario.perfilCodigo)) {
+    return { ok: false, motivo: "PERFIL_ADMIN_RESTRINGIDO", rut: usuario.rut };
   }
 
   const contrasenaHash = await dependencias.hasheadorContrasena.hashear(contrasena);

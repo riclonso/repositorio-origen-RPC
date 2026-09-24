@@ -1,6 +1,10 @@
 import type { ReglaValidacionFormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-import { celdaVacia, parsearFecha } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
+import {
+  celdaVacia,
+  parsearFecha,
+  serializarValorParaClaveDuplicado,
+} from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 
 // Contexto adicional que necesitan `FECHA_DENTRO_DE_VENTANA_VIGENTE` y
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, a diferencia de `ALGUNA_COLUMNA_CON_VALOR`: el rango
@@ -11,13 +15,20 @@ export type ContextoEvaluacionReglas = {
   ventana: { fechaApertura: Date; fechaVencimiento: Date; anio: number };
 };
 
-// Tres tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
+// Cuatro tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
 // fila), `FECHA_DENTRO_DE_VENTANA_VIGENTE` (una columna de fecha debe caer dentro del rango de la
-// ventana vigente) y `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
-// partir de varias columnas debe caer dentro del AÑO calendario de la ventana). Un tipo de regla
-// nuevo exige agregar su propio `case` aquí, mismo criterio que `ValidadoresTipoDato` para los
-// tipos de dato.
+// ventana vigente), `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
+// partir de varias columnas debe caer dentro del AÑO calendario de la ventana) y `FILA_DUPLICADA`.
+// Un tipo de regla nuevo exige agregar su propio `case` aquí, mismo criterio que
+// `ValidadoresTipoDato` para los tipos de dato.
+//
+// `FILA_DUPLICADA` es la excepción: a diferencia de las otras tres, que son puras y evalúan una
+// fila de forma aislada, detectar una fila repetida exige memoria de las filas ya vistas en el
+// mismo archivo. Por eso NO se resuelve en `cumpleReglaValidacion` (que se mantiene puro y sin
+// estado): el `case` de abajo devuelve `true` (sin error) a propósito para esta regla, y el
+// chequeo real vive en `crearRastreadorFilasDuplicadas`/`evaluarFilaDuplicada`, más abajo, que
+// `ValidarYCargarArchivo` invoca aparte dentro del mismo recorrido de filas.
 export function cumpleReglaValidacion(
   regla: ReglaValidacionFormatoExcel,
   fila: Record<string, ValorCeldaArchivo>,
@@ -79,7 +90,75 @@ export function cumpleReglaValidacion(
       const fechaEfectiva = fechasAlternativas.reduce((minima, actual) => (actual < minima ? actual : minima));
       return fechaEfectiva.getFullYear() === contexto.ventana.anio;
     }
+    // Ver comentario de la función: `FILA_DUPLICADA` se evalúa aparte, con estado
+    // (`crearRastreadorFilasDuplicadas`/`evaluarFilaDuplicada`), no aquí.
+    case "FILA_DUPLICADA":
+      return true;
     default:
       return true;
   }
+}
+
+// Estado por regla `FILA_DUPLICADA` del formato: la clave serializada de cada fila ya vista,
+// mapeada al número de la fila donde apareció por primera vez (el "original", que nunca se marca
+// como error — decisión de negocio: solo la 2ª aparición en adelante se rechaza). Una entrada de
+// mapa por regla, para que dos reglas `FILA_DUPLICADA` con columnas distintas del mismo formato no
+// interfieran entre sí.
+export type RastreadorFilasDuplicadas = Map<string, Map<string, number>>;
+
+// Se construye una sola vez por carga de archivo (no por fila), a partir de las reglas
+// `FILA_DUPLICADA` del formato. `ValidarYCargarArchivo` lo crea antes de recorrer las filas y lo
+// reutiliza durante todo el recorrido, manteniendo la evaluación en O(filas) por regla (un solo
+// recorrido, sin bucles anidados ni una segunda pasada sobre el archivo).
+export function crearRastreadorFilasDuplicadas(
+  reglas: ReglaValidacionFormatoExcel[],
+): RastreadorFilasDuplicadas {
+  const rastreador: RastreadorFilasDuplicadas = new Map();
+
+  for (const regla of reglas) {
+    if (regla.tipo === "FILA_DUPLICADA") {
+      rastreador.set(regla.id, new Map());
+    }
+  }
+
+  return rastreador;
+}
+
+// Evalúa una fila contra una regla `FILA_DUPLICADA` puntual, actualizando el estado del
+// rastreador. Reglas de negocio ya confirmadas:
+// - Comparación case-sensitive tras `trim()` (vía `serializarValorParaClaveDuplicado`): "Juan" y
+//   "JUAN" NO son la misma clave.
+// - Si TODOS los valores de la clave están vacíos, la fila queda excluida del chequeo (no se
+//   marca ni se registra en el mapa), incluso si otra fila también tiene esa misma clave vacía.
+// - Solo la 2ª aparición en adelante de una misma clave se marca como duplicada; la primera
+//   aparición ("el original") nunca se marca, solo queda registrada para detectar la siguiente.
+export function evaluarFilaDuplicada(
+  rastreador: RastreadorFilasDuplicadas,
+  regla: ReglaValidacionFormatoExcel,
+  fila: Record<string, ValorCeldaArchivo>,
+  numeroFila: number,
+): boolean {
+  const clavesPorRegla = rastreador.get(regla.id);
+  if (!clavesPorRegla) return false; // config inconsistente (no debería pasar), no reporta error
+
+  const valoresClave: (string | null)[] = regla.columnas.map((columna) =>
+    serializarValorParaClaveDuplicado(fila[columna] ?? null),
+  );
+
+  const todasVacias = valoresClave.every((valor) => valor === null);
+  if (todasVacias) return false; // decisión de negocio: excluida del chequeo, no se registra
+
+  // `JSON.stringify` sobre el ARRAY (no sobre cada valor por separado) produce una representación
+  // textual unívoca de la combinación de valores: distingue automáticamente `null` (columna vacía,
+  // serializa sin comillas) de la cadena literal "null" (serializa como `"null"`, con comillas), y
+  // escapa comillas/backslashes/cualquier carácter especial dentro de los valores de texto sin
+  // depender de que algún separador esté ausente del contenido real de la celda.
+  const clave = JSON.stringify(valoresClave);
+
+  if (clavesPorRegla.has(clave)) {
+    return true; // 2ª aparición en adelante: duplicada
+  }
+
+  clavesPorRegla.set(clave, numeroFila);
+  return false; // primera aparición: es "el original", no se marca
 }

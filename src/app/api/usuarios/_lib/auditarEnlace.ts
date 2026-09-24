@@ -54,6 +54,19 @@ export function auditarDesenlaceEnlace(
     return;
   }
 
+  // Rechazo de autorización, no un fallo técnico de correo: sin esta rama caería por defecto en
+  // ENVIO_FALLIDO, mezclando ambos casos.
+  if (resultado.estado === "PERFIL_ADMIN_RESTRINGIDO") {
+    auditarUsuario(sesion, peticion, {
+      accion: "ENLACE_CONTRASENA_ENVIADO",
+      resultado: "RECHAZADO",
+      motivo: "PERFIL_ADMIN_RESTRINGIDO",
+      usuarioObjetivoId: resultado.usuarioId,
+      usuarioObjetivoRut: resultado.usuarioRut,
+    });
+    return;
+  }
+
   if (resultado.estado === "SIN_CONFIGURACION") {
     logger.error("Emisión de enlace de contraseña con el envío de correo sin configurar", {
       usuarioId: resultado.usuarioId,

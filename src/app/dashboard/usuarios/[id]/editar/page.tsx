@@ -7,9 +7,10 @@ import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarP
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
-import { aOpcionesPerfil } from "../../opciones-perfil";
-import { aOpcionesFormatoExcel } from "../../opciones-formato-excel";
-import { UsuarioForm } from "../../usuario-form";
+import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
+import { UsuarioForm } from "@/shared/components/UsuarioForm";
+import { RUTA_USUARIOS_DASHBOARD } from "../../ruta-usuarios";
 
 export const metadata: Metadata = {
   title: "Editar usuario - Repositorio RPC - SEREMI de Salud Biobío",
@@ -71,6 +72,7 @@ export default async function EditarUsuarioPage({ params }: EditarUsuarioPagePro
         modo="editar"
         endpoint={`/api/usuarios/${usuario.id}`}
         metodo="PUT"
+        rutaBase={RUTA_USUARIOS_DASHBOARD}
         valoresIniciales={{
           nombres: usuario.nombres,
           apellidos: usuario.apellidos,

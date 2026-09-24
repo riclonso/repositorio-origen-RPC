@@ -22,3 +22,38 @@ export interface LectorArchivoReporte {
 export interface GeneradorExcelErrores {
   generar(errores: ErrorCargaArchivo[]): Promise<Buffer>;
 }
+
+// Puertos de correo (rechazo/confirmación de carga aprobada), mismo criterio que
+// `solicitudes-reemplazo/application/ports.ts`: `application/` nunca sabe de SMTP ni de
+// nodemailer. Ninguno de los dos se invoca desde un caso de uso: el envío se dispara desde el
+// Route Handler, dentro de `after()`, para que un fallo de SMTP nunca revierta ni retrase la
+// escritura ya persistida (mismo patrón que `RevisarSolicitudReemplazo`).
+export type DatosCorreoRechazoCarga = {
+  destinatario: { nombres: string; email: string };
+  formatoExcelNombre: string;
+  anio: number;
+  nombreArchivoOriginal: string;
+  motivo: string;
+};
+
+export interface EnviadorNotificacionRechazoCarga {
+  disponible(): boolean;
+  enviarRechazo(datos: DatosCorreoRechazoCarga): Promise<void>;
+}
+
+export type DatosCorreoConfirmacionVistoBueno = {
+  notificador: { nombres: string; email: string };
+  formatoExcelNombre: string;
+  anio: number;
+  nombreArchivoOriginal: string;
+};
+
+export interface EnviadorConfirmacionVistoBueno {
+  disponible(): boolean;
+  enviarConfirmacionNotificador(datos: DatosCorreoConfirmacionVistoBueno): Promise<void>;
+  // Buzón compartido si `BUZON_COMPARTIDO_REVISOR_EMAIL` está configurada, o un correo INDIVIDUAL
+  // por cada revisor activo si no (nunca todos en el mismo To/CC): la resolución de a quién enviar
+  // vive en la implementación de infraestructura, que es la única que conoce la variable de
+  // entorno y el repositorio de usuarios.
+  enviarConfirmacionRevisores(datos: Omit<DatosCorreoConfirmacionVistoBueno, "notificador">): Promise<void>;
+}

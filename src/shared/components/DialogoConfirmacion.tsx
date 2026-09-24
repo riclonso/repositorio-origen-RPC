@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Boton, type VarianteBoton } from "@/shared/components/Boton";
 
 type DialogoConfirmacionProps = {
@@ -14,6 +14,10 @@ type DialogoConfirmacionProps = {
   error?: string | null;
   onConfirmar: () => void;
   onCancelar: () => void;
+  // Contenido adicional entre la descripción y los botones (por ejemplo, un campo de comentario
+  // opcional): mismo diálogo base, sin duplicar el marcado de foco/backdrop/botones para cada
+  // variante que necesite un campo extra.
+  children?: ReactNode;
 };
 
 // `<dialog>` nativo con showModal(): aporta trampa de foco y cierre con Escape sin dependencias.
@@ -28,6 +32,7 @@ export function DialogoConfirmacion({
   error,
   onConfirmar,
   onCancelar,
+  children,
 }: DialogoConfirmacionProps) {
   const referenciaDialogo = useRef<HTMLDialogElement>(null);
   // Cada instancia necesita su propio id: dos `DialogoConfirmacion` en la misma página (p. ej.
@@ -75,6 +80,8 @@ export function DialogoConfirmacion({
           {error}
         </p>
       ) : null}
+
+      {children}
 
       <div className="mt-6 flex justify-end gap-3">
         <Boton variante="secundario" onClick={onCancelar} disabled={procesando}>

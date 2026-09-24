@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-15 (RF-13: acceso completo y simétrico de REVISOR_REPOSITORIO al mantenedor de formatos de archivo)
+Última actualización: 2026-09-23 (RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -41,22 +41,46 @@ src/
 │   │   └── schemas/        — formato-excel.schema.ts (Zod; valida también las reglas y que sus
 │   │                         columnas existan entre las columnas del mismo payload)
 │   ├── reporte-excel/      — subida y validación de archivos de reporte (RF-14, implementado)
-│   │   ├── domain/         — entities/CargaArchivo.ts, repositories/
-│   │   ├── application/    — use-cases/ (ValidarYCargarArchivo, DarVistoBueno, Listar/Obtener*)
-│   │   ├── infrastructure/ — repositories/PrismaCargaArchivoRepository.ts,
+│   │   ├── domain/         — entities/CargaArchivo.ts, entities/CargaArchivoRechazo.ts (rechazo
+│   │   │                     unilateral de una carga APROBADA + reapertura individual, RF-20),
+│   │   │                     repositories/
+│   │   ├── application/    — use-cases/ (ValidarYCargarArchivo, DarVistoBueno, RechazarCarga,
+│   │   │                     ListarCargasRechazadas, ListarReaperturasVigentesPropias,
+│   │   │                     Listar/Obtener*). `ValidarYCargarArchivo`/`DarVistoBueno` reciben
+│   │   │                     `repositorioSolicitudesReemplazo` inyectado (interfaz de
+│   │   │                     `modules/solicitudes-reemplazo/domain/repositories/`, RF-19) — un
+│   │   │                     módulo puede depender de la INTERFAZ de otro, nunca de su
+│   │   │                     implementación concreta.
+│   │   ├── infrastructure/ — repositories/PrismaCargaArchivoRepository.ts (`darVistoBueno`/
+│   │   │                     `rechazar` son transacciones interactivas de Prisma con `timeout`
+│   │   │                     explícito — ver RF-19/RF-20 más abajo),
 │   │   │                     validacion/ (ValidadoresTipoDato, EvaluadorReglasValidacion),
-│   │   │                     lectura-archivo/LectorArchivoReporteExcelJs.ts, auditoria/
+│   │   │                     lectura-archivo/LectorArchivoReporteExcelJs.ts,
+│   │   │                     email/ (RechazoCargaMailer.ts, VistoBuenoCargaMailer.ts — RF-20),
+│   │   │                     auditoria/
 │   │   └── schemas/        — reporte-excel.schema.ts
-│   └── ventanas-carga/     — ventanas de tiempo para carga de archivos (RF-15, implementado)
-│       ├── domain/         — entities/VentanaCarga.ts (incluye estaAbierta, sin estado persistido;
-│       │                     referencia un `FormatoExcel` concreto vía `formatoExcelId`, no un
-│       │                     `TipoArchivo` genérico), entities/rangoAnio.ts (fechaDentroDelAnio),
-│       │                     repositories/, errors/VentanaCargaDuplicadaError.ts,
-│       │                     errors/FormatoInvalidoVentanaCargaError.ts
-│       ├── application/    — use-cases/ (Crear/EditarFechas/Listar/ListarAniosDisponibles/Obtener)
-│       ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/
-│       └── schemas/        — ventana-carga.schema.ts (anioVentanaCargaSchema reutilizado por
-│                             `reporte-excel/schemas/reporte-excel.schema.ts`, para no duplicar rango)
+│   ├── ventanas-carga/     — ventanas de tiempo para carga de archivos (RF-15, implementado)
+│   │   ├── domain/         — entities/VentanaCarga.ts (incluye estaAbierta, sin estado persistido;
+│   │   │                     referencia un `FormatoExcel` concreto vía `formatoExcelId`, no un
+│   │   │                     `TipoArchivo` genérico), repositories/,
+│   │   │                     errors/VentanaCargaDuplicadaError.ts,
+│   │   │                     errors/FormatoInvalidoVentanaCargaError.ts
+│   │   ├── application/    — use-cases/ (Crear/EditarFechas/Listar/ListarAniosDisponibles/Obtener)
+│   │   ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/
+│   │   └── schemas/        — ventana-carga.schema.ts (anioVentanaCargaSchema reutilizado por
+│   │                         `reporte-excel/schemas/reporte-excel.schema.ts`, para no duplicar rango)
+│   └── solicitudes-reemplazo/ — autoriza el reemplazo de una carga ya APROBADA (RF-19, implementado)
+│       ├── domain/         — entities/SolicitudReemplazoCarga.ts (estado + `solicitudUtilizable`/
+│       │                     `solicitudVencida`, vigencia de 5 días calculada en lectura contra un
+│       │                     `ahora` recibido, sin cron), errors/SolicitudReemplazoDuplicadaError.ts,
+│       │                     repositories/
+│       ├── application/    — ports.ts (EnviadorNotificacionSolicitudReemplazo), use-cases/
+│       │                     (SolicitarReemplazoCarga, RevisarSolicitudReemplazo,
+│       │                     ListarSolicitudesReemplazoPropias/ParaRevision)
+│       ├── infrastructure/ — repositories/PrismaSolicitudReemplazoCargaRepository.ts,
+│       │                     email/SolicitudReemplazoMailer.ts (plantilla fija, patrón
+│       │                     `auth/infrastructure/email/PasswordResetMailer.ts`), auditoria/
+│       └── schemas/        — solicitud-reemplazo.schema.ts
 ├── infrastructure/         — transversal
 │   ├── database/prisma.ts, config/env.ts
 │   ├── logging/            — logger.ts, auditoria.ts, leerLogs.ts, logUpload.ts (preparado, sin conectar — ver RF-13)
@@ -216,6 +240,52 @@ La paleta oficial de gob.cl no trae un rojo que pase WCAG AA como texto sobre bl
 (`gob-secondary` #fe6565 queda en ~3.0:1). Se agregó `--color-gob-danger` (#a01f1f, ~7.7:1) para texto
 de error y acciones destructivas. `gob-gray-b` (#8a8a8a, ~3.1:1) es solo para bordes y placeholders:
 etiquetas y texto de ayuda usan `gob-gray-a` (#4a4a4a, ~7.4:1).
+
+### Acceso extendido a REVISOR_REPOSITORIO, con restricción `PERFIL_ADMIN_RESTRINGIDO` (posterior, tras RF-15)
+
+A diferencia de `formatos-excel/` y `ventanas-carga/` (donde el cambio de guard fue puramente
+mecánico, sin ninguna regla de negocio que distinguiera entre perfiles), abrir el mantenedor de
+usuarios a REVISOR_REPOSITORIO sí necesitaba una regla nueva: ninguno de los cinco casos de uso
+mutadores (`CrearUsuario`, `ActualizarUsuario`, `CambiarEstadoUsuario`, `RestablecerContrasena` en
+`modules/usuarios/`, y `EmitirEnlaceContrasena` en `modules/auth/`, invocado desde los mismos Route
+Handlers) impedía que quien tuviera acceso al mantenedor tocara una cuenta ADMIN o se
+autopromoviera. Sin esa regla, un REVISOR_REPOSITORIO podría degradar/desactivar/resetear la
+contraseña de cualquier ADMIN existente, o asignarse a sí mismo el perfil ADMIN editando su propio
+registro.
+
+La regla — "un actor cuyo `perfilCodigo` no es ADMIN no puede crear una cuenta ADMIN, operar sobre
+una cuenta cuyo perfil ACTUAL es ADMIN, ni cambiar el perfil de nadie a ADMIN (incluido el suyo
+propio)" — se implementó en `application/`, como comprobación adicional en cada uno de los cinco
+casos de uso, recibiendo el `perfilCodigo` del actor como parámetro nuevo (mismo criterio que
+`actorId` en las reglas anti-autobloqueo ya existentes: si viviera solo en el Route Handler o en la
+UI, se podría saltar llamando la API directamente). Se modela como un motivo de rechazo propio,
+`PERFIL_ADMIN_RESTRINGIDO`, distinto de `SIN_PERMISO` (que es "no tiene acceso al mantenedor en
+absoluto"): éste es "tiene acceso, pero no a esta cuenta o a este valor de perfil". Cada Route
+Handler lo traduce a 403 (`respuestaPerfilAdminRestringido()` en `app/api/usuarios/_lib/http.ts`) y
+lo audita como `RECHAZADO`, en vez de dejarlo caer en el diccionario `MENSAJES_CONFLICTO` (409) que
+ya manejaba `AUTO_OPERACION`/`ULTIMO_ADMIN` — son familias de error distintas (autorización vs.
+conflicto de negocio) aunque las dos devuelvan una escritura rechazada.
+
+Los 6 endpoints bajo `app/api/usuarios/` reexportan `exigirAdminORevisor` en vez de `exigirAdmin`
+(igual que `formatos-excel/`). En la UI, `/revisor/usuarios` no deshabilita Editar, ambas acciones de
+Contraseña y el interruptor de estado en una fila con perfil ADMIN: los OCULTA. Como `/dashboard/**`
+es exclusivamente ADMIN y `/revisor/**` exclusivamente REVISOR_REPOSITORIO (garantizado por
+`proxy.ts`), basta un booleano `actorEsAdmin` que cada `page.tsx` de área pasa como literal (`true`
+en dashboard, `false` en revisor) al componente compartido `TablaUsuarios`, sin leer la sesión ahí.
+Los ocho componentes de UI que antes vivían dentro de `app/dashboard/usuarios/` (`TablaUsuarios`,
+`UsuarioForm`, `FiltrosUsuarios`, `ListadoUsuarios`, `PaginacionUsuarios`, `EsqueletoTablaUsuarios`,
+`ContrasenaForm`, `EnlaceContrasenaForm`, más los helpers `opciones-perfil.ts` y
+`opciones-formato-excel.ts`) se extrajeron a `shared/components/` con una prop `rutaBase: string`
+(mismo patrón que `formatos-excel`), para que `/revisor/usuarios` los reutilice sin duplicar lógica.
+
+El `<select>` de perfil en alta y edición (`app/revisor/usuarios/nuevo/page.tsx` y
+`.../[id]/editar/page.tsx`) filtra la opción "Administrador" del catálogo antes de pasarlo a
+`UsuarioForm`, salvo que sea el perfil ya vigente de la persona que se está editando (para no perder
+su valor actual en el select cuando, por navegación directa a una URL, se llega a editar una cuenta
+que ya es ADMIN). Es una mejora de UX sobre el mismo criterio de `TablaUsuarios`: ocultar en vez de
+solo rechazar en el envío. El control real sigue siendo la regla en `application/` descrita arriba —
+este filtrado del `<select>` no reemplaza esa verificación, solo evita mostrar una opción que el
+servidor rechazaría.
 
 ## Decisiones de diseño de RF-09 (catálogo de perfiles)
 
@@ -608,8 +678,23 @@ repositorio garantice la propiedad y no dependa de que cada caso de uso la recue
 
 `CargaArchivo.estado` solo transiciona `CON_ERRORES`/`PENDIENTE_VISTO_BUENO` (según si
 `cantidadErrores > 0`) → `APROBADA`, nunca al revés: no existe endpoint para deshacer un visto
-bueno ya dado (decisión explícita del usuario). Solo el mismo `usuarioId` que subió el archivo puede
-confirmarlo — no cualquier notificador con el mismo formato asignado.
+bueno ya dado (decisión explícita del usuario).
+
+**Corrección posterior (RF-20 ampliado):** originalmente el mismo notificador que subía el archivo
+podía autoaprobarse (`POST /api/notificador/cargas/[id]/visto-bueno`, eliminado). Se corrigió porque
+una autoaprobación sin revisión de un tercero no cumplía el objetivo de control del sistema: el
+notificador ahora solo **finaliza y envía** (`POST /api/notificador/cargas/[id]/finalizar`, caso de
+uso `FinalizarYEnviarCarga`), lo que marca `finalizadaEn = now()` en la carga SIN cambiar su `estado`
+(sigue `PENDIENTE_VISTO_BUENO`, que pasa a significar "enviada, pendiente de que un tercero decida"
+en vez de "pendiente de que el propio notificador se autoapruebe"). Mientras esté finalizada sin
+decisión, la tarjeta de esa combinación (formato, ventana) desaparece por completo del panel del
+notificador (`panel-carga-archivo.tsx`, filtro `combinacionesVisibles`) — mecanismo principal para
+que nunca intente subir un archivo nuevo encima; `ValidarYCargarArchivo` lo bloquea también en
+servidor (`CARGA_PENDIENTE_DECISION`) como defensa de segunda línea. La decisión real (aprobar o
+rechazar) pasa a ADMIN o REVISOR_REPOSITORIO, desde la tabla del detalle de ventana (ver más abajo);
+ninguno de los dos necesita ser el mismo que subió el archivo. `darVistoBueno()` ya no valida
+ownership del actor: exige `estado === "PENDIENTE_VISTO_BUENO" && finalizadaEn !== null` y recibe
+`aprobadoPorId` (quien realmente aprueba, para `vistoBuenoPorId`), no asume que el actor es el dueño.
 
 ### Patrón de errores de caso de uso: unión discriminada, no `domain/errors/`
 
@@ -775,6 +860,68 @@ Migración `20260915153431_agregar_regla_fecha_efectiva_anio_ventana`: aditiva
 usaba este valor). Mismo caveat que las migraciones de enum anteriores de este módulo (RF-14/15):
 si el proceso de `next dev`/producción ya estaba corriendo, el cliente de Prisma en memoria no ve
 el valor nuevo hasta reiniciar con `prisma generate` + restart.
+
+### Cuarto tipo de regla: `FILA_DUPLICADA` — la primera que exige memoria entre filas
+
+Ampliación posterior a RF-13/14/15, a pedido explícito del usuario: detectar filas que repiten
+exactamente los mismos valores en un conjunto de columnas dentro del mismo archivo. Se agrega a
+`TipoReglaValidacionFormatoExcel` con el mismo mecanismo de persistencia que las tres reglas
+anteriores (columnas por **nombre**, `mensaje` configurado por el operador), pero es una extensión
+real del motor de evaluación, no solo un `case` nuevo:
+
+**Regla pura vs. regla con estado.** Las tres reglas previas son funciones puras: reciben una fila
+y deciden, sin recordar nada de filas anteriores. `FILA_DUPLICADA` necesita memoria de todo lo ya
+visto en el archivo para poder decidir si la fila actual repite una combinación anterior. Por eso
+`EvaluadorReglasValidacion.cumpleReglaValidacion()` (que se mantiene puro a propósito) devuelve
+`true` sin evaluar nada para este tipo, y el chequeo real vive en dos funciones nuevas del mismo
+archivo: `crearRastreadorFilasDuplicadas(reglas)` construye, una sola vez por carga, un
+`Map<reglaId, Map<claveSerializada, numeroFilaOriginal>>` (una entrada de mapa por cada regla
+`FILA_DUPLICADA` del formato, para que dos reglas de este tipo con columnas distintas no
+interfieran entre sí); `evaluarFilaDuplicada(rastreador, regla, fila, numeroFila)` construye la
+clave de la fila actual y decide. `ValidarYCargarArchivo` crea el rastreador antes del `forEach`
+que ya recorre las filas y lo consulta dentro del mismo recorrido — sin una segunda pasada sobre el
+archivo ni bucles anidados, manteniendo la complejidad en O(filas) por regla de este tipo.
+
+**Cuatro decisiones de negocio confirmadas por el usuario, todas en `evaluarFilaDuplicada` y en
+`ValidadoresTipoDato.serializarValorParaClaveDuplicado()`:**
+
+1. **Columnas configurables, mínimo 1** (no 2 como `ALGUNA_COLUMNA_CON_VALOR`): con 1 sola columna
+   la regla es válida — p. ej. detectar un RUT repetido — así que `formato-excel.schema.ts` NO
+   aplica a este tipo la restricción de mínimo 2 que sí aplica a `ALGUNA_COLUMNA_CON_VALOR`, y se
+   queda con el mínimo genérico de 1 que ya exige el esquema base de toda regla. En la UI
+   (`EditorReglasValidacionFormatoExcel.tsx`), a diferencia de las dos reglas de fecha, el selector
+   de columnas de `FILA_DUPLICADA` NO filtra por `tipoDato`: ofrece todas las columnas del formato,
+   porque la comparación de igualdad de valores no depende de que la columna sea de un tipo en
+   particular. Gana además un atajo de UI de un solo sentido, "Seleccionar todas las columnas",
+   visible solo en esta rama, que precarga `columnas[]` con el nombre de todas las columnas del
+   formato — es pura conveniencia de UI, no un modo de almacenamiento distinto: el resultado sigue
+   siendo el mismo `columnas: string[]` que usan las demás reglas.
+2. **Comparación case-sensitive tras `trim()`** (no case-insensitive, a diferencia de la
+   comparación de nombres de columna en `formato-excel.schema.ts`): "Juan" y "JUAN" son valores
+   distintos para esta regla. `serializarValorParaClaveDuplicado()` normaliza cada celda a texto
+   (`Date` → ISO, `number`/`boolean` → su representación literal, `string` → `trim()` sin
+   `toLowerCase()`, vacía → `null`) antes de armar la clave. La clave de la fila es
+   `JSON.stringify(valoresClave)` sobre el **array** de valores serializados (no una concatenación
+   con separador): `JSON.stringify` produce una representación textual unívoca de esa combinación
+   de valores, distinguiendo automáticamente `null` (columna vacía) de la cadena literal `"null"`,
+   y escapa comillas/backslashes de cualquier valor de texto real sin depender de que algún
+   carácter esté garantizado ausente del contenido de la celda.
+3. **Solo la 2ª aparición en adelante se marca.** El rastreador guarda el número de fila de la
+   primera vez que aparece cada clave ("el original") y nunca la reporta como error; solo la
+   siguiente vez que la misma clave reaparece se reporta.
+4. **Celdas vacías en la clave excluyen la fila del chequeo.** Si el valor de la fila en **todas**
+   las columnas de la clave de esa regla está vacío (mismo criterio que `celdaVacia()`), esa fila
+   nunca se considera duplicada de otra — ni se agrega al mapa, así que tampoco puede convertirse
+   en "el original" de una futura fila igualmente vacía. Si solo alguna de las columnas de la clave
+   está vacía (no todas), esa ausencia sí cuenta como parte de la clave (representada como `null`
+   en el array que serializa `JSON.stringify`, distinto de cualquier valor real de texto/número), para
+   no confundir "una columna vacía" con "clave completa vacía".
+
+Reporta con el mismo contrato que las demás reglas: `tipoError: "REGLA_VALIDACION"`,
+`columna: null` (mismo criterio que `ALGUNA_COLUMNA_CON_VALOR`, por involucrar varias columnas),
+`mensaje: regla.mensaje` sin texto dinámico agregado. Migración
+`20260917142311_agregar_regla_fila_duplicada`: aditiva (`ALTER TYPE ... ADD VALUE`), sin backfill,
+mismo caveat de reinicio del cliente de Prisma en memoria que las migraciones de enum anteriores.
 
 ### Primera capacidad de escritura de REVISOR_REPOSITORIO
 
@@ -1393,3 +1540,336 @@ patrón: si la tabla necesita interactividad de cliente, el mapeo dominio→vist
 constructor de ruta que el Server Component orquestador necesite invocar deben vivir en un módulo
 aparte sin `"use client"`, y cualquier dato que cruce hacia el componente cliente debe ser serializable
 (string/número/objeto plano), nunca una función.
+
+## Publicación JSONB de cargas aprobadas + solicitudes de reemplazo (RF-19)
+
+### Cabecera + detalle, no un array en una columna — porque se pidió explícitamente "cada fila es un registro"
+
+La primera versión de este diseño guardaba `CargaArchivoPublicada.datos: Json` con un array de todas
+las filas de la carga en una sola columna. El usuario pidió explícitamente que cada fila del
+Excel/CSV fuera un registro de base de datos propio, así que el modelo final separa **cabecera**
+(`CargaArchivoPublicada`: 1:1 con `CargaArchivo`, gobierna la visibilidad — `activo` — y el enlace de
+reemplazo) de **detalle** (`CargaArchivoPublicadaFila`: una fila por cada fila real del archivo,
+`@@unique([cargaArchivoPublicadaId, numeroFila])`). `valores` del detalle sigue siendo
+`Json @db.JsonB`, no columnas SQL tipadas, por el mismo motivo que el resto del motor de validación
+de RF-13/14 nunca usó columnas fijas: las columnas de un archivo las define el ADMIN por
+`FormatoExcel` y varían de un formato a otro — una tabla de detalle con columnas SQL reales exigiría
+una tabla por formato o un esquema EAV, que ningún otro módulo del proyecto usa hoy.
+
+Ambas tablas se escriben en la MISMA transacción interactiva que ya hacía la transición
+`PENDIENTE_VISTO_BUENO → APROBADA` (`PrismaCargaArchivoRepository.darVistoBueno`): el archivo se
+reparsea con el mismo puerto `LectorArchivoReporte` de RF-14 (el contenido ya se leyó una vez al
+subir, pero no se guardó fila por fila — solo se validó y descartó), y las filas se insertan con
+`createMany` troceado en lotes de 5.000 (constante `TAMANO_LOTE_FILAS_PUBLICADAS`), nunca un `INSERT`
+por fila. Como esta transacción ahora puede llegar a 4 lotes (`TOPE_FILAS_DATOS = 20_000` de RF-14)
+más el resto de sus escrituras, se le pasa un `timeout: 15000` explícito — el valor por defecto de
+Prisma (5000 ms) alcanza en localhost pero es un riesgo real fuera de él, señalado por el agente
+`revisor` en la auditoría de esta entrega.
+
+### Desactivar la publicación anterior: en el visto bueno del reemplazo, no al solo subir
+
+Cuando una carga nace de un reemplazo consumido (`SolicitudReemplazoCarga.nuevaCargaArchivoId`
+apunta a ella), su propio `darVistoBueno` —dentro de la misma transacción de arriba— además marca
+`activo = false`, `reemplazadaEn`, `reemplazadaPorCargaArchivoId` y `motivoReemplazo` (copiado tal
+cual desde `SolicitudReemplazoCarga.motivo`, sin volver a pedirlo) en la publicación de la carga
+ANTERIOR. Se hace en el visto bueno de la carga nueva, no en el momento de subir el archivo de
+reemplazo: si ese archivo sube con errores y nunca llega a `APROBADA`, la publicación original debe
+seguir activa, porque el reemplazo nunca se concretó. Las filas de detalle de la publicación anterior
+nunca se tocan (se conservan íntegras), solo dejan de ser visibles porque su cabecera quedó inactiva.
+
+Sin backfill: las cargas ya `APROBADA` antes de esta entrega no tienen fila en
+`CargaArchivoPublicada` (nunca se reparsearon retroactivamente, por el costo/riesgo de reprocesar
+binarios antiguos en una migración) — limitación conocida y aceptada.
+
+### Autorización de reemplazo: se consume al subir, no al aprobar visto bueno
+
+`SolicitudReemplazoCarga` vive en un módulo propio, `modules/solicitudes-reemplazo/`, no dentro de
+`reporte-excel/`, porque su ciclo de vida (pedir → aprobar/rechazar → consumir) es independiente del
+de una carga y tiene su propio actor revisor. Un `NOTIFICADOR_RPC` con una carga `APROBADA` vigente
+para `(usuarioId, ventanaCargaId)` no puede volver a subir un archivo para esa combinación
+(`ValidarYCargarArchivo`, chequeo "barato primero" antes de leer el archivo) salvo que exista una
+`SolicitudReemplazoCarga` con `estado = APROBADA`, sin usar, y dentro de los 5 días desde su
+aprobación (`solicitudUtilizable(solicitud, ahora)`, `domain/entities/SolicitudReemplazoCarga.ts` —
+calculado siempre contra un `ahora` generado en el servidor, nunca persistido como un estado
+"EXPIRADA" propio ni contra `now()` de PostgreSQL, mismo patrón que
+`TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`). Sin autorización vigente, rechaza con el
+motivo nuevo `REEMPLAZO_NO_AUTORIZADO` — verificado en la Fase 3 de esta entrega con un `fetch()`
+directo al endpoint sin pasar por la UI, confirmando que la regla vive en `application/` y no solo se
+oculta en el cliente.
+
+La autorización se marca consumida (`utilizadaEn`, `nuevaCargaArchivoId`) al SUBIR el archivo de
+reemplazo, no al dársele visto bueno — decisión explícita para que un notificador no pueda acumular
+intentos ilimitados con la misma aprobación (evita "solicitudes fantasma" reutilizables para siempre
+mientras reintenta). Efecto colateral aceptado: si el primer archivo de reemplazo sube
+`CON_ERRORES`, esa autorización ya se consumió y hay que pedir una solicitud nueva para reintentar
+—confirmado como comportamiento intencional, no un bug, señalado explícitamente por el agente
+`revisor` para que quede documentado como decisión y no como olvido.
+
+### Escritura cross-módulo en `PrismaCargaArchivoRepository.crear()` — excepción puntual, no un patrón a repetir
+
+Al crear la nueva `CargaArchivo` de un reemplazo, `crear()` necesita marcar la
+`SolicitudReemplazoCarga` como consumida en la MISMA transacción atómica. La API de transacciones de
+**array** de Prisma (`prisma.$transaction([...])`, la que usa `crear()`) no permite anidar ahí una
+llamada a través de `SolicitudReemplazoCargaRepository` (de otro módulo) sin pasarle el
+`Prisma.TransactionClient`, así que `crear()` termina escribiendo directo
+(`tx.solicitudReemplazoCarga.updateMany(...)`, replicando a mano la condición `estado = 'APROBADA' AND
+utilizadaEn IS NULL`) en una tabla que pertenece al módulo `solicitudes-reemplazo`. Esto es una
+excepción real al flujo de dependencias documentado arriba ("un módulo puede depender de la interfaz
+de otro, nunca de tablas ajenas desde infraestructura"), señalada por el agente `revisor` en la
+auditoría de esta entrega — **no** es equivalente al precedente que se citó en el código
+(`auditarCargaArchivo.ts` hace una *lectura* a través del repositorio público de `auth`, esto es una
+*escritura* cruda sin pasar por ningún contrato del otro módulo). Se acepta por el volumen bajo
+esperado del sistema. Si este patrón se necesita de nuevo en un módulo futuro, resolverlo agregando
+un método al repositorio del otro módulo que reciba el `Prisma.TransactionClient` (p. ej.
+`marcarUtilizadaEnTransaccion(tx, id, nuevaCargaArchivoId)`) en vez de repetir el acceso directo.
+
+## Rechazo de una carga aprobada + confirmación de aprobación por correo (RF-20)
+
+A diferencia de RF-19 (el notificador pide, un tercero aprueba), acá el rechazo es una decisión
+**unilateral** de un ADMIN o REVISOR_REPOSITORIO sobre una carga ya `APROBADA` — no hay "solicitud
+pendiente" de por medio. Por esa diferencia de semántica, `CargaArchivoRechazo` es una entidad propia
+en `modules/reporte-excel/domain/entities/CargaArchivoRechazo.ts` (1:1 con `CargaArchivo`), no una
+reutilización de `SolicitudReemplazoCarga`.
+
+**Transición de estado y publicación, atómicas.** `PrismaCargaArchivoRepository.rechazar()` hace, en
+una única transacción interactiva: (1) `updateMany` condicionado a `estado = 'APROBADA'` (cierra la
+ventana de carrera de un doble clic, igual criterio que `darVistoBueno`), (2) crea el
+`CargaArchivoRechazo` con el motivo y quién rechazó, (3) desactiva la `CargaArchivoPublicada` de esa
+carga. A diferencia de RF-19 (la publicación anterior se desactiva solo cuando se aprueba la carga de
+reemplazo), acá la desactivación es inmediata, en el mismo instante del rechazo, sin esperar un
+reingreso.
+
+**Rename + discriminador explícito en `CargaArchivoPublicada`.** Los campos `reemplazadaEn`/
+`motivoReemplazo` (pensados en RF-19 solo para reemplazo consentido) se renombraron a
+`desactivadaEn`/`motivoDesactivacion` (migración `RENAME COLUMN` real, preserva los datos ya escritos
+por RF-19) porque ahora dos eventos de negocio distintos los usan. Se agregó además un campo explícito
+nuevo, `motivoDesactivacionTipo` (`REEMPLAZO` | `RECHAZO`), en vez de inferir el tipo por la presencia
+o ausencia de `reemplazadaPorCargaArchivoId` — decisión explícita del usuario, para que ninguna
+consulta futura dependa de esa inferencia.
+
+**Reapertura individual, perezosa, sin cron.** El rechazo habilita al notificador dueño de la carga
+(solo a él) a volver a subir para la misma combinación (formato, ventana). La vigencia se calcula
+siempre en lectura contra un `ahora` recibido como parámetro (mismo patrón que
+`TokenRecuperacion.expiraEn`, `VentanaCarga.estaAbierta`, `SolicitudReemplazoCarga.solicitudVencida`):
+
+```
+fechaLimite = (ventana.fechaVencimiento > rechazo.rechazadoEn)
+  ? ventana.fechaVencimiento
+  : rechazo.rechazadoEn + 5 días
+reaperturaVigente = !rechazo.reaperturaConsumidaEn && ahora <= fechaLimite
+```
+
+Es decir: si la ventana todavía no había vencido al momento del rechazo, la reapertura dura lo mismo
+que le quedaba a la ventana normal (sin plazo extra injustificado); si ya había vencido, se extienden
+5 días desde el rechazo. `ValidarYCargarArchivo` consulta esta reapertura antes de rechazar por
+`SIN_VENTANA_ABIERTA` cuando la ventana ya venció. Se consume (`reaperturaConsumidaEn`/
+`reaperturaConsumidaPorCargaArchivoId`) al SUBIR el archivo nuevo —con o sin error de validación en
+ese intento—, en la MISMA transacción que crea la `CargaArchivo` (mismo criterio que la autorización
+de reemplazo de RF-19: nunca queda reutilizable indefinidamente en reintentos). El banner
+`BannerReaperturaCarga` en `/notificador` deja de mostrarse ahí mismo, sin esperar a que esa carga
+nueva sea aprobada.
+
+**Visibilidad.** Sección "Rechazadas" en el detalle de ventana (junto a "Cargas aprobadas",
+`TablaCargasRechazadasVentana`/`ListadoCargasRechazadasVentana`) y en "Mis cargas" del notificador
+(RF-18), mostrando el motivo. El rechazo es irreversible, mismo criterio que el visto bueno de RF-14.
+
+**Endpoint único compartido.** `POST /api/dashboard/cargas/[id]/rechazo` (`exigirAdminORevisor()`),
+invocado tanto desde `/dashboard` como desde `/revisor` — mismo patrón que
+`/api/dashboard/solicitudes-reemplazo/[id]` de RF-19, en vez de duplicar la ruta bajo `/api/revisor/`.
+
+**Confirmación de aprobación por correo, agregada al mismo trabajo.** Al dar visto bueno
+(`DarVistoBueno.ts`, sin cambios de firma: el caso de uso sigue sin conocer SMTP), el Route Handler
+`app/api/notificador/cargas/[id]/visto-bueno/route.ts` dispara, dentro de un `after()` posterior a la
+respuesta 200, un correo de confirmación al notificador dueño y al "buzón compartido" de revisión.
+La variable de entorno nueva `BUZON_COMPARTIDO_REVISOR_EMAIL` (`src/infrastructure/config/env.ts`) es
+**opcional** (string vacío tratado igual que ausente): si está configurada, se envía un único correo a
+esa dirección; si no, se envía individualmente a cada usuario activo con perfil `REVISOR_REPOSITORIO`
+(`UsuarioRepository.listarActivosPorPerfil`, una sola consulta) — **nunca** en el mismo To/CC, para no
+exponer el email de un revisor a otro. Un fallo de SMTP en cualquiera de los dos envíos va a
+`logs/errores.txt` y nunca bloquea ni revierte el visto bueno ya persistido.
+
+**Auditoría.** Nueva acción `CARGA_ARCHIVO_RECHAZADA` en `logs/auditoria.txt` (éxito y rechazos
+404/409; el 400 de motivo vacío no se audita, mismo criterio del resto del proyecto). El texto libre
+del motivo nunca se registra, solo metadatos estructurados (`cargaArchivoId`, `usuarioObjetivoId` =
+dueño de la carga, `actorId`/`actorRut`/`actorPerfil`, `ip`, `userAgent`) — mismo criterio que
+`motivo`/`comentarioRevision` de RF-19.
+
+**Migraciones.** `20260923090000_agregar_estado_rechazada_carga` agrega el valor de enum `RECHAZADA`
+en su propia migración (PostgreSQL no permite usar un valor de enum recién creado en la misma
+transacción que lo agrega); `20260923090100_agregar_rechazo_carga_archivo` crea `carga_archivo_rechazo`
+y aplica el rename + `motivoDesactivacionTipo` (con backfill `REEMPLAZO` para las filas ya existentes).
+
+## Fin de la autoaprobación del notificador: aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO (corrección de RF-14)
+
+RF-14 nació con una autoaprobación: el mismo notificador que subía un archivo sin errores le daba su
+propio "visto bueno" (`POST /api/notificador/cargas/[id]/visto-bueno`, caso de uso `DarVistoBueno`),
+sin que ningún tercero revisara la decisión. Se corrigió: la aprobación real pasa a ser una decisión
+de ADMIN o REVISOR_REPOSITORIO, ejercida desde la misma tabla del detalle de ventana que ya tenía la
+acción "Rechazar" de RF-20.
+
+**El paso del notificador ya no aprueba, solo envía.** El botón "Dar visto bueno" se renombró a
+**"Finalizar y enviar"** (`POST /api/notificador/cargas/[id]/finalizar`, reemplaza al endpoint
+anterior, eliminado sin alias — caso de uso `FinalizarYEnviarCarga`). Este paso marca `finalizadaEn
+= now()` en la `CargaArchivo` (columna nueva) **sin cambiar `estado`**: una carga sigue en
+`PENDIENTE_VISTO_BUENO`, que ahora significa "enviada, pendiente de que un tercero decida" en vez de
+"pendiente de que el propio notificador se autoapruebe". El `WHERE` del `updateMany` en
+`PrismaCargaArchivoRepository.finalizar()` exige `{ id, usuarioId, estado: "PENDIENTE_VISTO_BUENO",
+finalizadaEn: null }`, cerrando ownership y evitando una doble finalización en la misma llamada.
+
+**Bloqueo de nuevas subidas mientras hay una decisión pendiente.** El mecanismo principal es de UI:
+`panel-carga-archivo.tsx` filtra `combinacionesVisibles` para ocultar por completo la tarjeta de
+cualquier combinación (formato, ventana) con una carga finalizada sin decidir — sin ningún mensaje de
+bloqueo (decisión explícita del usuario: la persona ya sabe que envió algo, no hay nada que explicar).
+`ValidarYCargarArchivo` blinda lo mismo en servidor, como defensa de segunda línea (nunca confiar
+solo en que el cliente no llame la API directo): rechaza con el motivo `CARGA_PENDIENTE_DECISION` si
+`obtenerPendienteFinalizadaPorUsuarioYVentana` encuentra una carga finalizada sin decidir para esa
+combinación, verificado ANTES de leer el archivo (barato primero).
+
+**`darVistoBueno()` ya no valida ownership del actor.** Antes exigía `carga.usuarioId === actorId`
+(el mismo notificador). Ahora exige `estado === "PENDIENTE_VISTO_BUENO" && finalizadaEn !== null` y
+recibe `aprobadoPorId` explícito (quien realmente aprueba, para `vistoBuenoPorId`) — cualquier ADMIN
+o REVISOR_REPOSITORIO puede aprobar cualquier carga, sin restricción de autoría, mismo criterio
+simétrico ya usado en `RechazarCarga`. Al aprobar se reutiliza intacta la publicación JSONB (RF-19)
+y el correo de confirmación ya existente (RF-20, `VistoBuenoCargaMailer`, disparado en `after()`
+desde el nuevo endpoint `POST /api/dashboard/cargas/[id]/aprobacion`, mismo patrón que
+`.../rechazo`: `exigirAdminORevisor()`, compartido entre `/dashboard` y `/revisor`).
+
+**"Rechazar" se extiende para aceptar dos orígenes.** `PrismaCargaArchivoRepository.rechazar()` lee
+el `estado` previo con un `findUnique` DENTRO de la misma transacción interactiva, antes del
+`updateMany` (que ahora acepta `estado: { in: ["APROBADA", "PENDIENTE_VISTO_BUENO"] }`, esta última
+solo con `finalizadaEn` no nulo), y solo desactiva la `CargaArchivoPublicada` cuando el origen leído
+era `APROBADA` — una `PENDIENTE_VISTO_BUENO` nunca llegó a publicarse, así que ese paso se omite sin
+error. La reapertura para el notificador (`CargaArchivoRechazo`, vigencia perezosa de RF-20) se
+genera igual para ambos orígenes, sin condicional: no depende de si la carga alcanzó a aprobarse.
+
+**UI unificada.** La tabla "Cargas aprobadas" (`TablaCargasVentana.tsx`) se renombra a
+**"Notificaciones de archivos pendientes de aprobación o rechazo"** (título y `<caption>`) y pasa a
+listar tanto `PENDIENTE_VISTO_BUENO` (finalizada) como `APROBADA` de la ventana, con una columna
+"Estado" nueva. Acciones: una fila `PENDIENTE_VISTO_BUENO` muestra "Aprobar" (confirmación simple,
+sin motivo) y "Rechazar" (con motivo); una fila `APROBADA` muestra solo "Rechazar".
+
+**Migración y datos existentes.** `20260923120000_agregar_finalizadaEn_carga_archivo` agrega
+`finalizadaEn DateTime?` a `carga_archivo` y, en la MISMA migración transaccional, hace
+`UPDATE carga_archivo SET "finalizadaEn" = "createdAt" WHERE estado = 'PENDIENTE_VISTO_BUENO' AND
+"finalizadaEn" IS NULL` — decisión explícita del usuario: toda carga en ese estado antes de esta
+corrección se subió bajo el sistema viejo (sin el paso de "Finalizar y enviar"), así que se trata
+como ya finalizada, para que quede inmediatamente disponible para que ADMIN/REVISOR_REPOSITORIO la
+decida sin que el notificador tenga que hacer nada retroactivo.
+
+**Auditoría.** Nuevas acciones `CARGA_ARCHIVO_FINALIZADA` (paso del notificador) y
+`CARGA_ARCHIVO_APROBADA` (decisión de un tercero). `CARGA_ARCHIVO_VISTO_BUENO` se conserva en el
+tipo `AccionAuditoria` solo para poder leer el histórico ya escrito antes de esta corrección
+("no usar en eventos nuevos" — mismo criterio que otros campos legacy del proyecto, p. ej.
+`actorRol`/`rolAnterior` de la época pre-RF-09) — ningún código nuevo la emite. `CARGA_ARCHIVO_RECHAZADA`
+gana un campo opcional `estadoOrigenRechazo` (`PENDIENTE_VISTO_BUENO` | `APROBADA`) para que el
+histórico distinga de qué estado vino cada rechazo, ahora que puede ser cualquiera de los dos.
+
+## Perfil propio, cambio de contraseña, invalidación de sesión y bloqueo progresivo de cuentas (RF-21)
+
+### La sesión JWT deja de ser puramente stateless: `verificarSesion()` ahora consulta BD
+
+Hasta esta entrega, `verificarSesion()` (`modules/auth/infrastructure/auth/JwtService.ts`) validaba
+un token solo con criterios LOCALES: firma, expiración y forma de los claims (`sub`, `perfil`). Nunca
+tocaba la base de datos, así que el costo de autenticar una petición era constante y no dependía de
+Postgres estar disponible. Esa propiedad se pierde a partir de aquí: el token ahora lleva un tercer
+claim, `sesionVersion`, y `verificarSesion()` lo compara contra `usuario.sesionVersion` en la base
+antes de dar el token por válido. Es el mismo mecanismo de invalidación que el renombre del claim
+`perfil` de RF-09 (ver más arriba), pero MÁS FINO: en vez de invalidar todas las sesiones del sistema
+de una vez, invalida las de una cuenta puntual, en el momento en que:
+
+* la propia persona cambia su contraseña (`cambiarContrasenaPropia`, autoservicio de esta entrega),
+* un administrador la fija manualmente para un tercero (`restablecerContrasena`, RF-16), o
+* la persona consume un enlace de contraseña (`PrismaPasswordResetTokenRepository.consumir`, RF-10/RF-13).
+
+Los tres caminos incrementan `usuario.sesionVersion` en la MISMA transacción que escriben el hash
+nuevo (dos de ellos ya comparten `PrismaUsuarioRepository.actualizarContrasena`; el consumo del
+enlace replica el incremento en su propia transacción de `modules/auth/`, documentado con un
+comentario cruzado en ambos archivos: si se cambia uno, revisar el otro).
+
+**Costo aceptado:** cada verificación de sesión (proxy, Route Handlers, Server Components que llaman
+`obtenerSesionActual()`) hace ahora una consulta `SELECT sesionVersion FROM usuario WHERE id = ...`,
+envuelta en `cache()` de React para deduplicarla dentro del mismo render/petición. Esa memoización
+solo opera dentro de un scope de render de Next (Server Components, Route Handlers); llamada desde
+`src/proxy.ts` (que no es una función de render de React) `cache()` no dedupe nada — cada llamada
+ejecuta la consulta— pero tampoco hay riesgo de fuga entre peticiones de usuarios distintos: sin un
+scope de render activo, React no memoiza en absoluto (se verificó empíricamente, ver commit de esta
+entrega), así que el peor caso es una consulta de más por petición, nunca un valor cacheado servido
+a la sesión equivocada.
+
+**Efecto colateral aceptado (igual que RF-09):** desplegar la columna `sesionVersion` invalida, una
+única vez, TODAS las sesiones activas del sistema — todo JWT emitido antes de este cambio no trae el
+claim, así que la comprobación de forma en `verificarSesion()` ya lo descarta sin necesidad de ir a
+la base.
+
+**Limitación que se mantiene:** cambiar el PERFIL de una persona o desactivar su cuenta (`activo`)
+sigue sin invalidar su sesión — solo un cambio de `contrasenaHash` la invalida. La limitación de RF-09
+("cambiar el perfil no surte efecto hasta que el token expira, máximo 8 horas") sigue vigente para
+esos dos casos; esta entrega solo cierra la ventana para el cambio de contraseña.
+
+### Bloqueo progresivo de cuentas por intentos fallidos de login
+
+Dos contadores en `Usuario`/`User`, con semántica deliberadamente distinta:
+
+* `intentosFallidos`: fallos CONSECUTIVOS del ciclo actual. Se resetea a 0 en un login exitoso Y al
+  activarse un bloqueo nuevo (arranca un ciclo nuevo desde cero).
+* `vecesBloqueada`: cuántas veces la cuenta ha sido bloqueada en TODA su historia. Es monotónico de
+  por vida — nunca se resetea, ni con un login exitoso ni con un desbloqueo manual del administrador
+  — y determina la duración del PRÓXIMO bloqueo: `DURACIONES_BLOQUEO_MINUTOS = [1, 3, 5, 15]`
+  (`modules/auth/domain/entities/User.ts`), indexado por `vecesBloqueada` con techo en el último
+  valor (una cuenta bloqueada 10 veces sigue bloqueándose 15 minutos, no más).
+
+**Por qué es una sola sentencia SQL cruda.** `registrarIntentoFallido()` (`PrismaUserRepository.ts`)
+necesita, atómicamente, decidir "¿este intento llega al máximo?" y si es así incrementar
+`vecesBloqueada` Y calcular `bloqueadaHasta` a partir del NUEVO valor de `vecesBloqueada`, todo contra
+el estado que la fila tiene en ESE instante. Expresarlo con el API tipado de Prisma exigiría leer la
+fila, decidir en JavaScript y escribir en una sentencia aparte — una ventana de carrera entre dos
+peticiones de login simultáneas contra la misma cuenta (mismo motivo ya documentado para
+`PrismaPasswordResetTokenRepository.consumir()` en RF-10). El `UPDATE ... CASE ... RETURNING` corre
+como una única sentencia, indivisible por definición.
+
+**Por qué la cuenta bloqueada no se toca de nuevo mientras dura el bloqueo.** `LoginUser.ts` revisa
+`cuentaBloqueada(usuario, ahora)` ANTES de verificar la contraseña. Si ya está bloqueada, no llama a
+`registrarIntentoFallido`: sumar un intento más durante el bloqueo no aporta nada y arriesgaría, al
+vencer el bloqueo, arrancar el próximo ciclo con un conteo ya adelantado. La verificación de
+contraseña contra `HASH_RELLENO` igual se ejecuta, por el mismo motivo de tiempo constante que el
+resto de las ramas de fallo de este caso de uso (anti-enumeración).
+
+**Por qué el mensaje de bloqueo se arma en el Route Handler y no en el caso de uso.** Mismo criterio
+que `MENSAJE_ERROR_GENERICO`: `LoginUser.ts` devuelve datos (`bloqueadaHasta`), no texto. El cálculo
+de minutos restantes usa el mismo `ahora` que ya viajaba como parámetro al caso de uso, para que el
+número mostrado sea consistente con el que decidió si había o no bloqueo (nunca `new Date()` una
+segunda vez). La respuesta HTTP sigue siendo 401 (no se introdujo 423) y con el mismo shape
+`{ error: string }` que el resto de los fallos de login.
+
+**Desbloqueo manual.** `DesbloquearUsuario.ts` (mantenedor de usuarios) limpia
+`intentosFallidos`/`bloqueadaHasta` pero DELIBERADAMENTE no toca `vecesBloqueada`: un desbloqueo
+manual no debe reiniciar la progresión de duraciones, o el administrador podría usarlo para resetear
+a una cuenta comprometida de vuelta al bloqueo de 1 minuto indefinidamente. Auditado con
+`CUENTA_DESBLOQUEADA`, incluyendo el caso `SIN_EFECTO` (el bloqueo ya había vencido solo) — mismo
+criterio que los `SIN_EFECTO` de RF-10: un camino que hacia afuera es indistinguible del éxito debe
+dejar rastro igual.
+
+### `logs/accesos.txt` (RF-07): versión mínima
+
+Se implementa en esta entrega el logger y la función `registrarAcceso()`
+(`infrastructure/logging/accesos.ts`), con el esquema de campos ya definido en `CLAUDE.md`, conectado
+desde `app/api/auth/login/route.ts`. El motivo `usuario_inactivo` queda declarado en el tipo
+`EventoAcceso` pero esta entrega no lo emite: `LoginUser.ts` colapsa "RUT inexistente", "cuenta
+pendiente de activación" y "cuenta inactiva" en un único motivo interno `CREDENCIALES_INVALIDAS`
+(mismo criterio anti-enumeración que el resto del caso de uso, ninguna de esas tres situaciones debe
+ser distinguible desde afuera), así que no hay una señal que distinguir hacia el log tampoco. Separar
+esas ramas en `LoginUser.ts` para poblar `usuario_inactivo` queda fuera de esta entrega.
+
+### Patrón de UI nuevo: "menu button" (WAI-ARIA) para el menú de configuración de la cuenta
+
+`MenuConfiguracionUsuario.tsx` (montado en `EncabezadoPanel`, que gana la prop `rutaBase` para
+enlazar a `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena`) es el primer menú desplegable
+propiamente dicho del proyecto: hasta ahora no existía ningún patrón `role="menu"`. Se implementó el
+patrón "menu button" de la WAI-ARIA Authoring Practices en vez de `<details>/<summary>` (usado en
+otras partes del proyecto para contenido colapsable) porque `<details>` no expone semántica de menú
+a un lector de pantalla ni permite mover el foco al primer ítem al abrir — ambos comportamientos
+esperables de un menú de acciones. Estado local con `useState` (no Zustand: nada de este menú se
+comparte entre componentes); cierre con Escape, cierre al clic fuera (listener en `document`, no en
+el contenedor) y devolución de foco al botón disparador al cerrar, igual que la trampa de foco nativa
+que ya usa `DialogoConfirmacion` con `<dialog>`. Cualquier menú desplegable nuevo del proyecto debería
+seguir este mismo patrón en vez de introducir uno distinto.
