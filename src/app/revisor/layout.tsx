@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
 import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
 import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
+import { contarSolicitudesReemplazoPendientes } from "@/modules/solicitudes-reemplazo/application/use-cases/ContarSolicitudesReemplazoPendientes";
+import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { ENLACES_REVISOR } from "./nav-enlaces";
 
 export const metadata: Metadata = {
@@ -10,7 +12,14 @@ export const metadata: Metadata = {
 };
 
 export default async function RevisorLayout({ children }: { children: ReactNode }) {
-  const identidad = await obtenerIdentidadPanel();
+  const [identidad, solicitudesPendientes] = await Promise.all([
+    obtenerIdentidadPanel(),
+    contarSolicitudesReemplazoPendientes({ repositorio: prismaSolicitudReemplazoCargaRepository }),
+  ]);
+
+  const enlaces = ENLACES_REVISOR.map((enlace) =>
+    enlace.etiqueta === "Solicitudes" ? { ...enlace, contador: solicitudesPendientes } : enlace,
+  );
 
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
@@ -22,7 +31,7 @@ export default async function RevisorLayout({ children }: { children: ReactNode 
           el encabezado sin restar ancho al contenido. */}
       <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#3f84d8] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
-          enlaces={ENLACES_REVISOR}
+          enlaces={enlaces}
           titulo="Revisión"
           nombreCompleto={identidad ? `${identidad.nombres} ${identidad.apellidos}` : undefined}
           perfil={identidad?.perfilNombre}

@@ -160,6 +160,10 @@ export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRep
     return { filas: registros.map(aSolicitudReemplazoCarga), total };
   },
 
+  async contarPendientes() {
+    return prisma.solicitudReemplazoCarga.count({ where: { estado: "PENDIENTE" } });
+  },
+
   async revisar(id, datos) {
     // `updateMany` con `estado = PENDIENTE` en el mismo `WHERE`: si ya fue resuelta por otra
     // petición concurrente, no toca ninguna fila. Mismo patrón que

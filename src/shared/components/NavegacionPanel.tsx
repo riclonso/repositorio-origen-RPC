@@ -18,6 +18,9 @@ import {
 export type EnlacePanel = {
   href: string;
   etiqueta: string;
+  // Chip numérico opcional (p.ej. cantidad de solicitudes pendientes). Solo se dibuja si es un
+  // número mayor que 0: un contador en 0 no aporta información y ensuciaría el menú.
+  contador?: number;
 };
 
 type NavegacionPanelProps = {
@@ -100,6 +103,14 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
           >
             {Icono ? <Icono size={19} weight={activo ? "fill" : "regular"} aria-hidden="true" className="mr-2 shrink-0" /> : null}
             {enlace.etiqueta}
+            {enlace.contador && enlace.contador > 0 ? (
+              <span
+                aria-label={`${enlace.contador} pendientes`}
+                className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 py-0.5 text-xs font-semibold leading-none text-white"
+              >
+                {enlace.contador}
+              </span>
+            ) : null}
           </Link>
         );
       })}

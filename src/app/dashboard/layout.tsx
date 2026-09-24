@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
 import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
 import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
+import { contarSolicitudesReemplazoPendientes } from "@/modules/solicitudes-reemplazo/application/use-cases/ContarSolicitudesReemplazoPendientes";
+import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { ENLACES_ADMIN } from "./nav-enlaces";
 
 export const metadata: Metadata = {
@@ -10,7 +12,14 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const identidad = await obtenerIdentidadPanel();
+  const [identidad, solicitudesPendientes] = await Promise.all([
+    obtenerIdentidadPanel(),
+    contarSolicitudesReemplazoPendientes({ repositorio: prismaSolicitudReemplazoCargaRepository }),
+  ]);
+
+  const enlaces = ENLACES_ADMIN.map((enlace) =>
+    enlace.etiqueta === "Solicitudes" ? { ...enlace, contador: solicitudesPendientes } : enlace,
+  );
 
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
@@ -22,7 +31,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           el encabezado y no resta ancho al contenido. */}
       <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
-          enlaces={ENLACES_ADMIN}
+          enlaces={enlaces}
           titulo="Administración"
           nombreCompleto={identidad ? `${identidad.nombres} ${identidad.apellidos}` : undefined}
           perfil={identidad?.perfilNombre}

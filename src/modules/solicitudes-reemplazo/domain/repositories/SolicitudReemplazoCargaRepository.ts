@@ -23,6 +23,9 @@ export interface SolicitudReemplazoCargaRepository {
   obtenerAprobadaUtilizablePorCarga(cargaArchivoId: string, ahora: Date): Promise<SolicitudReemplazoCarga | null>;
   listarPropias(usuarioId: string): Promise<SolicitudReemplazoCarga[]>;
   listarParaRevision(filtro: FiltroListadoSolicitudesReemplazo): Promise<PaginaSolicitudesReemplazo>;
+  // Cuenta total de solicitudes `PENDIENTE` (ambos orígenes), usada para el chip del menú lateral
+  // de ADMIN/REVISOR_REPOSITORIO. Consulta liviana aparte de `listarParaRevision` (sin traer filas).
+  contarPendientes(): Promise<number>;
   // `UPDATE` condicional `WHERE estado = 'PENDIENTE'`: si ya fue resuelta por otra petición
   // concurrente, no actualiza ninguna fila y devuelve `null`. Mismo patrón que
   // `CargaArchivoRepository.darVistoBueno`.
