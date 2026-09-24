@@ -23,12 +23,14 @@ export default async function SolicitudesRevisorPage({ searchParams }: Solicitud
 
   return (
     <div>
-      <div>
-        <h1 className="text-xl font-semibold text-gob-black">Solicitudes de reemplazo</h1>
-        <p className="mt-2 text-sm text-gob-gray-a">
-          Revisa y aprueba las solicitudes de los notificadores para reemplazar una carga ya aprobada.
-        </p>
-      </div>
+      <section className="mb-8 border-b border-gob-accent/30 pb-6">
+        <div className="space-y-3">
+          <h1 className="text-3xl font-bold tracking-tight text-gob-tertiary">Solicitudes de reemplazo</h1>
+          <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">
+            Revisa y aprueba las solicitudes de los notificadores para reemplazar una carga ya aprobada.
+          </p>
+        </div>
+      </section>
 
       <ListadoSolicitudesReemplazo
         filtro={{ estado: filtro.estado, pagina: filtro.page, tamano: filtro.pageSize }}
