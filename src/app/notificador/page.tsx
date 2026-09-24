@@ -79,6 +79,7 @@ export default async function NotificadorPage() {
     id: solicitud.id,
     cargaArchivoId: solicitud.cargaArchivoId,
     estado: solicitud.estado,
+    origen: solicitud.origen,
     vencida: solicitudVencida(solicitud, ahora),
   }));
 

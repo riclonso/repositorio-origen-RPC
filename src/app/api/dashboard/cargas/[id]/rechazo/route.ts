@@ -79,6 +79,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
       usuarioObjetivoId: carga.usuarioId,
       usuarioObjetivoRut: carga.usuarioRut,
       estadoOrigenRechazo: estadoOrigen,
+      origenRechazo: "DECISION_UNILATERAL",
     });
 
     // El correo se DIFIERE con after(): el rechazo ya quedó guardado y no depende de que el relay

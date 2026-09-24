@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, ViewTransition } from "react";
+import { useState, ViewTransition, type ReactNode } from "react";
 import Link from "next/link";
 import type {
   CargaArchivoResumen,
   ErrorCargaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-import type { EstadoSolicitudReemplazoCarga } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import type {
+  EstadoSolicitudReemplazoCarga,
+  OrigenSolicitudReemplazoCarga,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { Boton } from "@/shared/components/Boton";
@@ -38,6 +41,7 @@ export type SolicitudReemplazoPropiaVista = {
   id: string;
   cargaArchivoId: string;
   estado: EstadoSolicitudReemplazoCarga;
+  origen: OrigenSolicitudReemplazoCarga;
   vencida: boolean;
 };
 
@@ -91,8 +95,10 @@ function cargaAprobadaVigente(cargas: CargaResumenVista[], ventanaCargaId: strin
 
 // Corrección (fin de la autoaprobación): una combinación (formato, ventana) con una carga
 // `PENDIENTE_VISTO_BUENO` que el notificador ya finalizó y envió, y que todavía nadie decidió
-// (aprobó o rechazó). Mientras exista, su tarjeta se oculta por completo: no admite una subida
-// nueva ni tiene más acciones para el notificador (ver `PanelCargaArchivo`).
+// (aprobó o rechazó). Mientras exista, la tarjeta se muestra "bloqueada" (sin admitir una subida
+// nueva) pero ofrece solicitar su reemplazo, igual que una carga ya `APROBADA` (ver
+// `TarjetaCargaArchivo`). Vuelve sola al estado normal cuando la carga original deja de estar en
+// este estado (aprobada, o rechazada tras aprobarse su solicitud de reemplazo).
 function cargaPendienteFinalizada(cargas: CargaResumenVista[], ventanaCargaId: string): CargaResumenVista | null {
   return (
     cargas.find(
@@ -158,13 +164,17 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
 
 type FormularioSolicitarReemplazoProps = {
   cargaArchivoId: string;
+  placeholderMotivo: string;
   onExito: () => void;
 };
 
 // Formulario de solicitud de reemplazo (estado "b" de la tarjeta, ver `TarjetaCargaArchivo`):
 // motivo obligatorio, loading "Cargando la información" al guardar (ver diseño del RF), sin
-// componente de loading nuevo (reutiliza `Boton.cargando`/`textoCargando`).
-function FormularioSolicitarReemplazo({ cargaArchivoId, onExito }: FormularioSolicitarReemplazoProps) {
+// componente de loading nuevo (reutiliza `Boton.cargando`/`textoCargando`). `placeholderMotivo` lo
+// fija el llamador porque el texto varía según el origen de la carga (ya `APROBADA` vs. todavía
+// `PENDIENTE_VISTO_BUENO` sin decidir): un mismo placeholder para ambos sería incorrecto en el
+// segundo caso, la carga no está aprobada.
+function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExito }: FormularioSolicitarReemplazoProps) {
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +232,7 @@ function FormularioSolicitarReemplazo({ cargaArchivoId, onExito }: FormularioSol
           disabled={enviando}
           maxLength={LONGITUD_MAXIMA_MOTIVO}
           rows={3}
-          placeholder="Explica por qué necesitas reemplazar esta carga ya aprobada"
+          placeholder={placeholderMotivo}
           className="w-full rounded-md border border-gob-accent bg-white px-3 py-2 text-sm text-gob-black outline-none placeholder:text-gob-gray-b focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30 disabled:bg-gob-neutral"
         />
       </div>
@@ -246,6 +256,51 @@ function FormularioSolicitarReemplazo({ cargaArchivoId, onExito }: FormularioSol
   );
 }
 
+type TarjetaCargaBloqueadaProps = {
+  idTitulo: string;
+  tituloCombinacion: string;
+  mensaje: ReactNode;
+  cargaArchivoId: string;
+  placeholderMotivo: string;
+  solicitudPendiente: boolean;
+  onSolicitudReemplazoEnviada: () => void;
+};
+
+// Cuerpo compartido de los dos estados "bloqueados" de la tarjeta (carga `APROBADA` sin reemplazo
+// vigente, y carga `PENDIENTE_VISTO_BUENO` ya finalizada y sin decidir): mismo layout, mismo
+// formulario de solicitud, solo cambia el mensaje explicativo y a qué carga apunta la solicitud.
+function TarjetaCargaBloqueada({
+  idTitulo,
+  tituloCombinacion,
+  mensaje,
+  cargaArchivoId,
+  placeholderMotivo,
+  solicitudPendiente,
+  onSolicitudReemplazoEnviada,
+}: TarjetaCargaBloqueadaProps) {
+  return (
+    <section aria-labelledby={idTitulo} className="rounded-lg border border-gob-accent bg-white p-6">
+      <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
+        {tituloCombinacion}
+      </h3>
+
+      <p className="mt-2 text-sm text-gob-gray-a">{mensaje}</p>
+
+      {solicitudPendiente ? (
+        <p role="status" className="mt-4 text-sm font-medium text-gob-tertiary">
+          Ya enviaste una solicitud de reemplazo para esta carga. Está pendiente de revisión.
+        </p>
+      ) : (
+        <FormularioSolicitarReemplazo
+          cargaArchivoId={cargaArchivoId}
+          placeholderMotivo={placeholderMotivo}
+          onExito={onSolicitudReemplazoEnviada}
+        />
+      )}
+    </section>
+  );
+}
+
 type TarjetaCargaArchivoProps = {
   combinacion: CombinacionCargaVista;
   resultado: CargaDetalleVista | null;
@@ -256,6 +311,13 @@ type TarjetaCargaArchivoProps = {
   cargaAprobada: CargaResumenVista | null;
   reemplazoHabilitado: boolean;
   solicitudPendiente: boolean;
+  // `null` cuando la combinación no tiene ninguna carga `PENDIENTE_VISTO_BUENO` finalizada y
+  // todavía sin decidir. Cuando no es `null`, la tarjeta se bloquea (sin subida nueva) y ofrece
+  // solicitar su reemplazo, mutuamente excluyente con `cargaAprobada`/`reemplazoHabilitado`: una
+  // combinación no puede tener a la vez una carga `APROBADA` vigente y otra `PENDIENTE_VISTO_BUENO`
+  // ya finalizada.
+  cargaPendienteDecision: CargaResumenVista | null;
+  solicitudPendienteDeCargaPendiente: boolean;
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onFinalizarYEnviar: (carga: CargaResumenVista) => void;
   onSolicitudReemplazoEnviada: () => void;
@@ -271,6 +333,8 @@ function TarjetaCargaArchivo({
   cargaAprobada,
   reemplazoHabilitado,
   solicitudPendiente,
+  cargaPendienteDecision,
+  solicitudPendienteDeCargaPendiente,
   onSubidaExitosa,
   onFinalizarYEnviar,
   onSolicitudReemplazoEnviada,
@@ -318,27 +382,50 @@ function TarjetaCargaArchivo({
     }
   }
 
+  const tituloCombinacion = `${combinacion.formatoNombre} · ${combinacion.anio}`;
+
+  // Estado "bloqueado": ya se finalizó y envió una carga para esta combinación y todavía nadie
+  // (ADMIN/REVISOR_REPOSITORIO) la decidió. No admite una subida nueva, pero sí solicitar su
+  // reemplazo, igual que el estado "b" de abajo (carga ya `APROBADA`).
+  if (cargaPendienteDecision) {
+    return (
+      <TarjetaCargaBloqueada
+        idTitulo={idTitulo}
+        tituloCombinacion={tituloCombinacion}
+        mensaje={
+          <>
+            Ya enviaste <strong>{cargaPendienteDecision.nombreArchivoOriginal}</strong> para esta combinación y está
+            pendiente de que un administrador o el revisor del repositorio la apruebe o la rechace. Si detectaste un
+            error y necesitas corregirlo antes de esa decisión, solicita su reemplazo.
+          </>
+        }
+        cargaArchivoId={cargaPendienteDecision.id}
+        placeholderMotivo="Explica por qué necesitas reemplazar esta carga antes de que se decida"
+        solicitudPendiente={solicitudPendienteDeCargaPendiente}
+        onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
+      />
+    );
+  }
+
+  // Estado "b": ya existe una carga aprobada para esta combinación y no hay ninguna autorización
+  // de reemplazo vigente. La tarjeta se reduce: no se ofrece subir un archivo nuevo.
   if (requiereSolicitudDeReemplazo && cargaAprobada) {
     return (
-      <section aria-labelledby={idTitulo} className="rounded-lg border border-gob-accent bg-white p-6">
-        <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
-          {combinacion.formatoNombre} · {combinacion.anio}
-        </h3>
-
-        <p className="mt-2 text-sm text-gob-gray-a">
-          Ya existe una carga aprobada para esta combinación: <strong>{cargaAprobada.nombreArchivoOriginal}</strong>.
-          Si necesitas corregirla, solicita su reemplazo. Un administrador o el revisor del repositorio debe
-          aprobarlo antes de que puedas subir el archivo nuevo.
-        </p>
-
-        {solicitudPendiente ? (
-          <p role="status" className="mt-4 text-sm font-medium text-gob-tertiary">
-            Ya enviaste una solicitud de reemplazo para esta carga. Está pendiente de revisión.
-          </p>
-        ) : (
-          <FormularioSolicitarReemplazo cargaArchivoId={cargaAprobada.id} onExito={onSolicitudReemplazoEnviada} />
-        )}
-      </section>
+      <TarjetaCargaBloqueada
+        idTitulo={idTitulo}
+        tituloCombinacion={tituloCombinacion}
+        mensaje={
+          <>
+            Ya existe una carga aprobada para esta combinación: <strong>{cargaAprobada.nombreArchivoOriginal}</strong>.
+            Si necesitas corregirla, solicita su reemplazo. Un administrador o el revisor del repositorio debe
+            aprobarlo antes de que puedas subir el archivo nuevo.
+          </>
+        }
+        cargaArchivoId={cargaAprobada.id}
+        placeholderMotivo="Explica por qué necesitas reemplazar esta carga ya aprobada"
+        solicitudPendiente={solicitudPendiente}
+        onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
+      />
     );
   }
 
@@ -524,15 +611,9 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
     }
   }
 
-  // Combinaciones con una carga finalizada y todavía sin decidir se ocultan por completo: no
-  // admiten subida nueva ni tienen más acciones para el notificador.
-  const combinacionesVisibles = combinaciones.filter(
-    (combinacion) => cargaPendienteFinalizada(misCargas, combinacion.ventanaCargaId) === null,
-  );
-
   return (
     <div className="flex flex-col gap-6">
-      {combinacionesVisibles.length === 0 ? (
+      {combinaciones.length === 0 ? (
         <section
           aria-labelledby="titulo-reporte"
           className="rounded-lg border border-dashed border-gob-accent bg-white p-6"
@@ -546,7 +627,7 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
           </p>
         </section>
       ) : (
-        combinacionesVisibles.map((combinacion) => {
+        combinaciones.map((combinacion) => {
           const cargaAprobada = cargaAprobadaVigente(misCargas, combinacion.ventanaCargaId);
           const solicitudDeEstaCarga = cargaAprobada
             ? misSolicitudes.find((solicitud) => solicitud.cargaArchivoId === cargaAprobada.id)
@@ -554,6 +635,14 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
           const reemplazoHabilitado =
             solicitudDeEstaCarga?.estado === "APROBADA" && !solicitudDeEstaCarga.vencida;
           const solicitudPendiente = solicitudDeEstaCarga?.estado === "PENDIENTE";
+
+          // Mutuamente excluyente con `cargaAprobada`: una combinación no puede tener a la vez una
+          // `APROBADA` vigente y una `PENDIENTE_VISTO_BUENO` ya finalizada.
+          const cargaPendienteDecision = cargaPendienteFinalizada(misCargas, combinacion.ventanaCargaId);
+          const solicitudDeCargaPendiente = cargaPendienteDecision
+            ? misSolicitudes.find((solicitud) => solicitud.cargaArchivoId === cargaPendienteDecision.id)
+            : undefined;
+          const solicitudPendienteDeCargaPendiente = solicitudDeCargaPendiente?.estado === "PENDIENTE";
 
           const claveTarjeta = claveCombinacion(combinacion);
           return (
@@ -567,6 +656,8 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
               cargaAprobada={cargaAprobada}
               reemplazoHabilitado={reemplazoHabilitado}
               solicitudPendiente={solicitudPendiente}
+              cargaPendienteDecision={cargaPendienteDecision}
+              solicitudPendienteDeCargaPendiente={solicitudPendienteDeCargaPendiente}
               onSubidaExitosa={registrarResultado}
               onFinalizarYEnviar={setObjetivoFinalizar}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}

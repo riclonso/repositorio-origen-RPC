@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EstadoSolicitudReemplazoCarga } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import type {
+  EstadoSolicitudReemplazoCarga,
+  OrigenSolicitudReemplazoCarga,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
@@ -19,6 +22,7 @@ export type FilaSolicitudReemplazoVista = {
   solicitadoPorRut: string;
   motivo: string;
   estado: EstadoSolicitudReemplazoCarga;
+  origen: OrigenSolicitudReemplazoCarga;
   revisadoPorNombre: string | null;
   revisadoEnTexto: string | null;
   comentarioRevision: string | null;
@@ -32,6 +36,14 @@ const ETIQUETAS_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
   PENDIENTE: "Pendiente",
   APROBADA: "Aprobada",
   RECHAZADA: "Rechazada",
+};
+
+// Mejora menor de UX (no bloqueante, ver diseño aprobado): distingue en el listado si la
+// solicitud es para reemplazar una carga ya aprobada o una pendiente de decisión, sin afectar el
+// flujo de aprobar/rechazar (idéntico para ambos orígenes).
+const ETIQUETAS_ORIGEN: Record<OrigenSolicitudReemplazoCarga, string> = {
+  CARGA_APROBADA: "Reemplazo de carga aprobada",
+  CARGA_PENDIENTE_DECISION: "Reemplazo de carga pendiente de decisión",
 };
 
 const CLASES_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
@@ -93,6 +105,7 @@ const COLUMNAS: ColumnaTabla<FilaSolicitudReemplazoVista>[] = [
       <>
         {fila.formatoExcelNombre} · {fila.anio}
         <span className="block break-all text-xs font-normal text-gob-gray-a">{fila.nombreArchivoOriginal}</span>
+        <span className="block text-xs font-normal text-gob-gray-b">{ETIQUETAS_ORIGEN[fila.origen]}</span>
       </>
     ),
   },
@@ -195,6 +208,7 @@ export function TablaSolicitudesReemplazo({ filas, rutaApiRevision }: TablaSolic
               {fila.formatoExcelNombre} · {fila.anio}
             </p>
             <p className="break-all">{fila.nombreArchivoOriginal}</p>
+            <p className="mt-1 text-xs text-gob-gray-b">{ETIQUETAS_ORIGEN[fila.origen]}</p>
             <p className="mt-1">
               {fila.solicitadoPorNombre} <span className="tabular-nums">({fila.solicitadoPorRut})</span>
             </p>

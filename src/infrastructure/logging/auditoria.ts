@@ -212,6 +212,12 @@ export type EventoAuditoria = {
   // Específico de `CARGA_ARCHIVO_RECHAZADA` (ampliación RF-20): de qué estado venía la carga al
   // momento de rechazarla, para que el histórico distinga ambos orígenes sin ambigüedad.
   estadoOrigenRechazo?: "PENDIENTE_VISTO_BUENO" | "APROBADA" | null;
+  // Específico de `CARGA_ARCHIVO_RECHAZADA` (ampliación: solicitudes de reemplazo con origen
+  // `CARGA_PENDIENTE_DECISION`): distingue un rechazo unilateral del ADMIN/REVISOR
+  // (`DECISION_UNILATERAL`) de uno disparado automáticamente al aprobar una solicitud de reemplazo
+  // de ese origen (`REEMPLAZO_APROBADO`). Ningún otro campo de este evento se ve afectado: sigue
+  // siendo la misma acción `CARGA_ARCHIVO_RECHAZADA`, solo cambia quién/qué lo disparó.
+  origenRechazo?: "DECISION_UNILATERAL" | "REEMPLAZO_APROBADO" | null;
   // Específicos de `VENTANA_CARGA_*` (RF-15). Las fechas viajan como ISO string, nunca como
   // `Date`: Winston las serializaría igual, pero como string queda explícito que el log es de
   // solo lectura y no un objeto que alguien pueda mutar antes de escribirse.

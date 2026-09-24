@@ -1,6 +1,9 @@
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { SolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
-import type { SolicitudReemplazoCarga } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import type {
+  OrigenSolicitudReemplazoCarga,
+  SolicitudReemplazoCarga,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { SolicitudReemplazoDuplicadaError } from "@/modules/solicitudes-reemplazo/domain/errors/SolicitudReemplazoDuplicadaError";
 
 export type DatosSolicitarReemplazoCarga = {
@@ -20,8 +23,11 @@ export type ResultadoSolicitarReemplazoCarga =
   | { ok: false; motivo: "SOLICITUD_DUPLICADA" }
   | { ok: false; motivo: "SOLICITUD_YA_APROBADA_VIGENTE" };
 
-// Un notificador solicita reemplazar una de sus propias cargas ya `APROBADA`. La aprobación de un
-// ADMIN o REVISOR_REPOSITORIO (`RevisarSolicitudReemplazo`) es lo que habilita la subida real.
+// Un notificador solicita reemplazar una de sus propias cargas: ya `APROBADA` (origen
+// `CARGA_APROBADA`, camino original) o `PENDIENTE_VISTO_BUENO` ya finalizada y todavía sin decisión
+// (origen `CARGA_PENDIENTE_DECISION`, ampliación). La aprobación de un ADMIN o REVISOR_REPOSITORIO
+// (`RevisarSolicitudReemplazo`) es lo que habilita la subida real (o, para el segundo origen,
+// rechaza la carga original y libera la combinación).
 export async function solicitarReemplazoCarga(
   datos: DatosSolicitarReemplazoCarga,
   dependencias: {
@@ -33,17 +39,39 @@ export async function solicitarReemplazoCarga(
   // que no es del actor se trata como si no existiera.
   const carga = await dependencias.repositorioCargas.obtenerPropiaPorId(datos.cargaArchivoId, datos.usuarioId);
 
-  if (!carga || carga.estado !== "APROBADA") {
+  if (!carga) {
     return { ok: false, motivo: "NO_ENCONTRADO" };
   }
 
-  const vigente = await dependencias.repositorioCargas.obtenerAprobadaVigentePorUsuarioYVentana(
-    datos.usuarioId,
-    carga.ventanaCargaId,
-  );
+  let origen: OrigenSolicitudReemplazoCarga;
 
-  if (!vigente || vigente.id !== carga.id) {
-    return { ok: false, motivo: "NO_ES_VIGENTE" };
+  if (carga.estado === "APROBADA") {
+    const vigente = await dependencias.repositorioCargas.obtenerAprobadaVigentePorUsuarioYVentana(
+      datos.usuarioId,
+      carga.ventanaCargaId,
+    );
+
+    if (!vigente || vigente.id !== carga.id) {
+      return { ok: false, motivo: "NO_ES_VIGENTE" };
+    }
+
+    origen = "CARGA_APROBADA";
+  } else if (carga.estado === "PENDIENTE_VISTO_BUENO" && carga.finalizadaEn !== null) {
+    // Defensa de coherencia (análoga al chequeo de "vigente" del camino `APROBADA`): la carga debe
+    // seguir siendo la pendiente-finalizada de su combinación (usuario, ventana) al momento de
+    // solicitar el reemplazo.
+    const pendienteFinalizada = await dependencias.repositorioCargas.obtenerPendienteFinalizadaPorUsuarioYVentana(
+      datos.usuarioId,
+      carga.ventanaCargaId,
+    );
+
+    if (!pendienteFinalizada || pendienteFinalizada.id !== carga.id) {
+      return { ok: false, motivo: "NO_ENCONTRADO" };
+    }
+
+    origen = "CARGA_PENDIENTE_DECISION";
+  } else {
+    return { ok: false, motivo: "NO_ENCONTRADO" };
   }
 
   const ahora = new Date();
@@ -63,6 +91,7 @@ export async function solicitarReemplazoCarga(
       cargaArchivoId: carga.id,
       solicitadoPorId: datos.usuarioId,
       motivo: datos.motivo,
+      origen,
     });
 
     return { ok: true, solicitud };

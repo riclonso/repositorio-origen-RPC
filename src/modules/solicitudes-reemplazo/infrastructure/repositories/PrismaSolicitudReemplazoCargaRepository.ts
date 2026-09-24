@@ -26,6 +26,7 @@ const SELECCION = {
   solicitadoPor: { select: { nombres: true, apellidos: true, rut: true } },
   motivo: true,
   estado: true,
+  origen: true,
   revisadoPorId: true,
   revisadoPor: { select: { nombres: true, apellidos: true } },
   revisadoEn: true,
@@ -50,6 +51,7 @@ function aSolicitudReemplazoCarga(registro: RegistroSolicitud): SolicitudReempla
     solicitadoPorRut: registro.solicitadoPor.rut,
     motivo: registro.motivo,
     estado: registro.estado,
+    origen: registro.origen,
     revisadoPorId: registro.revisadoPorId,
     revisadoPorNombre: registro.revisadoPor ? nombreCompleto(registro.revisadoPor) : null,
     revisadoEn: registro.revisadoEn,
@@ -69,6 +71,7 @@ export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRep
           cargaArchivoId: datos.cargaArchivoId,
           solicitadoPorId: datos.solicitadoPorId,
           motivo: datos.motivo,
+          origen: datos.origen,
         },
         select: SELECCION,
       });

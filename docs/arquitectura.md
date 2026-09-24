@@ -69,8 +69,12 @@ src/
 │   │   ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/
 │   │   └── schemas/        — ventana-carga.schema.ts (anioVentanaCargaSchema reutilizado por
 │   │                         `reporte-excel/schemas/reporte-excel.schema.ts`, para no duplicar rango)
-│   └── solicitudes-reemplazo/ — autoriza el reemplazo de una carga ya APROBADA (RF-19, implementado)
-│       ├── domain/         — entities/SolicitudReemplazoCarga.ts (estado + `solicitudUtilizable`/
+│   └── solicitudes-reemplazo/ — autoriza el reemplazo de una carga ya APROBADA (RF-19), ampliado
+│       │                     (RF-22) a también cubrir una carga PENDIENTE_VISTO_BUENO ya finalizada
+│       │                     y sin decidir (ver `origen` abajo)
+│       ├── domain/         — entities/SolicitudReemplazoCarga.ts (estado + `origen`:
+│       │                     `CARGA_APROBADA` | `CARGA_PENDIENTE_DECISION`, resuelto siempre en
+│       │                     servidor, nunca recibido del cliente; `solicitudUtilizable`/
 │       │                     `solicitudVencida`, vigencia de 5 días calculada en lectura contra un
 │       │                     `ahora` recibido, sin cron), errors/SolicitudReemplazoDuplicadaError.ts,
 │       │                     repositories/
@@ -1622,6 +1626,44 @@ auditoría de esta entrega — **no** es equivalente al precedente que se citó 
 esperado del sistema. Si este patrón se necesita de nuevo en un módulo futuro, resolverlo agregando
 un método al repositorio del otro módulo que reciba el `Prisma.TransactionClient` (p. ej.
 `marcarUtilizadaEnTransaccion(tx, id, nuevaCargaArchivoId)`) en vez de repetir el acceso directo.
+
+### Reemplazo de una carga `PENDIENTE_VISTO_BUENO` finalizada, vía rechazo de RF-20 (RF-22)
+
+RF-14b dejó una combinación (formato, ventana) con una carga finalizada y sin decidir sin ninguna
+acción disponible para el notificador: la tarjeta desaparecía del panel hasta que un tercero
+decidiera. RF-22 le da la misma salida que a una carga `APROBADA` bloqueada (RF-19): pedir un
+reemplazo. `SolicitudReemplazoCarga.origen` (`CARGA_APROBADA` | `CARGA_PENDIENTE_DECISION`) distingue
+ambos caminos; lo resuelve siempre `SolicitarReemplazoCarga` mirando el `estado`/`finalizadaEn` de la
+carga, nunca el cliente. La decisión de diseño clave es **no** introducir un flujo de reemplazo
+paralelo: al **aprobarse** una solicitud con origen `CARGA_PENDIENTE_DECISION`
+(`PATCH /api/dashboard/solicitudes-reemplazo/[id]`), el Route Handler reutiliza intacto el
+`rechazarCarga()` de RF-20 sobre la carga original, con un motivo fijo generado por el sistema (no
+editable por el revisor). Eso la deja `RECHAZADA` y dispara, sin código nuevo, el mismo mecanismo de
+reapertura que ya usa un rechazo manual — `ValidarYCargarArchivo` deja de encontrarla vía
+`obtenerPendienteFinalizadaPorUsuarioYVentana` y el notificador vuelve a subir por el camino de
+`reaperturaVigente()` de siempre.
+
+Dos matices de esta reutilización, no evidentes leyendo solo `RechazarCarga.ts`:
+
+- **Dos escrituras separadas, sin transacción compartida** (mismo riesgo aceptado que RF-19): la
+  aprobación de la solicitud y el rechazo de la carga original son dos llamadas distintas al
+  repositorio. Si `rechazarCarga()` devuelve `{ ok: false }` después de que la aprobación ya se
+  guardó, el Route Handler lo deja constando en `logs/errores.txt` y responde igual éxito de la
+  revisión — no revierte la aprobación ya persistida. El estado inconsistente resultante (solicitud
+  `APROBADA` pero carga original todavía sin decidir) requeriría intervención manual, igual que el
+  equivalente ya aceptado en RF-19.
+- **Un solo correo, no dos.** El notificador ya recibe el correo de "tu solicitud fue aprobada" de
+  `SolicitudReemplazoMailer` (disparado desde el mismo Route Handler, como siempre). El Route Handler
+  simplemente no vuelve a invocar `RechazoCargaMailer` en este camino — no hizo falta un flag nuevo en
+  `rechazarCarga()`, porque el envío de ese correo nunca vivió dentro del caso de uso: vive en el
+  Route Handler de `POST /api/dashboard/cargas/[id]/rechazo`, que es un punto de entrada distinto al
+  de esta aprobación.
+
+`CARGA_ARCHIVO_RECHAZADA` gana el campo `origenRechazo` (`DECISION_UNILATERAL` |
+`REEMPLAZO_APROBADO`) para que el histórico de auditoría distinga un rechazo manual de siempre de
+este efecto automático, sin ambigüedad con `estadoOrigenRechazo` (que ya existía, y sigue
+respondiendo una pregunta distinta: de qué **estado de carga** venía el rechazo, no quién/qué lo
+disparó).
 
 ## Rechazo de una carga aprobada + confirmación de aprobación por correo (RF-20)
 
