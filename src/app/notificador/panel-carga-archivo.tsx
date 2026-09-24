@@ -258,6 +258,7 @@ type TarjetaCargaArchivoProps = {
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onFinalizarYEnviar: (carga: CargaResumenVista) => void;
   onSolicitudReemplazoEnviada: () => void;
+  onLimpiar?: () => void;
 };
 
 // Una tarjeta por combinación (formato, ventana), cada una con su propio estado de
@@ -272,6 +273,7 @@ function TarjetaCargaArchivo({
   onSubidaExitosa,
   onFinalizarYEnviar,
   onSolicitudReemplazoEnviada,
+  onLimpiar,
 }: TarjetaCargaArchivoProps) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -395,10 +397,25 @@ function TarjetaCargaArchivo({
           <ResumenErroresCarga errores={resultado.errores} />
 
           {resultado.estado === "PENDIENTE_VISTO_BUENO" ? (
-            <Boton variante="primario" className="w-fit" onClick={() => onFinalizarYEnviar(resultado)}>
-              <IconoAprobado className="shrink-0" />
-              Finalizar y enviar
-            </Boton>
+            <div className="flex flex-wrap gap-3">
+              <Boton variante="primario" className="w-fit" onClick={() => onFinalizarYEnviar(resultado)}>
+                <IconoAprobado className="shrink-0" />
+                Finalizar y enviar
+              </Boton>
+              {onLimpiar && (
+                <Boton
+                  variante="secundario"
+                  className="w-fit"
+                  onClick={() => {
+                    setArchivo(null);
+                    setErrorSubida(null);
+                    onLimpiar();
+                  }}
+                >
+                  Cancelar y limpiar
+                </Boton>
+              )}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -441,6 +458,13 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
     setResultados((actual) => ({ ...actual, [clave]: carga }));
     void obtenerMisCargas().then((actualizadas) => {
       if (actualizadas) setMisCargas(actualizadas);
+    });
+  }
+
+  function limpiarResultado(clave: string) {
+    setResultados((actual) => {
+      const { [clave]: _, ...rest } = actual;
+      return rest;
     });
   }
 
@@ -524,11 +548,12 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
             solicitudDeEstaCarga?.estado === "APROBADA" && !solicitudDeEstaCarga.vencida;
           const solicitudPendiente = solicitudDeEstaCarga?.estado === "PENDIENTE";
 
+          const claveTarjeta = claveCombinacion(combinacion);
           return (
             <TarjetaCargaArchivo
-              key={claveCombinacion(combinacion)}
+              key={claveTarjeta}
               combinacion={combinacion}
-              resultado={resultados[claveCombinacion(combinacion)] ?? null}
+              resultado={resultados[claveTarjeta] ?? null}
               intentosFallidos={misCargas.filter(
                 (carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "CON_ERRORES",
               )}
@@ -538,6 +563,7 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
               onSubidaExitosa={registrarResultado}
               onFinalizarYEnviar={setObjetivoFinalizar}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
+              onLimpiar={() => limpiarResultado(claveTarjeta)}
             />
           );
         })
