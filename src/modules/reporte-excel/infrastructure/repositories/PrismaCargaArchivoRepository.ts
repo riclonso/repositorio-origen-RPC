@@ -547,7 +547,23 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     if (resultado.count === 0) return null;
 
     const registro = await prisma.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
-    return registro ? aCargaArchivo(registro) : null;
+    if (!registro) return null;
+
+    // Con la ventana todavía abierta, una reapertura pendiente de esta combinación (usuario,
+    // ventana) no se consume al subir el archivo (ver `ValidarYCargarArchivo`): recién aquí, al
+    // finalizar y enviar con éxito, se considera que el notificador ya corrigió lo que motivó el
+    // rechazo. Cierra todas las que sigan sin consumir (no solo una), sin apuntarlas a esta carga
+    // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1 exclusiva
+    // del camino de ventana vencida) — solo apaga el banner `BannerReaperturaCarga`.
+    await prisma.cargaArchivoRechazo.updateMany({
+      where: {
+        reaperturaConsumidaEn: null,
+        cargaArchivo: { usuarioId, ventanaCargaId: registro.ventanaCargaId },
+      },
+      data: { reaperturaConsumidaEn: new Date() },
+    });
+
+    return aCargaArchivo(registro);
   },
 
   async contarNotificadoresDistintosPorVentana(ventanaCargaIds) {

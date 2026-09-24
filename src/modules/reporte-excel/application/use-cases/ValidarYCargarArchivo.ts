@@ -127,31 +127,27 @@ export async function validarYCargarArchivo(
   // Nuevo (rechazo de cargas aprobadas): una ventana ya vencida sigue habilitando la subida si el
   // notificador tiene una reapertura vigente (su carga anterior para esta combinación fue
   // rechazada, y el plazo de reapertura no expiró). Se consume por el intento en sí, exista o no
-  // error de validación en él, mismo criterio que una autorización de reemplazo.
+  // error de validación en él (decisión de diseño de RF-20: aquí la reapertura es la única
+  // autorización que habilita subir con la ventana cerrada, así que se agota al primer intento).
   //
-  // La búsqueda de una reapertura pendiente se hace SIEMPRE, no solo cuando la ventana ya venció:
-  // si la ventana sigue abierta y el notificador ya tenía una carga rechazada sin consumir para
-  // esta misma combinación, esta subida también debe consumirla. Sin esto, el banner
-  // `BannerReaperturaCarga` de "tu carga fue rechazada" quedaba visible indefinidamente en el caso
-  // más común (ventana todavía abierta), porque `reaperturaConsumidaEn` nunca se fijaba.
+  // Con la ventana todavía abierta, en cambio, una reapertura pendiente NO se consume aquí: solo
+  // cumple el rol de apagar el banner `BannerReaperturaCarga`, y hacerlo en el intento de subida
+  // (en vez de al finalizar con éxito) apagaría el aviso ante un archivo con errores que el
+  // notificador ni siquiera llegó a enviar. Ese consumo vive en `FinalizarYEnviarCarga`/
+  // `CargaArchivoRepository.finalizar()`, que solo se alcanza con una carga sin errores.
   let cargaArchivoRechazoAConsumirId: string | null = null;
 
-  const reaperturaPendiente = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
-    datos.usuarioId,
-    ventana.id,
-  );
-  const reaperturaEsVigente =
-    reaperturaPendiente !== null &&
-    reaperturaVigente(reaperturaPendiente, { fechaVencimiento: ventana.fechaVencimiento }, new Date());
-
   if (!estaAbierta(ventana, new Date())) {
-    if (reaperturaEsVigente) {
-      cargaArchivoRechazoAConsumirId = reaperturaPendiente.id;
+    const reapertura = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
+      datos.usuarioId,
+      ventana.id,
+    );
+
+    if (reapertura && reaperturaVigente(reapertura, { fechaVencimiento: ventana.fechaVencimiento }, new Date())) {
+      cargaArchivoRechazoAConsumirId = reapertura.id;
     } else {
       return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
     }
-  } else if (reaperturaEsVigente) {
-    cargaArchivoRechazoAConsumirId = reaperturaPendiente.id;
   }
 
   // RF-15 (ampliación): una ventana en borrador (no publicada) no debe habilitar subidas, aunque
