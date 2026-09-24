@@ -389,12 +389,24 @@ function TarjetaCargaArchivo({
 
       {resultado ? (
         <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
-          <p className="text-sm text-gob-gray-a">
-            <BadgeEstadoCarga estado={resultado.estado} /> · {resultado.cantidadFilasDatos} filas de datos,{" "}
-            {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
-          </p>
-
-          <ResumenErroresCarga errores={resultado.errores} />
+          {resultado.cantidadErrores === 0 ? (
+            <>
+              <p className="text-sm font-medium text-gob-success">
+                <BadgeEstadoCarga estado={resultado.estado} /> · {resultado.cantidadFilasDatos} filas de datos validadas
+              </p>
+              <p role="status" className="text-sm font-medium text-gob-tertiary">
+                Pendiente de aprobación.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gob-gray-a">
+                <BadgeEstadoCarga estado={resultado.estado} /> · {resultado.cantidadFilasDatos} filas de datos,{" "}
+                {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
+              </p>
+              <ResumenErroresCarga errores={resultado.errores} />
+            </>
+          )}
 
           {resultado.estado === "PENDIENTE_VISTO_BUENO" ? (
             <div className="flex flex-wrap gap-3">
