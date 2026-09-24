@@ -234,7 +234,7 @@ export async function validarYCargarArchivo(
       numeroFila: 0,
       columna: null,
       tipoError: "SIN_FILAS_DATOS",
-      mensaje: "El archivo no tiene filas de datos, solo la fila de encabezados",
+      mensaje: "El archivo parece estar vacío: solo trae la fila de encabezados, sin filas de datos",
     });
   }
 
