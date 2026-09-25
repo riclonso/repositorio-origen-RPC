@@ -6,7 +6,12 @@ import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoContrasena, IconoDesbloquear, IconoEditar } from "@/shared/components/iconos";
+import {
+  IconoContrasena,
+  IconoDesbloquear,
+  IconoEditar,
+  IconoIngresarComoUsuario,
+} from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
 
@@ -34,6 +39,7 @@ export type FilaUsuarioVista = {
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del usuario. Intenta nuevamente.";
 const MENSAJE_ERROR_DESBLOQUEO = "No se pudo desbloquear la cuenta. Intenta nuevamente.";
+const MENSAJE_ERROR_DELEGACION = "No se pudo iniciar la sesión del usuario. Intenta nuevamente.";
 
 type ControlEstadoCuentaProps = {
   fila: FilaUsuarioVista;
@@ -99,6 +105,7 @@ type AccionesFilaProps = {
   actorEsAdmin: boolean;
   onCambiarEstado: () => void;
   onDesbloquear: () => void;
+  onDelegarSesion: () => void;
 };
 
 function AccionesFila({
@@ -108,6 +115,7 @@ function AccionesFila({
   actorEsAdmin,
   onCambiarEstado,
   onDesbloquear,
+  onDelegarSesion,
 }: AccionesFilaProps) {
   const persona = nombreCompleto(fila);
 
@@ -120,6 +128,14 @@ function AccionesFila({
 
   return (
     <div className="flex items-center justify-end gap-2">
+      {actorEsAdmin && !esPropia && fila.activo && fila.tieneContrasena ? (
+        <BotonIcono
+          etiqueta={`Ingresar como ${persona}`}
+          Icono={IconoIngresarComoUsuario}
+          onClick={onDelegarSesion}
+        />
+      ) : null}
+
       {puedeGestionarCuenta ? (
         <BotonIcono
           etiqueta={`Editar a ${persona}`}
@@ -243,6 +259,10 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
   const [procesandoDesbloqueo, setProcesandoDesbloqueo] = useState(false);
   const [errorDesbloqueo, setErrorDesbloqueo] = useState<string | null>(null);
 
+  const [objetivoDelegacion, setObjetivoDelegacion] = useState<FilaUsuarioVista | null>(null);
+  const [procesandoDelegacion, setProcesandoDelegacion] = useState(false);
+  const [errorDelegacion, setErrorDelegacion] = useState<string | null>(null);
+
   function cerrarDialogo() {
     if (procesando) return;
     setObjetivo(null);
@@ -311,6 +331,40 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
     }
   }
 
+  function cerrarDialogoDelegacion() {
+    if (procesandoDelegacion) return;
+    setObjetivoDelegacion(null);
+    setErrorDelegacion(null);
+  }
+
+  async function confirmarDelegacion() {
+    if (!objetivoDelegacion) return;
+
+    setProcesandoDelegacion(true);
+    setErrorDelegacion(null);
+
+    try {
+      const respuesta = await fetch(`/api/usuarios/${objetivoDelegacion.id}/delegacion`, {
+        method: "POST",
+      });
+
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        setProcesandoDelegacion(false);
+        setErrorDelegacion(datos?.error ?? MENSAJE_ERROR_DELEGACION);
+        return;
+      }
+
+      // La cookie `sesion` recién emitida atraviesa el despachador `/inicio`, que monta el panel
+      // del perfil objetivo en vez de conservar el árbol administrativo que estaba en memoria.
+      router.replace("/inicio");
+      router.refresh();
+    } catch {
+      setProcesandoDelegacion(false);
+      setErrorDelegacion(MENSAJE_ERROR_DELEGACION);
+    }
+  }
+
   return (
     <>
       <TablaPanel
@@ -327,6 +381,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
             actorEsAdmin={actorEsAdmin}
             onCambiarEstado={() => setObjetivo(fila)}
             onDesbloquear={() => setObjetivoDesbloqueo(fila)}
+            onDelegarSesion={() => setObjetivoDelegacion(fila)}
           />
         )}
         tarjeta={(fila) => (
@@ -347,6 +402,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
                 actorEsAdmin={actorEsAdmin}
                 onCambiarEstado={() => setObjetivo(fila)}
                 onDesbloquear={() => setObjetivoDesbloqueo(fila)}
+                onDelegarSesion={() => setObjetivoDelegacion(fila)}
               />
             </div>
           </>
@@ -387,6 +443,23 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
         error={errorDesbloqueo}
         onConfirmar={confirmarDesbloqueo}
         onCancelar={cerrarDialogoDesbloqueo}
+      />
+
+      <DialogoConfirmacion
+        abierto={objetivoDelegacion !== null}
+        titulo="Ingresar como usuario"
+        descripcion={
+          objetivoDelegacion
+            ? `Abrirás temporalmente la sesión de ${nombreCompleto(objetivoDelegacion)} sin solicitar sus credenciales. Podrás volver a tu sesión de administrador desde el encabezado.`
+            : ""
+        }
+        textoConfirmar="Ingresar como usuario"
+        textoConfirmando="Ingresando..."
+        variante="primario"
+        procesando={procesandoDelegacion}
+        error={errorDelegacion}
+        onConfirmar={confirmarDelegacion}
+        onCancelar={cerrarDialogoDelegacion}
       />
     </>
   );

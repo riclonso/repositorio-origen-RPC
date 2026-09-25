@@ -28,6 +28,7 @@ export interface FormatoExcelRepository {
   // anteriores, inserta las nuevas) en la misma operación que actualiza `nombre`/`descripcion`.
   actualizar(id: string, datos: DatosEdicionFormatoExcel): Promise<FormatoExcel>;
   cambiarEstado(id: string, activo: boolean): Promise<FormatoExcel>;
+  eliminar(id: string): Promise<"ELIMINADO" | "NO_ENCONTRADO" | "CON_VENTANAS_ACTIVAS">;
   buscarPorNombre(nombre: string): Promise<FormatoExcel | null>;
   // Única operación que trae el binario de la plantilla. La usa exclusivamente el endpoint de
   // descarga.

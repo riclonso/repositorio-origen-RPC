@@ -75,6 +75,10 @@ export type CampoUnico = "rut" | "email" | "username";
 export type FiltroListadoUsuarios = {
   termino?: string;
   perfil?: string;
+  // Restricción aplicada por el servidor según el perfil del actor. No llega desde la URL ni se
+  // expone en el formulario: limita a REVISOR_REPOSITORIO a los perfiles expresamente permitidos,
+  // incluso si el catálogo suma perfiles nuevos en el futuro.
+  perfilesPermitidos?: readonly string[];
   activo?: boolean;
   pagina: number;
   tamano: number;

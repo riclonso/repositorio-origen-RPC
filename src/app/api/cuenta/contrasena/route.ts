@@ -8,6 +8,7 @@ import { verificadorContrasenaBcrypt } from "@/modules/usuarios/infrastructure/a
 import { hasheadorContrasenaBcrypt } from "@/modules/usuarios/infrastructure/auth/HasheadorContrasenaBcrypt";
 import { cambiarContrasenaPropiaSchema } from "@/modules/usuarios/schemas/cambiar-contrasena-propia.schema";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
+import { NOMBRE_COOKIE_SESION_ADMIN_ORIGEN } from "@/modules/auth/infrastructure/auth/SesionDelegada";
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
@@ -80,6 +81,7 @@ export async function PUT(request: Request) {
     // en el servidor. Borrar la cookie evita además que el navegador siga enviando un token que
     // `verificarSesion()` de todas formas rechazaría.
     await deleteCookie("sesion", { cookies, path: "/" });
+    await deleteCookie(NOMBRE_COOKIE_SESION_ADMIN_ORIGEN, { cookies, path: "/" });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
 import { obtenerFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ObtenerFormatoExcel";
 import { actualizarFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ActualizarFormatoExcel";
+import { eliminarFormatoExcel } from "@/modules/formatos-excel/application/use-cases/EliminarFormatoExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { auditarFormatoExcel } from "@/modules/formatos-excel/infrastructure/auditoria/auditarFormatoExcel";
 import { editarFormatoExcelSchema } from "@/modules/formatos-excel/schemas/formato-excel.schema";
@@ -113,6 +114,41 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
     logger.error("Error al actualizar un formato de archivo", {
       error: error instanceof Error ? error.message : String(error),
     });
+    return respuestaError(MENSAJE_ERROR_INTERNO, 500);
+  }
+}
+
+export async function DELETE(_request: Request, contexto: { params: Promise<{ id: string }> }) {
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
+  if (!acceso.ok) return respuestaSinAcceso(acceso.estado);
+
+  const idValido = idFormatoExcelSchema.safeParse(id);
+  if (!idValido.success) return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+
+  try {
+    const resultado = await eliminarFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository });
+    if (!resultado.ok) {
+      auditarFormatoExcel(acceso.sesion, _request, {
+        accion: "FORMATO_EXCEL_ELIMINADO",
+        resultado: "RECHAZADO",
+        motivo: resultado.motivo === "CON_VENTANAS_ACTIVAS" ? "FORMATO_CON_VENTANAS" : "NO_ENCONTRADO",
+        formatoExcelId: idValido.data,
+        formatoExcelNombre: resultado.nombre,
+      });
+      return resultado.motivo === "NO_ENCONTRADO"
+        ? respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" })
+        : respuestaError("No puedes eliminar un formato con ventanas de carga asociadas.", 409);
+    }
+
+    auditarFormatoExcel(acceso.sesion, _request, {
+      accion: "FORMATO_EXCEL_ELIMINADO",
+      resultado: "EXITO",
+      formatoExcelId: idValido.data,
+      formatoExcelNombre: resultado.nombre,
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    logger.error("Error al eliminar un formato de archivo", { error: error instanceof Error ? error.message : String(error) });
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);
   }
 }

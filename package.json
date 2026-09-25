@@ -11,6 +11,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
     "@lexical/html": "^0.50.0",
     "@lexical/link": "^0.50.0",
     "@lexical/list": "^0.50.0",

@@ -74,6 +74,7 @@ type ListadoUsuariosProps = {
   rutaBase: string;
   construirHref: (pagina: number) => string;
   actorEsAdmin: boolean;
+  perfilesPermitidos?: readonly string[];
 };
 
 export async function ListadoUsuarios({
@@ -82,8 +83,12 @@ export async function ListadoUsuarios({
   rutaBase,
   construirHref,
   actorEsAdmin,
+  perfilesPermitidos,
 }: ListadoUsuariosProps) {
-  const resultado = await listarUsuarios(filtro, { repositorio: prismaUsuarioRepository });
+  // La restricción se une al filtro solo en el servidor: no se serializa en la URL ni puede ser
+  // quitada por el navegador del revisor.
+  const filtroEfectivo: FiltroListadoUsuarios = { ...filtro, perfilesPermitidos };
+  const resultado = await listarUsuarios(filtroEfectivo, { repositorio: prismaUsuarioRepository });
   const { filas, paginacion } = resultado;
   const ahora = new Date();
 

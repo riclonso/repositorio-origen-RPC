@@ -5,6 +5,7 @@ import { crearFormatoExcel } from "@/modules/formatos-excel/application/use-case
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { auditarFormatoExcel } from "@/modules/formatos-excel/infrastructure/auditoria/auditarFormatoExcel";
 import { crearFormatoExcelSchema } from "@/modules/formatos-excel/schemas/formato-excel.schema";
+import { sincronizarCabeceraPlantillaExcelJs } from "@/modules/formatos-excel/infrastructure/escritura-plantilla/SincronizadorCabeceraPlantillaExcelJs";
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
@@ -154,6 +155,24 @@ export async function POST(request: Request) {
       return respuestaArchivoInvalido("El contenido del archivo no corresponde a su extensión");
     }
 
+    // Las filas agregadas manualmente en el asistente deben formar parte de la plantilla que se
+    // descarga después. Se escribe la cabecera con el conjunto validado de columnas ANTES de
+    // persistir el binario, por lo que el archivo guardado y el formato nunca nacen desalineados.
+    const plantillaConCabecera = await sincronizarCabeceraPlantillaExcelJs(
+      buffer,
+      tipoContenido,
+      datos.data.columnas.map((columna) => columna.nombre),
+    );
+
+    if (plantillaConCabecera.byteLength > TAMANO_MAXIMO_PLANTILLA) {
+      auditarFormatoExcel(acceso.sesion, request, {
+        accion: "FORMATO_EXCEL_CREADO",
+        resultado: "RECHAZADO",
+        motivo: "ARCHIVO_INVALIDO",
+      });
+      return respuestaArchivoInvalido("El archivo con sus columnas no puede superar los 10 MB");
+    }
+
     const resultado = await crearFormatoExcel(
       {
         nombre: datos.data.nombre,
@@ -161,7 +180,7 @@ export async function POST(request: Request) {
         nombreArchivoPlantilla: archivo.name,
         tipoContenidoPlantilla: tipoContenido,
         tipoArchivo: tipoArchivoDesdeTipoContenido(tipoContenido),
-        contenidoPlantilla: buffer,
+        contenidoPlantilla: plantillaConCabecera,
         columnas: datos.data.columnas,
         reglasValidacion: datos.data.reglasValidacion,
       },

@@ -30,11 +30,12 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
   const badgeAlerta = resumen.estadoAlerta ? BADGE_ESTADO_ALERTA[resumen.estadoAlerta] : null;
 
   return (
-    <article className="flex flex-col gap-4 rounded-lg border border-gob-neutral bg-white p-5 shadow-md hover:shadow-lg transition-shadow">
+    <article className="flex flex-col gap-4 rounded-xl border border-[#dce6f0] bg-white p-5 shadow-[0_8px_22px_rgba(23,59,105,0.05)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(23,59,105,0.1)]">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-base font-bold text-gob-primary">{resumen.formatoExcelNombre}</h3>
-          <p className="text-sm text-gob-gray-a mt-1">Año {resumen.anio}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Formato de archivo</p>
+          <h3 className="mt-1 text-base font-bold text-gob-tertiary">{resumen.formatoExcelNombre}</h3>
+          <p className="mt-1 text-sm text-gob-gray-a">Período {resumen.anio}</p>
         </div>
         {badgeAlerta ? (
           <span
@@ -50,18 +51,24 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
         total={resumen.totalNotificadoresAsignados}
       />
 
-      <p className="text-sm font-medium text-gob-black">
-        <span className="text-gob-primary font-bold">{resumen.totalNotificadoresReportaron}</span> de{" "}
-        <span className="text-gob-primary font-bold">{resumen.totalNotificadoresAsignados}</span> notificadores
+      <div className="border-y border-[#e6edf5] py-3 text-sm font-medium text-gob-black">
+        <span className="text-gob-primary font-bold tabular-nums">{resumen.totalNotificadoresReportaron}</span> de{" "}
+        <span className="text-gob-primary font-bold tabular-nums">{resumen.totalNotificadoresAsignados}</span> notificadores
         reportaron
-      </p>
+      </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="rounded-lg bg-[#f5f8fb] p-3">
+        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-[#58738e]">
+          <span>Plazo de la ventana</span>
+          <span className={resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-primary"}>
+            {resumen.diasRestantes} {resumen.diasRestantes === 1 ? "día" : "días"}
+          </span>
+        </div>
         <BarraProgresoVentana
           fraccionTiempoTranscurrido={resumen.fraccionTiempoTranscurrido}
           enRiesgo={resumen.vencimientoProximo}
         />
-        <p className={`text-sm font-semibold ${resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-black"}`}>
+        <p className={`mt-2 text-sm font-semibold ${resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-black"}`}>
           Vence el {formatearFechaCalendario(resumen.fechaVencimiento)}{" "}
           <span className={`${resumen.vencimientoProximo ? "text-gob-danger" : "text-gob-gray-a"}`}>
             · {resumen.diasRestantes} {resumen.diasRestantes === 1 ? "día restante" : "días restantes"}
@@ -71,9 +78,9 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
 
       <Link
         href={`${rutaBase}/${resumen.ventanaCargaId}?origen=inicio`}
-        className="text-sm font-semibold text-sky-500 underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro"
+        className="inline-flex w-fit items-center rounded-md bg-[#e8f2fb] px-3 py-2 text-sm font-semibold text-gob-primary transition-colors hover:bg-[#d9ebf9] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
       >
-        Ver detalle
+        Revisar ventana <span aria-hidden="true" className="ml-1">→</span>
       </Link>
     </article>
   );

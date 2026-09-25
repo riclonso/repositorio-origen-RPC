@@ -90,6 +90,9 @@ async function probarAltaSinContrasena() {
         cambiarEstado: async () => {
           throw new Error("No esperado");
         },
+        eliminar: async () => {
+          throw new Error("No esperado");
+        },
         buscarPorNombre: async () => null,
         obtenerPlantilla: async () => null,
         contarNotificadoresAsignadosActivosPorFormato: async () => ({}),

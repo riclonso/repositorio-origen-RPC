@@ -12,7 +12,6 @@ import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastruc
 import { FormularioAlertasVentana } from "@/shared/components/FormularioAlertasVentana";
 import { FormularioPlantillaAlertaVentana } from "@/shared/components/FormularioPlantillaAlertaVentana";
 import { TablaNotificadoresPendientesVentana } from "@/shared/components/TablaNotificadoresPendientesVentana";
-import { ResumenTotalesAlertasVentana } from "@/shared/components/ResumenTotalesAlertasVentana";
 import { TablaLotesAlertaVentana, type LoteAlertaVista } from "@/shared/components/TablaLotesAlertaVentana";
 import { obtenerVistaAlertasVentana } from "@/modules/ventanas-carga/application/use-cases/ObtenerVistaAlertasVentana";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
@@ -23,6 +22,7 @@ import type {
   PaginaLotesAlerta,
 } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
+import { IconoAdvertencia, IconoCalendario, IconoDocumento } from "@/shared/components/iconos";
 
 const TAMANO_PAGINA_ALERTAS = 10;
 
@@ -115,37 +115,29 @@ export async function DetalleVentanaCarga({
 
   return (
     <ViewTransition>
-      <div className="flex flex-col gap-8">
-        <div className="rounded-2xl border border-gob-neutral bg-sky-50 p-8 shadow-lg">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 pb-8">
+        <header className="border-b border-[#cbd9e7] pb-6">
           <Link
             href={rutaVolver}
-            className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 hover:underline transition-colors hover:text-gob-primary-oscuro mb-6"
+            className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 transition-colors hover:text-gob-primary-oscuro hover:underline"
           >
             {textoVolver}
           </Link>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-            <div className="lg:col-span-2 space-y-3">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">
-                Ventana de carga
-              </p>
-              <h1 className="text-4xl font-bold tracking-tight text-gob-black leading-tight">
-                 Carga {ventana.anio}
-              </h1>
-            </div>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-gob-primary">Ventana de carga</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-gob-tertiary md:text-4xl">Carga {ventana.anio}</h1>
+          <p className="mt-2 text-base text-gob-gray-a">Revisa las cargas recibidas y gestiona las alertas de esta ventana.</p>
+        </header>
 
-            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-              <span className="w-fit rounded-full border border-gob-primary bg-blue-100 px-4 py-2 text-xs font-bold text-gob-primary">
-                {ventana.formatoExcelNombre}
-              </span>
-              <span className="w-fit rounded-full border border-gob-gray-a bg-gray-100 px-4 py-2 text-xs font-semibold text-gob-black">
-                Vigencia {formatearFechaCalendario(ventana.fechaApertura)} al{" "}
-                {formatearFechaCalendario(ventana.fechaVencimiento)}
-              </span>
-            </div>
-          </div>
-        </div>
+        <section aria-label="Contexto de la ventana" className="grid gap-3 md:grid-cols-3">
+          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoDocumento /></span><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Formato</p><p className="mt-1 truncate text-sm font-bold text-gob-tertiary">{ventana.formatoExcelNombre}</p></div></div>
+          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoCalendario /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Vigencia</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{formatearFechaCalendario(ventana.fechaApertura)} — {formatearFechaCalendario(ventana.fechaVencimiento)}</p></div></div>
+          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#eaf5ef] text-gob-success"><IconoAdvertencia /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Alertas por email</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{ventana.diasAnticipacionInicio === null ? "Sin programación" : "Programadas"}</p></div></div>
+        </section>
 
+        <section aria-labelledby="titulo-cargas" className="overflow-hidden rounded-xl border border-[#d8e4f0] bg-white shadow-[0_8px_22px_rgba(23,59,105,0.05)]">
+          <div className="border-b border-[#e6edf5] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-gob-primary">Revisión de archivos</p><h2 id="titulo-cargas" className="mt-1 text-xl font-bold text-gob-tertiary">Cargas de la ventana</h2></div>
+          <div className="p-3 md:p-5">
         <PestanasNotificacionesVentana
           notificacionesArchivo={
             <ListadoCargasVentana
@@ -167,16 +159,19 @@ export async function DetalleVentanaCarga({
           }
           totalNotificadoresPendientes={pendientesVista.length}
         />
+          </div>
+        </section>
 
         <section
           aria-labelledby="titulo-alertas-ventana"
-          className="flex flex-col gap-6 border-t-2 border-gob-primary pt-8"
+          className="flex flex-col gap-6 rounded-xl border border-[#d8e4f0] bg-white p-5 shadow-[0_8px_22px_rgba(23,59,105,0.05)]"
         >
-          <div className="space-y-2">
+          <div className="border-b border-[#dbe8f3] bg-[#eff7fc] -mx-5 -mt-5 px-5 py-4">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Notificaciones</p>
             <h2 id="titulo-alertas-ventana" className="text-2xl font-bold text-gob-black">
               Alertas por email
             </h2>
+            <p className="mt-1 text-sm text-gob-gray-a">Configura recordatorios y consulta el historial de envíos.</p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">

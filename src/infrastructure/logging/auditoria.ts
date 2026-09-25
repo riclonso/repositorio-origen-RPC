@@ -21,11 +21,16 @@ export type AccionAuditoria =
   // Desbloqueo manual de una cuenta con bloqueo vigente por intentos fallidos de login, desde el
   // mantenedor de usuarios (`POST /api/usuarios/[id]/desbloqueo`).
   | "CUENTA_DESBLOQUEADA"
+  // Un administrador entra temporalmente como otro usuario y luego vuelve a su propia sesión.
+  // Ambos eventos se registran para que la trazabilidad no dependa de la cookie HTTP-only.
+  | "SESION_DELEGADA_INICIADA"
+  | "SESION_DELEGADA_RESTAURADA"
   | "RECUPERACION_SOLICITADA"
   | "RECUPERACION_COMPLETADA"
   | "FORMATO_EXCEL_CREADO"
   | "FORMATO_EXCEL_ACTUALIZADO"
   | "FORMATO_EXCEL_ESTADO_CAMBIADO"
+  | "FORMATO_EXCEL_ELIMINADO"
   | "CARGA_ARCHIVO_REGISTRADA"
   // Se conserva SOLO para poder leer el histórico anterior a la corrección que elimina la
   // autoaprobación del notificador (era el notificador dueño de la carga aprobándose a sí mismo).
@@ -174,7 +179,11 @@ export type MotivoAuditoria =
   // por anti-enumeración, ver `cambiarContrasenaPropia`).
   | "CONTRASENA_ACTUAL_INCORRECTA"
   // De `CONTRASENA_PROPIA_ACTUALIZADA` (rechazo): la nueva contraseña coincide con la actual.
-  | "CONTRASENA_IGUAL_A_ACTUAL";
+  | "CONTRASENA_IGUAL_A_ACTUAL"
+  // Se intentó abrir una segunda sesión delegada antes de volver a la sesión administrativa
+  // original. No se permite anidar delegaciones.
+  | "SESION_DELEGADA_ACTIVA"
+  | "FORMATO_CON_VENTANAS";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
