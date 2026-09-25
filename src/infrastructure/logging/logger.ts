@@ -1,5 +1,7 @@
 import path from "node:path";
 import { createLogger, format, transports, type Logger } from "winston";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/infrastructure/database/prisma";
 
 // Instancias independientes con su propio transporte: así un evento de auditoría es
 // físicamente incapaz de terminar escrito en errores.txt, y viceversa.
@@ -14,7 +16,18 @@ function crearLoggerArchivo(nombreArchivo: string, nivel: string): Logger {
   });
 }
 
-export const logger = crearLoggerArchivo("errores.txt", "error");
+const loggerErroresArchivo = crearLoggerArchivo("errores.txt", "error");
+
+// No se espera esta escritura: registrar un error nunca debe ocultar ni reemplazar el error
+// original. Winston conserva el respaldo local y PostgreSQL alimenta el panel persistente.
+export const logger = {
+  error(mensaje: string, campos?: Record<string, unknown>) {
+    loggerErroresArchivo.error(mensaje, campos);
+    void prisma.registroErrorSistema
+      .create({ data: { mensaje, campos: campos as Prisma.InputJsonValue | undefined } })
+      .catch(() => undefined);
+  },
+};
 
 export const loggerAuditoria = crearLoggerArchivo("auditoria.txt", "info");
 

@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import path from "node:path";
+import { prisma } from "@/infrastructure/database/prisma";
 
 // Lector de los archivos de log del sistema. Node-only (usa `node:fs`): jamás debe importarse
 // desde un Client Component ni desde `src/proxy.ts`. Vive junto a `logger.ts` porque lee lo que
@@ -64,6 +65,41 @@ export type ResultadoLog = {
   tamano: TamanoPagina;
   totalPaginas: number;
 };
+
+export async function leerErroresPersistentes(filtro: FiltroLog): Promise<ResultadoLog> {
+  const where = {
+    createdAt: {
+      ...(filtro.desde ? { gte: new Date(`${filtro.desde}T00:00:00.000Z`) } : {}),
+      ...(filtro.hasta ? { lte: new Date(`${filtro.hasta}T23:59:59.999Z`) } : {}),
+    },
+  };
+  const total = await prisma.registroErrorSistema.count({ where });
+  const totalPaginas = Math.max(1, Math.ceil(total / filtro.tamano));
+  const pagina = Math.min(Math.max(1, Math.trunc(filtro.pagina)), totalPaginas);
+  const registros = await prisma.registroErrorSistema.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    skip: (pagina - 1) * filtro.tamano,
+    take: filtro.tamano,
+  });
+
+  return {
+    entradas: registros.map((registro, indice) => ({
+      indice: (pagina - 1) * filtro.tamano + indice,
+      timestamp: registro.createdAt.toISOString(),
+      nivel: "error",
+      mensaje: registro.mensaje,
+      campos: registro.campos && typeof registro.campos === "object" && !Array.isArray(registro.campos)
+        ? registro.campos as Record<string, unknown>
+        : {},
+      crudo: null,
+    })),
+    total,
+    pagina,
+    tamano: filtro.tamano,
+    totalPaginas,
+  };
+}
 
 // Convierte el instante absoluto de una entrada a su fecha de calendario en Santiago. Comparar
 // esa fecha (string) contra `desde`/`hasta` es correcto con y sin horario de verano.

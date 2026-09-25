@@ -674,3 +674,15 @@ model ErrorCargaArchivo {
 
   @@map("error_carga_archivo")
 }
+
+// Errores técnicos persistentes. A diferencia de los archivos locales de Winston, esta tabla
+// sobrevive reinicios y cambios de instancia en producción.
+model RegistroErrorSistema {
+  id        String   @id @default(uuid())
+  mensaje   String
+  campos    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("registro_error_sistema")
+}
