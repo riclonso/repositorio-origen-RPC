@@ -59,17 +59,29 @@ function ControlEstadoCuenta({
   onCambiarEstado,
 }: ControlEstadoCuentaProps) {
   if (esPropia) {
-    return <span className="text-sm text-gob-gray-a">Tu cuenta</span>;
+    // Conserva el ancho de la columna de estado: sin el espacio del interruptor, los botones
+    // de editar y contraseña de la fila propia se desplazan respecto de las demás filas.
+    return (
+      <span className="flex w-28 items-center gap-2">
+        <span aria-hidden="true" className="h-5 w-9 shrink-0" />
+        <span className="text-sm text-gob-gray-a">Tu cuenta</span>
+      </span>
+    );
   }
 
   const etiquetaEstado = fila.activo ? "Activo" : "Inactivo";
 
   if (!puedeGestionarCuenta) {
-    return <span className="w-16 text-sm text-gob-gray-a">{etiquetaEstado}</span>;
+    return (
+      <span className="flex w-28 items-center gap-2">
+        <span aria-hidden="true" className="h-5 w-9 shrink-0" />
+        <span className="w-16 text-sm text-gob-gray-a">{etiquetaEstado}</span>
+      </span>
+    );
   }
 
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex w-28 items-center gap-2">
       <Interruptor
         activado={fila.activo}
         etiqueta={`Cuenta de ${persona} activa`}
