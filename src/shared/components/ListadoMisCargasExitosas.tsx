@@ -39,7 +39,7 @@ export async function ListadoMisCargasExitosas({
 
   return (
     <>
-      <TablaMisCargasExitosas grupos={grupos} rutaBase="/notificador/cargas" />
+      <TablaMisCargasExitosas grupos={grupos} />
       <Paginacion
         pagina={resultado.paginacion.pagina}
         tamano={resultado.paginacion.tamano}

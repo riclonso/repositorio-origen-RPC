@@ -80,6 +80,10 @@ export interface CargaArchivoRepository {
   finalizar(id: string, usuarioId: string): Promise<CargaArchivo | null>;
   // Única operación que trae el binario. Solo devuelve datos si `estado = APROBADA`.
   obtenerParaDescarga(id: string): Promise<CargaArchivoParaDescarga | null>;
+  // Descarga para el propio notificador desde "Mis cargas": a diferencia de `obtenerParaDescarga`,
+  // sin restricción de `estado` (aprobada, pendiente de decisión o rechazada, todas descargables por
+  // su dueño), pero con `usuarioId` en el mismo `WHERE` — ownership, nunca filtrado después en JS.
+  obtenerPropiaParaDescarga(id: string, usuarioId: string): Promise<CargaArchivoParaDescarga | null>;
   // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS tienen al menos una carga APROBADA
   // en cada ventana ("ya reportaron"). `CargaArchivo` no tiene restricción de unicidad sobre
   // `(usuarioId, ventanaCargaId)` — un notificador puede tener varias cargas APROBADA en la misma

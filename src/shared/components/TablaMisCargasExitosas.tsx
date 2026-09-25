@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import type { FilaCargaExitosaVista, GrupoCargaExitosaVista } from "@/shared/components/mis-cargas-exitosas";
 
@@ -113,9 +112,13 @@ function HistorialReemplazadas({ reemplazadas }: { reemplazadas: FilaCargaExitos
                       </span>{" "}
                       {carga.motivo}
                     </p>
-                  ) : (
-                    "—"
-                  )}
+                  ) : null}
+                  <a
+                    href={`/api/notificador/cargas/${carga.id}/archivo`}
+                    className="mt-1 inline-block text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                  >
+                    Ver archivo
+                  </a>
                 </td>
               </tr>
             ))}
@@ -126,13 +129,7 @@ function HistorialReemplazadas({ reemplazadas }: { reemplazadas: FilaCargaExitos
   );
 }
 
-function FilaGrupoCargaExitosa({
-  grupo,
-  rutaBase,
-}: {
-  grupo: GrupoCargaExitosaVista;
-  rutaBase: string;
-}) {
+function FilaGrupoCargaExitosa({ grupo }: { grupo: GrupoCargaExitosaVista }) {
   return (
     <tr className="align-top transition-colors hover:bg-gob-neutral/50">
       <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
@@ -148,12 +145,12 @@ function FilaGrupoCargaExitosa({
       <td className="px-3 py-2 tabular-nums text-gob-gray-a">{grupo.anio}</td>
       <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">{grupo.vigente.vistoBuenoEl}</td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
-        <Link
-          href={`${rutaBase}/${grupo.vigente.id}`}
+        <a
+          href={`/api/notificador/cargas/${grupo.vigente.id}/archivo`}
           className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
         >
-          Ver detalle
-        </Link>
+          Ver archivo
+        </a>
       </td>
     </tr>
   );
@@ -165,10 +162,9 @@ function FilaGrupoCargaExitosa({
 // reemplazadas para esa misma combinación, quedan como historial anidado dentro de la misma fila.
 type TablaMisCargasExitosasProps = {
   grupos: GrupoCargaExitosaVista[];
-  rutaBase: string;
 };
 
-export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExitosasProps) {
+export function TablaMisCargasExitosas({ grupos }: TablaMisCargasExitosasProps) {
   const [filtroFormato, setFiltroFormato] = useState("");
   const [filtroAnio, setFiltroAnio] = useState("");
 
@@ -226,7 +222,7 @@ export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExito
             </thead>
             <tbody className="divide-y divide-gob-accent/60">
               {gruposFiltrados.map((grupo) => (
-                <FilaGrupoCargaExitosa key={grupo.ventanaCargaId} grupo={grupo} rutaBase={rutaBase} />
+                <FilaGrupoCargaExitosa key={grupo.ventanaCargaId} grupo={grupo} />
               ))}
             </tbody>
           </table>

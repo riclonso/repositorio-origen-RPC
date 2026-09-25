@@ -644,6 +644,21 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     };
   },
 
+  async obtenerPropiaParaDescarga(id, usuarioId) {
+    const registro = await prisma.cargaArchivo.findFirst({
+      where: { id, usuarioId },
+      select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
+    });
+
+    if (!registro) return null;
+
+    return {
+      nombreArchivoOriginal: registro.nombreArchivoOriginal,
+      tipoContenidoArchivo: registro.tipoContenidoArchivo,
+      contenidoArchivo: Buffer.from(registro.contenidoArchivo),
+    };
+  },
+
   async rechazar(id, datos: DatosRechazoCargaArchivo) {
     // Transacción interactiva, mismo criterio que `darVistoBueno`: la transición de estado, el
     // registro del rechazo y la desactivación de la publicación corren atómicas.
