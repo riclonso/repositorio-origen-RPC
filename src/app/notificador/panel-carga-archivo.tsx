@@ -12,6 +12,7 @@ import type {
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
+import { BannerReaperturaCarga, type ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
@@ -396,7 +397,7 @@ function TarjetaCargaArchivo({
           <>
             Ya enviaste <strong>{cargaPendienteDecision.nombreArchivoOriginal}</strong> para esta combinación y está
             pendiente de que un administrador o el revisor del repositorio la apruebe o la rechace. Si detectaste un
-            error y necesitas corregirlo antes de esa decisión, solicita su reemplazo.
+            error y necesitas corregirlo, solicita su reemplazo.
           </>
         }
         cargaArchivoId={cargaPendienteDecision.id}
@@ -530,9 +531,15 @@ type PanelCargaArchivoProps = {
   // desde un efecto.
   cargasIniciales: CargaResumenVista[];
   solicitudesIniciales: SolicitudReemplazoPropiaVista[];
+  reaperturasIniciales: ReaperturaVigentePropiaVista[];
 };
 
-export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesIniciales }: PanelCargaArchivoProps) {
+export function PanelCargaArchivo({
+  combinaciones,
+  cargasIniciales,
+  solicitudesIniciales,
+  reaperturasIniciales,
+}: PanelCargaArchivoProps) {
   // Resultado de la última subida por combinación, indexado por clave: cada tarjeta solo ve el
   // suyo. Vive aquí (no dentro de cada tarjeta) porque `confirmarVistoBueno` necesita poder
   // actualizar el estado de la combinación correspondiente tras dar visto bueno.
@@ -543,6 +550,10 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
   // `CON_ERRORES`) y la carga aprobada vigente de cada combinación.
   const [misCargas, setMisCargas] = useState<CargaResumenVista[]>(cargasIniciales);
   const [misSolicitudes, setMisSolicitudes] = useState<SolicitudReemplazoPropiaVista[]>(solicitudesIniciales);
+  // Estado local (no se vuelve a pedir al servidor): se quita apenas `confirmarFinalizacion()`
+  // recibe una respuesta exitosa para la combinación correspondiente, sin esperar a que la página
+  // se recargue (ver comentario de `ReaperturaVigentePropiaVista` en `BannerReaperturaCarga.tsx`).
+  const [reaperturas, setReaperturas] = useState<ReaperturaVigentePropiaVista[]>(reaperturasIniciales);
 
   const [objetivoFinalizar, setObjetivoFinalizar] = useState<CargaResumenVista | null>(null);
   const [procesandoFinalizar, setProcesandoFinalizar] = useState(false);
@@ -588,6 +599,14 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
 
       const datos = (await respuesta.json()) as { carga: CargaDetalleVista };
 
+      // El servidor consume cualquier reapertura pendiente de esta combinación (usuario, ventana)
+      // al finalizar con éxito (ver `CargaArchivoRepository.finalizar()`); se refleja aquí de
+      // inmediato para que `BannerReaperturaCarga` deje de mostrarse sin esperar a recargar la
+      // página.
+      setReaperturas((actual) =>
+        actual.filter((reapertura) => reapertura.ventanaCargaId !== objetivoFinalizar.ventanaCargaId),
+      );
+
       // La tarjeta de esta combinación desaparece por completo en cuanto `misCargas` refleje
       // `finalizadaEn` no nulo (ver `cargaPendienteFinalizada`); no hace falta actualizar
       // `resultados` de forma optimista.
@@ -613,6 +632,8 @@ export function PanelCargaArchivo({ combinaciones, cargasIniciales, solicitudesI
 
   return (
     <div className="flex flex-col gap-6">
+      <BannerReaperturaCarga reaperturas={reaperturas} />
+
       {combinaciones.length === 0 ? (
         <section
           aria-labelledby="titulo-reporte"

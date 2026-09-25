@@ -1,8 +1,21 @@
 import { formatearFechaHora } from "@/shared/utils/fecha";
-import type { ReaperturaVigenteVista } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
+
+// Vista liviana de `ReaperturaVigenteVista` (`application/use-cases/ListarReaperturasVigentesPropias`)
+// con `fechaLimite` ya como texto ISO: mismo criterio que `CargaResumenVista` en
+// `panel-carga-archivo.tsx` para cruzar el límite servidor → cliente, porque este banner ahora vive
+// como estado de `PanelCargaArchivo` (Client Component) en vez de renderizarse directo desde el
+// Server Component de la página, para poder quitarlo apenas el servidor confirma un "Finalizar y
+// enviar" exitoso, sin esperar a que la página se vuelva a cargar.
+export type ReaperturaVigentePropiaVista = {
+  ventanaCargaId: string;
+  formatoExcelNombre: string;
+  anio: number;
+  motivo: string;
+  fechaLimite: string;
+};
 
 type BannerReaperturaCargaProps = {
-  reaperturas: ReaperturaVigenteVista[];
+  reaperturas: ReaperturaVigentePropiaVista[];
 };
 
 // Alerta visual en `/notificador` (home): visible SOLO para el notificador afectado, cuando tiene
@@ -13,7 +26,7 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
   if (reaperturas.length === 0) return null;
 
   return (
-    <div className="mt-6 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {reaperturas.map((reapertura) => (
         <div
           key={reapertura.ventanaCargaId}
@@ -26,7 +39,7 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
           <p className="mt-1 text-sm text-gob-gray-a">Motivo: {reapertura.motivo}</p>
           <p className="mt-1 text-sm text-gob-gray-a">
             Puedes volver a subir un archivo para esta combinación hasta el{" "}
-            <strong>{formatearFechaHora(reapertura.fechaLimite)}</strong>.
+            <strong>{formatearFechaHora(new Date(reapertura.fechaLimite))}</strong>.
           </p>
         </div>
       ))}

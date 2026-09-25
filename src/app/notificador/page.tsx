@@ -11,7 +11,7 @@ import { listarSolicitudesReemplazoPropias } from "@/modules/solicitudes-reempla
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
-import { BannerReaperturaCarga } from "@/shared/components/BannerReaperturaCarga";
+import type { ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import {
   PanelCargaArchivo,
   type CargaResumenVista,
@@ -83,6 +83,11 @@ export default async function NotificadorPage() {
     vencida: solicitudVencida(solicitud, ahora),
   }));
 
+  const reaperturasIniciales: ReaperturaVigentePropiaVista[] = reaperturasVigentes.map((reapertura) => ({
+    ...reapertura,
+    fechaLimite: reapertura.fechaLimite.toISOString(),
+  }));
+
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
       <section className="flex flex-col justify-between gap-6 border-b border-gob-neutral pb-8 sm:flex-row sm:items-end">
@@ -97,12 +102,11 @@ export default async function NotificadorPage() {
         </div>
       </section>
 
-      <BannerReaperturaCarga reaperturas={reaperturasVigentes} />
-
       <PanelCargaArchivo
         combinaciones={combinaciones}
         cargasIniciales={cargasIniciales}
         solicitudesIniciales={solicitudesIniciales}
+        reaperturasIniciales={reaperturasIniciales}
       />
     </div>
   );
