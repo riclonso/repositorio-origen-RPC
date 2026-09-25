@@ -661,7 +661,17 @@ export function TablaVentanasCarga({
             etiqueta="Año"
             type="number"
             value={formulario.anio}
-            onChange={(evento) => setFormulario((actual) => ({ ...actual, anio: evento.target.value }))}
+            min={2021}
+            step={1}
+            onChange={(evento) => {
+              const valor = evento.target.value;
+
+              // Además del atributo `min` (que informa el rango al navegador), se descarta el
+              // valor al escribir para que un año negativo no llegue a mostrarse ni enviarse.
+              if (valor === "" || Number(valor) >= 2021) {
+                setFormulario((actual) => ({ ...actual, anio: valor }));
+              }
+            }}
             disabled={creando}
             error={erroresCreacion.anio}
           />
