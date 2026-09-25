@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import {
   ArrowsClockwise,
   Buildings,
   CalendarBlank,
+  CaretDown,
   CheckCircle,
   FileText,
+  Gear,
   House,
   Table,
   Tag,
@@ -16,11 +19,12 @@ import {
 } from "@phosphor-icons/react";
 
 export type EnlacePanel = {
-  href: string;
+  href?: string;
   etiqueta: string;
   // Chip numérico opcional (p.ej. cantidad de solicitudes pendientes). Solo se dibuja si es un
   // número mayor que 0: un contador en 0 no aporta información y ensuciaría el menú.
   contador?: number;
+  subenlaces?: readonly EnlacePanel[];
 };
 
 type NavegacionPanelProps = {
@@ -36,6 +40,15 @@ function calcularHrefActivo(rutaActual: string, enlaces: readonly EnlacePanel[])
   let hrefActivo: string | null = null;
 
   for (const enlace of enlaces) {
+    if (enlace.subenlaces) {
+      const hrefSubenlaceActivo = calcularHrefActivo(rutaActual, enlace.subenlaces);
+
+      if (hrefSubenlaceActivo && (hrefActivo === null || hrefSubenlaceActivo.length > hrefActivo.length)) {
+        hrefActivo = hrefSubenlaceActivo;
+      }
+    }
+
+    if (!enlace.href) continue;
     const coincide =
       rutaActual === enlace.href || rutaActual.startsWith(`${enlace.href}/`);
 
@@ -59,6 +72,7 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
   // es siempre su índice ("Panel"/"Inicio", ver `nav-enlaces.ts` de cada área).
   const vieneDeInicio = searchParams.get("origen") === "inicio";
   const hrefActivo = vieneDeInicio ? (enlaces[0]?.href ?? null) : calcularHrefActivo(rutaActual, enlaces);
+  const [gruposAbiertos, setGruposAbiertos] = useState<Record<string, boolean>>({});
   const iconos = {
     Inicio: House,
     Panel: House,
@@ -72,6 +86,7 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
     Establecimientos: Buildings,
     "Tipos de establecimiento": Tag,
     Logs: FileText,
+    Administración: Gear,
   } as const;
 
   return (
@@ -85,13 +100,60 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
         {titulo}
       </p>
       {enlaces.map((enlace) => {
-        const activo = enlace.href === hrefActivo;
+        const esGrupo = (enlace.subenlaces?.length ?? 0) > 0;
+        const grupoActivo = esGrupo && enlace.subenlaces!.some((subenlace) => subenlace.href === hrefActivo);
+        const activo = enlace.href === hrefActivo || grupoActivo;
         const Icono = iconos[enlace.etiqueta as keyof typeof iconos];
+
+        if (esGrupo) {
+          const abierto = gruposAbiertos[enlace.etiqueta] ?? grupoActivo;
+
+          return (
+            <div key={enlace.etiqueta} className="flex min-w-max flex-col gap-1 md:min-w-0">
+              <button
+                type="button"
+                aria-expanded={abierto}
+                onClick={() => setGruposAbiertos((actual) => ({ ...actual, [enlace.etiqueta]: !abierto }))}
+                className={`inline-flex items-center rounded-lg border-b-3 px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:border-b-0 ${
+                  activo
+                    ? "border-transparent bg-white/15 font-semibold text-white"
+                    : "border-transparent font-medium text-[#c6d5e4] hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {Icono ? <Icono size={19} weight={activo ? "fill" : "regular"} aria-hidden="true" className="mr-2 shrink-0" /> : null}
+                {enlace.etiqueta}
+                <CaretDown size={16} aria-hidden="true" className={`ml-auto transition-transform ${abierto ? "rotate-180" : ""}`} />
+              </button>
+              {abierto ? (
+                <div className="flex flex-row gap-1 pl-2 md:flex-col md:border-l md:border-white/15 md:pl-3">
+                  {enlace.subenlaces!.map((subenlace) => {
+                    const subActivo = subenlace.href === hrefActivo;
+                    const SubIcono = iconos[subenlace.etiqueta as keyof typeof iconos];
+
+                    return (
+                      <Link
+                        key={subenlace.href}
+                        href={subenlace.href!}
+                        aria-current={subActivo ? "page" : undefined}
+                        className={`inline-flex whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                          subActivo ? "bg-white/15 font-semibold text-white" : "font-medium text-[#c6d5e4] hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        {SubIcono ? <SubIcono size={17} weight={subActivo ? "fill" : "regular"} aria-hidden="true" className="mr-2 shrink-0" /> : null}
+                        {subenlace.etiqueta}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        }
 
         return (
           <Link
-            key={enlace.href}
-            href={enlace.href}
+            key={enlace.href!}
+            href={enlace.href!}
             aria-current={activo ? "page" : undefined}
             /* El estado activo se marca con peso tipográfico y una barra lateral, no solo con
                color de fondo: el color no puede ser el único portador de la información. */

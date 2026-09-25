@@ -6,7 +6,12 @@ export const ENLACES_ADMIN: readonly EnlacePanel[] = [
   { href: "/dashboard/formatos-excel", etiqueta: "Formatos de archivo" },
   { href: "/dashboard/ventanas-carga", etiqueta: "Ventanas de carga" },
   { href: "/dashboard/solicitudes", etiqueta: "Solicitudes" },
-  { href: "/dashboard/establecimientos", etiqueta: "Establecimientos" },
-  { href: "/dashboard/tipos-establecimiento", etiqueta: "Tipos de establecimiento" },
-  { href: "/dashboard/logs", etiqueta: "Logs" },
+  {
+    etiqueta: "Administración",
+    subenlaces: [
+      { href: "/dashboard/establecimientos", etiqueta: "Establecimientos" },
+      { href: "/dashboard/tipos-establecimiento", etiqueta: "Tipos de establecimiento" },
+      { href: "/dashboard/logs", etiqueta: "Logs" },
+    ],
+  },
 ];
