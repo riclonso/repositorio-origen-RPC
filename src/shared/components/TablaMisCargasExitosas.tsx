@@ -99,9 +99,7 @@ function HistorialReemplazadas({
             <tr>
               <th scope="col" className="px-3 py-2 font-semibold">Archivo</th>
               <th scope="col" className="px-3 py-2 font-semibold">Reemplazada el</th>
-              <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">
-                Detalle
-              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">Detalle</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gob-accent/60">
@@ -113,13 +111,18 @@ function HistorialReemplazadas({
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
                   {carga.vistoBuenoEl}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  <Link
-                    href={`${rutaBase}/${carga.id}`}
-                    className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
-                  >
-                    Ver detalle
-                  </Link>
+                <td className="min-w-56 px-3 py-2 text-gob-gray-a">
+                  {carga.motivo ? (
+                    <p>
+                      <span className="font-medium text-gob-black">
+                        {carga.motivoTipo === "RECHAZO" ? "Rechazada" : "Reemplazada"}:
+                      </span>{" "}
+                      {carga.motivo}
+                    </p>
+                  ) : (
+                    "—"
+                  )}
+                 
                 </td>
               </tr>
             ))}
@@ -141,9 +144,9 @@ function FilaGrupoCargaExitosa({
     <tr className="align-top transition-colors hover:bg-gob-neutral/50">
       <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
         {grupo.vigente.nombreArchivoOriginal}
-        {grupo.vigente.rechazo ? (
+        {grupo.vigente.motivoTipo === "RECHAZO" ? (
           <span className="mt-1 block rounded-md border border-gob-danger bg-white px-2 py-1 text-xs font-medium text-gob-danger">
-            Rechazada: {grupo.vigente.rechazo.motivo}
+            Rechazada: {grupo.vigente.motivo}
           </span>
         ) : null}
         <HistorialReemplazadas reemplazadas={grupo.reemplazadas} rutaBase={rutaBase} />
@@ -222,7 +225,7 @@ export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExito
                 <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Formato</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Año</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Visto bueno el</th>
+                <th scope="col" className="px-3 py-3 font-semibold">Aprobada el</th>
                 <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                   Detalle
                 </th>

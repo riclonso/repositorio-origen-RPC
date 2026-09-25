@@ -5,6 +5,7 @@ import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type {
   CargaArchivo,
+  CargaArchivoResumenPropia,
   DatosNuevaCargaArchivo,
   DatosPublicacionCarga,
   DatosRechazoCargaArchivo,
@@ -182,6 +183,33 @@ function aCargaArchivoResumen(registro: RegistroResumen) {
     finalizadaEn: registro.finalizadaEn,
     createdAt: registro.createdAt,
     rechazo: aInfoRechazo(registro.rechazo),
+  };
+}
+
+// Extensión de `SELECCION_RESUMEN` exclusiva de `listarPropiasAprobadas` ("Mis cargas"): agrega la
+// publicación (si esta carga llegó a `APROBADA`) para poder resolver el motivo de reemplazo. No se
+// agrega al `SELECCION_RESUMEN` compartido para no sumar ese join a los demás listados
+// (`listarAprobadas`, `listarPendientesODecididas`, `listarRechazadas`) que no lo necesitan.
+const SELECCION_RESUMEN_PROPIA = {
+  ...SELECCION_RESUMEN,
+  publicacion: { select: { motivoDesactivacion: true, motivoDesactivacionTipo: true } },
+} as const;
+
+type RegistroResumenPropia = RegistroResumen & {
+  publicacion: { motivoDesactivacion: string | null; motivoDesactivacionTipo: "REEMPLAZO" | "RECHAZO" | null } | null;
+};
+
+// Combina las dos fuentes posibles del motivo (ver comentario de `CargaArchivoResumenPropia` en el
+// dominio): `rechazo.motivo` cuando `estado = RECHAZADA` (siempre presente ahí, exista o no
+// publicación), o `publicacion.motivoDesactivacion` cuando la carga sí llegó a `APROBADA` y luego
+// fue reemplazada o rechazada. Nunca conviven ambas fuentes con valores distintos: un rechazo
+// desde `APROBADA` escribe el mismo motivo en las dos tablas en la misma transacción (ver
+// `rechazar()` más abajo).
+function aCargaArchivoResumenPropia(registro: RegistroResumenPropia): CargaArchivoResumenPropia {
+  return {
+    ...aCargaArchivoResumen(registro),
+    motivoDesactivacion: registro.rechazo?.motivo ?? registro.publicacion?.motivoDesactivacion ?? null,
+    motivoDesactivacionTipo: registro.rechazo ? "RECHAZO" : (registro.publicacion?.motivoDesactivacionTipo ?? null),
   };
 }
 
@@ -408,20 +436,25 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
 
   async listarPropiasAprobadas(usuarioId) {
     // Ownership (`usuarioId`) y `estado IN (APROBADA, RECHAZADA)` siempre en el mismo `WHERE`,
-    // nunca filtrado en JS después. Incluye `RECHAZADA`: una carga rechazada YA fue `APROBADA`
-    // antes (conserva su `vistoBuenoEn`), así que sigue siendo parte del histórico de "Mis cargas"
-    // de esa combinación (formato, ventana), ahora con el motivo del rechazo visible. Tope
-    // defensivo (no paginado): evita traer un histórico sin límite si un notificador acumula miles
-    // de correcciones sucesivas; la agrupación/paginación de GRUPOS vive en
-    // `application/ListarCargasPropiasExitosas.ts`.
+    // nunca filtrado en JS después. Incluye `RECHAZADA`: una carga rechazada, aprobada antes o no
+    // (RF-22 rechaza también una `PENDIENTE_VISTO_BUENO` que nunca llegó a publicarse), sigue
+    // siendo parte del histórico de "Mis cargas" de esa combinación (formato, ventana), con el
+    // motivo visible. Tope defensivo (no paginado): evita traer un histórico sin límite si un
+    // notificador acumula miles de correcciones sucesivas; la agrupación/paginación de GRUPOS vive
+    // en `application/ListarCargasPropiasExitosas.ts`.
+    //
+    // `NULLS LAST` explícito: una `RECHAZADA` de origen `PENDIENTE_VISTO_BUENO` (RF-22) nunca tuvo
+    // `vistoBuenoEn`; sin este orden, Postgres coloca los `NULL` primero en `DESC` por defecto, y
+    // esa fila se colaría como "vigente" de su grupo en `agruparCargasAprobadasPorVentana` en vez
+    // de la carga que sí llegó a aprobarse.
     const registros = await prisma.cargaArchivo.findMany({
       where: { usuarioId, estado: { in: ["APROBADA", "RECHAZADA"] } },
-      select: SELECCION_RESUMEN,
-      orderBy: { vistoBuenoEn: "desc" },
+      select: SELECCION_RESUMEN_PROPIA,
+      orderBy: { vistoBuenoEn: { sort: "desc", nulls: "last" } },
       take: 500,
     });
 
-    return registros.map(aCargaArchivoResumen);
+    return registros.map(aCargaArchivoResumenPropia);
   },
 
   async listarAprobadas(filtro) {
