@@ -12,6 +12,7 @@ import {
   EyeSlash,
   FileText,
   Gear,
+  Hourglass,
   Key,
   LinkSimple,
   ListBullets,
@@ -76,6 +77,12 @@ export const IconoAdvertencia = crearIcono(WarningCircle, TAMANO_CAMPO);
 export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);
 export const IconoAprobado = crearIcono(SealCheck, TAMANO_ACCION);
 export const IconoDocumento = crearIcono(FileText, TAMANO_ACCION);
+
+// Estado de una tarjeta bloqueada del panel notificador (`TarjetaCargaBloqueada`): reloj de arena
+// mientras la carga original está pendiente de decisión, check cuando ya fue aprobada. El icono,
+// no solo el color de fondo, marca la diferencia entre ambos estados.
+export const IconoRelojArena = crearIcono(Hourglass, TAMANO_CAMPO);
+export const IconoSolicitudAprobada = crearIcono(CheckCircle, TAMANO_CAMPO);
 
 // RF-17: barra del editor de texto enriquecido de la plantilla de alerta
 // (`EditorTextoEnriquecidoLimitado`).

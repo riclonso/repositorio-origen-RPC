@@ -17,7 +17,7 @@ import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
-import { IconoAprobado, IconoSubir } from "@/shared/components/iconos";
+import { IconoAprobado, IconoRelojArena, IconoSolicitudAprobada, IconoSubir } from "@/shared/components/iconos";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
 // Vista liviana de las cargas propias del notificador: mismos campos que `CargaArchivoResumenDTO`,
@@ -264,12 +264,17 @@ type TarjetaCargaBloqueadaProps = {
   cargaArchivoId: string;
   placeholderMotivo: string;
   solicitudPendiente: boolean;
+  // "pendiente": la carga original recién finalizada todavía espera decisión (reloj de arena).
+  // "aprobada": la carga original ya fue aprobada y esta tarjeta solo ofrece solicitar su
+  // reemplazo (check). El icono, no solo el color, distingue ambos estados.
+  variante: "pendiente" | "aprobada";
   onSolicitudReemplazoEnviada: () => void;
 };
 
 // Cuerpo compartido de los dos estados "bloqueados" de la tarjeta (carga `APROBADA` sin reemplazo
 // vigente, y carga `PENDIENTE_VISTO_BUENO` ya finalizada y sin decidir): mismo layout, mismo
-// formulario de solicitud, solo cambia el mensaje explicativo y a qué carga apunta la solicitud.
+// formulario de solicitud, solo cambia el mensaje explicativo, el icono y a qué carga apunta la
+// solicitud.
 function TarjetaCargaBloqueada({
   idTitulo,
   tituloCombinacion,
@@ -277,19 +282,30 @@ function TarjetaCargaBloqueada({
   cargaArchivoId,
   placeholderMotivo,
   solicitudPendiente,
+  variante,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaBloqueadaProps) {
+  const Icono = variante === "aprobada" ? IconoSolicitudAprobada : IconoRelojArena;
+
   return (
-    <section aria-labelledby={idTitulo} className="rounded-lg border border-gob-accent bg-white p-6">
-      <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
+    <section
+      aria-labelledby={idTitulo}
+      className="relative rounded-lg border border-green-200 bg-green-50 p-6"
+    >
+      <Icono className="absolute right-4 top-4 text-gob-success" />
+
+      <h3 id={idTitulo} className="pr-8 text-base font-semibold text-gob-tertiary">
         {tituloCombinacion}
       </h3>
 
       <p className="mt-2 text-sm text-gob-gray-a">{mensaje}</p>
 
       {solicitudPendiente ? (
-        <p role="status" className="mt-4 text-sm font-medium text-gob-tertiary">
-          Ya enviaste una solicitud de reemplazo para esta carga. Está pendiente de revisión.
+        <p
+          role="status"
+          className="mt-4 inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-blue-500"
+        >
+          Se envió una solicitud para reemplazar el archivo enviado. Está pendiente de revisión.
         </p>
       ) : (
         <FormularioSolicitarReemplazo
@@ -403,6 +419,7 @@ function TarjetaCargaArchivo({
         cargaArchivoId={cargaPendienteDecision.id}
         placeholderMotivo="Explica por qué necesitas reemplazar esta carga antes de que se decida"
         solicitudPendiente={solicitudPendienteDeCargaPendiente}
+        variante="pendiente"
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );
@@ -425,6 +442,7 @@ function TarjetaCargaArchivo({
         cargaArchivoId={cargaAprobada.id}
         placeholderMotivo="Explica por qué necesitas reemplazar esta carga ya aprobada"
         solicitudPendiente={solicitudPendiente}
+        variante="aprobada"
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );

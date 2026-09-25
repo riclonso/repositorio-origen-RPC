@@ -22,17 +22,21 @@ const ETIQUETAS_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
   RECHAZADA: "Rechazada",
 };
 
+// Fondo de color + texto blanco (no solo borde/texto): mismo criterio que
+// `shared/utils/estadoCargaArchivo.ts` para las cargas. Sin un token `gob-*` naranja en la paleta,
+// "Pendiente" usa el naranjo genérico de Tailwind, igual que el chip de "Solicitudes" del menú
+// lateral de ADMIN/REVISOR_REPOSITORIO (`NavegacionPanel.tsx`).
 const CLASES_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
-  PENDIENTE: "border-gob-tertiary text-gob-tertiary",
-  APROBADA: "border-gob-primary text-gob-primary",
-  RECHAZADA: "border-gob-danger text-gob-danger",
+  PENDIENTE: "bg-orange-500 text-white border-orange-500",
+  APROBADA: "bg-gob-success text-white border-gob-success",
+  RECHAZADA: "bg-gob-danger text-white border-gob-danger",
 };
 
 function BadgeEstado({ fila }: { fila: FilaMiSolicitudReemplazoVista }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       <span
-        className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[fila.estado]}`}
+        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[fila.estado]}`}
       >
         {ETIQUETAS_ESTADO[fila.estado]}
       </span>
