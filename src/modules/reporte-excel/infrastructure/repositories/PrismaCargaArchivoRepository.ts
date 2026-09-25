@@ -192,24 +192,29 @@ function aCargaArchivoResumen(registro: RegistroResumen) {
 // (`listarAprobadas`, `listarPendientesODecididas`, `listarRechazadas`) que no lo necesitan.
 const SELECCION_RESUMEN_PROPIA = {
   ...SELECCION_RESUMEN,
-  publicacion: { select: { motivoDesactivacion: true, motivoDesactivacionTipo: true } },
+  publicacion: { select: { motivoDesactivacion: true, motivoDesactivacionTipo: true, desactivadaEn: true } },
 } as const;
 
 type RegistroResumenPropia = RegistroResumen & {
-  publicacion: { motivoDesactivacion: string | null; motivoDesactivacionTipo: "REEMPLAZO" | "RECHAZO" | null } | null;
+  publicacion: {
+    motivoDesactivacion: string | null;
+    motivoDesactivacionTipo: "REEMPLAZO" | "RECHAZO" | null;
+    desactivadaEn: Date | null;
+  } | null;
 };
 
 // Combina las dos fuentes posibles del motivo (ver comentario de `CargaArchivoResumenPropia` en el
-// dominio): `rechazo.motivo` cuando `estado = RECHAZADA` (siempre presente ahí, exista o no
-// publicación), o `publicacion.motivoDesactivacion` cuando la carga sí llegó a `APROBADA` y luego
-// fue reemplazada o rechazada. Nunca conviven ambas fuentes con valores distintos: un rechazo
-// desde `APROBADA` escribe el mismo motivo en las dos tablas en la misma transacción (ver
-// `rechazar()` más abajo).
+// dominio): `rechazo.motivo`/`rechazo.rechazadoEn` cuando `estado = RECHAZADA` (siempre presente
+// ahí, exista o no publicación), o `publicacion.motivoDesactivacion`/`desactivadaEn` cuando la
+// carga sí llegó a `APROBADA` y luego fue reemplazada o rechazada. Nunca conviven ambas fuentes con
+// valores distintos: un rechazo desde `APROBADA` escribe el mismo motivo y fecha en las dos tablas
+// en la misma transacción (ver `rechazar()` más abajo).
 function aCargaArchivoResumenPropia(registro: RegistroResumenPropia): CargaArchivoResumenPropia {
   return {
     ...aCargaArchivoResumen(registro),
     motivoDesactivacion: registro.rechazo?.motivo ?? registro.publicacion?.motivoDesactivacion ?? null,
     motivoDesactivacionTipo: registro.rechazo ? "RECHAZO" : (registro.publicacion?.motivoDesactivacionTipo ?? null),
+    desactivadaEn: registro.rechazo?.rechazadoEn ?? registro.publicacion?.desactivadaEn ?? null,
   };
 }
 

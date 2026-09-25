@@ -77,13 +77,7 @@ function BuscadorMisCargasExitosas({
 // Historial de reemplazadas de un grupo, anidado dentro de su fila vigente (`<details>/<summary>`,
 // mismo patrón accesible ya usado en `app/dashboard/logs/page.tsx`): colapsable sin JavaScript y
 // operable por teclado.
-function HistorialReemplazadas({
-  reemplazadas,
-  rutaBase,
-}: {
-  reemplazadas: FilaCargaExitosaVista[];
-  rutaBase: string;
-}) {
+function HistorialReemplazadas({ reemplazadas }: { reemplazadas: FilaCargaExitosaVista[] }) {
   if (reemplazadas.length === 0) return null;
 
   return (
@@ -98,7 +92,7 @@ function HistorialReemplazadas({
           <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
             <tr>
               <th scope="col" className="px-3 py-2 font-semibold">Archivo</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Reemplazada el</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Fecha de Rechazo</th>
               <th scope="col" className="px-3 py-2 font-semibold">Detalle</th>
             </tr>
           </thead>
@@ -109,7 +103,7 @@ function HistorialReemplazadas({
                   {carga.nombreArchivoOriginal}
                 </th>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                  {carga.vistoBuenoEl}
+                  {carga.desactivadaEl ?? "—"}
                 </td>
                 <td className="min-w-56 px-3 py-2 text-gob-gray-a">
                   {carga.motivo ? (
@@ -122,7 +116,6 @@ function HistorialReemplazadas({
                   ) : (
                     "—"
                   )}
-                 
                 </td>
               </tr>
             ))}
@@ -149,7 +142,7 @@ function FilaGrupoCargaExitosa({
             Rechazada: {grupo.vigente.motivo}
           </span>
         ) : null}
-        <HistorialReemplazadas reemplazadas={grupo.reemplazadas} rutaBase={rutaBase} />
+        <HistorialReemplazadas reemplazadas={grupo.reemplazadas} />
       </th>
       <td className="px-3 py-2 text-gob-gray-a">{grupo.formatoExcelNombre}</td>
       <td className="px-3 py-2 tabular-nums text-gob-gray-a">{grupo.anio}</td>

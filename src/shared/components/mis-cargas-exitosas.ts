@@ -24,6 +24,11 @@ export type FilaCargaExitosaVista = {
   vistoBuenoEl: string;
   motivo: string | null;
   motivoTipo: TipoDesactivacionCargaPublicada | null;
+  // Fecha del rechazo/reemplazo (`CargaArchivoResumenPropia.desactivadaEn`), ya formateada. La
+  // tabla de reemplazadas ("Mis cargas") la usa en la columna "Reemplazada el" en vez de
+  // `vistoBuenoEl`: esa columna debe decir cuándo dejó de ser vigente, no cuándo se había aprobado
+  // originalmente.
+  desactivadaEl: string | null;
 };
 
 // Un grupo por `ventanaCargaId`: la vigente es la fila principal, las reemplazadas quedan como
@@ -44,6 +49,7 @@ function aFilaCargaExitosaVista(carga: CargaArchivoResumenPropia): FilaCargaExit
     vistoBuenoEl: carga.vistoBuenoEn ? formatearFechaHora(carga.vistoBuenoEn) : "—",
     motivo: carga.motivoDesactivacion,
     motivoTipo: carga.motivoDesactivacionTipo,
+    desactivadaEl: carga.desactivadaEn ? formatearFechaHora(carga.desactivadaEn) : null,
   };
 }
 

@@ -128,6 +128,11 @@ export type TipoDesactivacionCargaPublicada = "REEMPLAZO" | "RECHAZO";
 export type CargaArchivoResumenPropia = CargaArchivoResumen & {
   motivoDesactivacion: string | null;
   motivoDesactivacionTipo: TipoDesactivacionCargaPublicada | null;
+  // Fecha del rechazo (`CargaArchivoRechazo.rechazadoEn`) o de la desactivación de la publicación
+  // (`CargaArchivoPublicada.desactivadaEn`) según cuál de las dos fuentes aplique — mismo criterio
+  // que `motivoDesactivacion`. Para "Mis cargas": la columna "Reemplazada el" del historial debe
+  // mostrar cuándo pasó eso, no `vistoBuenoEn` (cuándo se había aprobado originalmente).
+  desactivadaEn: Date | null;
 };
 
 export type DatosNuevoErrorCargaArchivo = {
