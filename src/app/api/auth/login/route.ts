@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { setCookie } from "cookies-next/server";
+import { deleteCookie, setCookie } from "cookies-next/server";
 import { decodeJwt } from "jose";
 import { loginSchema } from "@/modules/auth/schemas/login.schema";
 import { loginUser } from "@/modules/auth/application/use-cases/LoginUser";
@@ -10,6 +10,7 @@ import { jwtService } from "@/modules/auth/infrastructure/auth/JwtService";
 import { logger } from "@/infrastructure/logging/logger";
 import { registrarAcceso } from "@/infrastructure/logging/accesos";
 import { extraerIp } from "@/shared/utils/peticion";
+import { NOMBRE_COOKIE_SESION_ADMIN_ORIGEN } from "@/modules/auth/infrastructure/auth/SesionDelegada";
 
 const MENSAJE_ERROR_GENERICO = "RUT o contraseña incorrectos";
 const MINUTOS_EN_MS = 60_000;
@@ -101,6 +102,9 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Un nuevo login siempre empieza limpio: una cookie de retorno de una delegación anterior no
+    // puede sobrevivir al cambio explícito de identidad.
+    await deleteCookie(NOMBRE_COOKIE_SESION_ADMIN_ORIGEN, { cookies, path: "/" });
     await setCookie("sesion", resultado.token, {
       cookies,
       httpOnly: true,

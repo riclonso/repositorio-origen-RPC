@@ -5,9 +5,11 @@
 // dibujados a mano aquí; se reemplazaron por la librería.
 import {
   Archive,
+  CalendarBlank,
   Check,
   CheckCircle,
   Circle,
+  DownloadSimple,
   Eye,
   EyeSlash,
   FileText,
@@ -21,11 +23,13 @@ import {
   PencilSimple,
   Prohibit,
   SealCheck,
+  ShieldCheck,
   TextB,
   TextItalic,
   Trash,
   UploadSimple,
   User,
+  UserSwitch,
   WarningCircle,
   X,
   type Icon,
@@ -98,3 +102,12 @@ export const IconoConfiguracion = crearIcono(Gear, TAMANO_CAMPO);
 // Acción "Desbloquear cuenta" del mantenedor de usuarios, sobre una fila con bloqueo por
 // intentos fallidos vigente.
 export const IconoDesbloquear = crearIcono(LockOpen, TAMANO_ACCION);
+// Descarga de la plantilla vinculada a un formato de archivo.
+export const IconoDescargar = crearIcono(DownloadSimple, TAMANO_ACCION);
+// Acción exclusiva del administrador para abrir una sesión delegada de una persona desde el
+// mantenedor. `UserSwitch` comunica el cambio de contexto, no una edición de su perfil.
+export const IconoIngresarComoUsuario = crearIcono(UserSwitch, TAMANO_ACCION);
+// Pie de las tarjetas de seguimiento: fecha de cierre y plazo restante. Se mantienen en la misma
+// familia y peso que el resto de los iconos de acciones del sistema.
+export const IconoCalendario = crearIcono(CalendarBlank, TAMANO_ACCION);
+export const IconoPlazo = crearIcono(ShieldCheck, TAMANO_ACCION);

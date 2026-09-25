@@ -17,7 +17,13 @@ import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
-import { IconoAprobado, IconoRelojArena, IconoSolicitudAprobada, IconoSubir } from "@/shared/components/iconos";
+import {
+  IconoAprobado,
+  IconoDescargar,
+  IconoRelojArena,
+  IconoSolicitudAprobada,
+  IconoSubir,
+} from "@/shared/components/iconos";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
 // Vista liviana de las cargas propias del notificador: mismos campos que `CargaArchivoResumenDTO`,
@@ -453,6 +459,14 @@ function TarjetaCargaArchivo({
       <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
         {combinacion.formatoNombre} · {combinacion.anio}
       </h3>
+
+      <a
+        href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
+        className="mt-3 inline-flex w-fit items-center gap-2 rounded-md border border-gob-primary px-3 py-2 text-sm font-semibold text-gob-primary transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+      >
+        <IconoDescargar className="shrink-0" />
+        Descargar plantilla
+      </a>
 
       {reemplazoHabilitado && cargaAprobada ? (
         <p className="mt-2 text-sm font-medium text-gob-primary">

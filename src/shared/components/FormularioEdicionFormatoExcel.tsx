@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { FormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { Boton } from "@/shared/components/Boton";
+import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { TablaColumnasFormatoExcel, type ColumnaEditable } from "@/shared/components/TablaColumnasFormatoExcel";
 import {
@@ -46,6 +47,7 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
   const [enviando, setEnviando] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  const [columnaPendienteEliminacion, setColumnaPendienteEliminacion] = useState<ColumnaEditable | null>(null);
 
   async function guardar() {
     setEnviando(true);
@@ -94,6 +96,42 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
     }
   }
 
+  function eliminarColumnaYReglas(columnaAEliminar: ColumnaEditable) {
+    const nombreNormalizado = columnaAEliminar.nombre.trim().toLocaleLowerCase();
+
+    setColumnas((actuales) =>
+      actuales
+        .filter((columna) => columna !== columnaAEliminar)
+        .map((columna, indice) => ({ ...columna, orden: indice + 1 })),
+    );
+    setReglasValidacion((actuales) =>
+      actuales.filter(
+        (regla) =>
+          !regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
+      ),
+    );
+  }
+
+  function solicitarEliminarColumna(columna: ColumnaEditable) {
+    const nombreNormalizado = columna.nombre.trim().toLocaleLowerCase();
+    const tieneReglasAsociadas = reglasValidacion.some((regla) =>
+      regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
+    );
+
+    if (tieneReglasAsociadas) {
+      setColumnaPendienteEliminacion(columna);
+      return;
+    }
+
+    eliminarColumnaYReglas(columna);
+  }
+
+  function confirmarEliminarColumna() {
+    if (!columnaPendienteEliminacion) return;
+    eliminarColumnaYReglas(columnaPendienteEliminacion);
+    setColumnaPendienteEliminacion(null);
+  }
+
   return (
     <div className="mt-6 flex flex-col gap-5">
       <div className="grid gap-5 md:grid-cols-2">
@@ -113,7 +151,12 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
         />
       </div>
 
-      <TablaColumnasFormatoExcel columnas={columnas} onCambiar={setColumnas} error={errores.columnas} />
+      <TablaColumnasFormatoExcel
+        columnas={columnas}
+        onCambiar={setColumnas}
+        onEliminarColumna={solicitarEliminarColumna}
+        error={errores.columnas}
+      />
 
       <EditorReglasValidacionFormatoExcel
         reglas={reglasValidacion}
@@ -145,6 +188,22 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
           Cancelar
         </Link>
       </div>
+
+      <DialogoConfirmacion
+        abierto={columnaPendienteEliminacion !== null}
+        titulo="Eliminar columna con reglas"
+        descripcion={
+          columnaPendienteEliminacion
+            ? `La columna “${columnaPendienteEliminacion.nombre}” está incluida en una o más reglas. Al eliminarla, esas reglas también se eliminarán.`
+            : ""
+        }
+        textoConfirmar="Eliminar columna y reglas"
+        textoConfirmando="Eliminando..."
+        variante="peligro"
+        onConfirmar={confirmarEliminarColumna}
+        onCancelar={() => setColumnaPendienteEliminacion(null)}
+      />
+
     </div>
   );
 }

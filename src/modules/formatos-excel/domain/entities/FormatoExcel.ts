@@ -100,6 +100,8 @@ export type FormatoExcelResumen = {
   cantidadColumnas: number;
   cantidadReglas: number;
   cantidadUsuariosAsignados: number;
+  // Un formato solo puede eliminarse físicamente sin perder trazabilidad si no tiene ventanas.
+  puedeEliminar: boolean;
 };
 
 export type DatosColumnaNueva = {

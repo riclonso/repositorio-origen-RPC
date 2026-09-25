@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import type { FormatoExcelResumen, TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoEditar } from "@/shared/components/iconos";
+import { IconoDescargar, IconoEditar, IconoEliminar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del formato. Intenta nuevamente.";
+const MENSAJE_ERROR_ELIMINACION = "No se pudo eliminar el formato. Intenta nuevamente.";
 
 const ETIQUETAS_TIPO_ARCHIVO: Record<TipoArchivo, string> = {
   EXCEL: "Excel (.xlsx)",
@@ -28,6 +29,9 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
   const [objetivo, setObjetivo] = useState<FormatoExcelResumen | null>(null);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [objetivoEliminacion, setObjetivoEliminacion] = useState<FormatoExcelResumen | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+  const [errorEliminacion, setErrorEliminacion] = useState<string | null>(null);
 
   function cerrarDialogo() {
     if (procesando) return;
@@ -64,6 +68,34 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
     }
   }
 
+  function cerrarDialogoEliminacion() {
+    if (eliminando) return;
+    setObjetivoEliminacion(null);
+    setErrorEliminacion(null);
+  }
+
+  async function confirmarEliminacion() {
+    if (!objetivoEliminacion) return;
+    setEliminando(true);
+    setErrorEliminacion(null);
+
+    try {
+      const respuesta = await fetch(`/api/formatos-excel/${objetivoEliminacion.id}`, { method: "DELETE" });
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        setEliminando(false);
+        setErrorEliminacion(datos?.error ?? MENSAJE_ERROR_ELIMINACION);
+        return;
+      }
+      setEliminando(false);
+      setObjetivoEliminacion(null);
+      router.refresh();
+    } catch {
+      setEliminando(false);
+      setErrorEliminacion(MENSAJE_ERROR_ELIMINACION);
+    }
+  }
+
   return (
     <>
       <div className="mt-6 overflow-x-auto rounded-lg border border-gob-accent bg-white">
@@ -96,17 +128,29 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex items-center justify-end gap-3">
                     <BotonIcono
+                      etiqueta={`Descargar plantilla de ${fila.nombre}`}
+                      Icono={IconoDescargar}
+                      href={`/api/formatos-excel/${fila.id}/plantilla`}
+                    />
+                    <BotonIcono
                       etiqueta={`Editar ${fila.nombre}`}
                       Icono={IconoEditar}
                       href={`${rutaBase}/${fila.id}/editar`}
                     />
-
-                    <a
-                      href={`/api/formatos-excel/${fila.id}/plantilla`}
-                      className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                    <button
+                      type="button"
+                      disabled={!fila.puedeEliminar}
+                      onClick={() => setObjetivoEliminacion(fila)}
+                      aria-label={`Eliminar ${fila.nombre}`}
+                      title={
+                        fila.puedeEliminar
+                          ? `Eliminar ${fila.nombre}`
+                          : "No puedes eliminar un formato con ventanas de carga asociadas"
+                      }
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gob-danger text-gob-danger transition-colors hover:bg-gob-danger/10 disabled:cursor-not-allowed disabled:border-gob-accent disabled:text-gob-gray-a disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-danger"
                     >
-                      Descargar plantilla
-                    </a>
+                      <IconoEliminar />
+                    </button>
 
                     <span className="flex items-center gap-2">
                       <Interruptor
@@ -143,6 +187,23 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
         error={error}
         onConfirmar={confirmarCambioEstado}
         onCancelar={cerrarDialogo}
+      />
+
+      <DialogoConfirmacion
+        abierto={objetivoEliminacion !== null}
+        titulo="Eliminar formato de archivo"
+        descripcion={
+          objetivoEliminacion
+            ? `Eliminarás permanentemente el formato “${objetivoEliminacion.nombre}” y sus asignaciones a usuarios. Esta acción no se puede deshacer.`
+            : ""
+        }
+        textoConfirmar="Eliminar formato"
+        textoConfirmando="Eliminando..."
+        variante="peligro"
+        procesando={eliminando}
+        error={errorEliminacion}
+        onConfirmar={confirmarEliminacion}
+        onCancelar={cerrarDialogoEliminacion}
       />
     </>
   );

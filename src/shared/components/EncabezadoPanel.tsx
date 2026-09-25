@@ -1,4 +1,6 @@
 import { MenuConfiguracionUsuario } from "@/shared/components/MenuConfiguracionUsuario";
+import { obtenerSesionAdministradorOrigen } from "@/modules/auth/infrastructure/auth/SesionDelegada";
+import { VolverSesionAdministrador } from "@/shared/components/VolverSesionAdministrador";
 
 type EncabezadoPanelProps = {
   // Base de ruta del área actual, para que el menú de configuración enlace a
@@ -11,7 +13,9 @@ type EncabezadoPanelProps = {
 // configuración de la cuenta ("Mi perfil"/"Cambiar contraseña") a la derecha. La identidad de la
 // sesión (nombre, avatar de iniciales y perfil) no vive aquí: está al tope de la barra lateral
 // (`BarraLateralPanel`).
-export function EncabezadoPanel({ rutaBase }: EncabezadoPanelProps) {
+export async function EncabezadoPanel({ rutaBase }: EncabezadoPanelProps) {
+  const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
+
   return (
     <header className="flex items-center justify-between gap-4 border-b border-[#dce5ef] bg-white px-4 py-3.5 md:px-7">
       <div className="min-w-0">
@@ -19,7 +23,10 @@ export function EncabezadoPanel({ rutaBase }: EncabezadoPanelProps) {
         <p className="text-xs text-[#6c8197]">SEREMI de Salud Biobío</p>
       </div>
 
-      <MenuConfiguracionUsuario rutaBase={rutaBase} />
+      <div className="flex items-center gap-3">
+        {sesionAdministradorOrigen ? <VolverSesionAdministrador /> : null}
+        <MenuConfiguracionUsuario rutaBase={rutaBase} />
+      </div>
     </header>
   );
 }

@@ -131,6 +131,13 @@ function construirPredicado(filtro: FiltroListadoUsuarios): Prisma.Sql {
     condiciones.push(Prisma.sql`u."perfilCodigo" = ${filtro.perfil}`);
   }
 
+  // Esta lista la decide la capa de presentación/API después de autenticar al actor; nunca se
+  // acepta como parámetro de búsqueda. Un predicado por código mantiene el mismo comportamiento
+  // aunque cambie el nombre visible de un perfil.
+  if (filtro.perfilesPermitidos?.length) {
+    condiciones.push(Prisma.sql`u."perfilCodigo" IN (${Prisma.join(filtro.perfilesPermitidos)})`);
+  }
+
   if (filtro.activo !== undefined) {
     condiciones.push(Prisma.sql`u."activo" = ${filtro.activo}`);
   }

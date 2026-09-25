@@ -97,7 +97,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
         tipoArchivo: true,
         activo: true,
         createdAt: true,
-        _count: { select: { columnas: true, reglasValidacion: true, usuariosAsignados: true } },
+        _count: { select: { columnas: true, reglasValidacion: true, usuariosAsignados: true, ventanasCarga: true } },
       },
       orderBy: { nombre: "asc" },
     });
@@ -112,6 +112,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       cantidadColumnas: registro._count.columnas,
       cantidadReglas: registro._count.reglasValidacion,
       cantidadUsuariosAsignados: registro._count.usuariosAsignados,
+      puedeEliminar: registro._count.ventanasCarga === 0,
     }));
   },
 
@@ -180,6 +181,9 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       cantidadColumnas: formatoExcel._count.columnas,
       cantidadReglas: formatoExcel._count.reglasValidacion,
       cantidadUsuariosAsignados: formatoExcel._count.usuariosAsignados,
+      // Esta vista alimenta el selector del notificador, no el mantenedor; no se consulta la
+      // relación de ventanas para mantenerla liviana y nunca ofrece acciones de eliminación.
+      puedeEliminar: false,
     }));
   },
 
@@ -270,6 +274,30 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     });
 
     return aFormatoExcel(registro);
+  },
+
+  async eliminar(id) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const formato = await tx.formatoExcel.findUnique({ where: { id }, select: { id: true } });
+        if (!formato) return "NO_ENCONTRADO" as const;
+
+        // Se considera activa cualquier ventana vinculada: aunque sus fechas ya hayan pasado o
+        // esté archivada, sigue siendo parte del historial y el FK RESTRICT impide borrarla.
+        const cantidadVentanas = await tx.ventanaCarga.count({ where: { formatoExcelId: id } });
+        if (cantidadVentanas > 0) return "CON_VENTANAS_ACTIVAS" as const;
+
+        await tx.usuarioFormatoExcel.deleteMany({ where: { formatoExcelId: id } });
+        await tx.formatoExcel.delete({ where: { id } });
+        return "ELIMINADO" as const;
+      });
+    } catch (error) {
+      // Una ventana creada entre la comprobación y el DELETE queda protegida por la base de datos.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+        return "CON_VENTANAS_ACTIVAS" as const;
+      }
+      throw error;
+    }
   },
 
   async buscarPorNombre(nombre) {

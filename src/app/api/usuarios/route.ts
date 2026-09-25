@@ -13,6 +13,11 @@ import { enlaceContrasenaMailer } from "@/modules/auth/infrastructure/email/Enla
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { auditarDesenlaceEnlace } from "@/app/api/usuarios/_lib/auditarEnlace";
 import { listadoUsuariosSchema } from "@/modules/usuarios/schemas/listado-usuarios.schema";
+import {
+  CODIGO_PERFIL_NOTIFICADOR,
+  CODIGO_PERFIL_REVISOR_REPOSITORIO,
+  esPerfilAdministrador,
+} from "@/modules/perfiles/domain/entities/Perfil";
 import { crearUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
 import {
   MENSAJE_DATOS_INVALIDOS,
@@ -43,7 +48,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    const resultado = await listarUsuarios(filtro.data, {
+    // La API conserva la misma frontera que la vista: un revisor no puede obtener cuentas ADMIN
+    // mediante una llamada directa aunque el formulario ya no ofrezca ese perfil.
+    const filtroEfectivo = esPerfilAdministrador(acceso.sesion.perfil)
+      ? filtro.data
+      : {
+          ...filtro.data,
+          perfilesPermitidos: [CODIGO_PERFIL_NOTIFICADOR, CODIGO_PERFIL_REVISOR_REPOSITORIO],
+        };
+
+    const resultado = await listarUsuarios(filtroEfectivo, {
       repositorio: prismaUsuarioRepository,
     });
 

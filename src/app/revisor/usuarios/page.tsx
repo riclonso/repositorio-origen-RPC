@@ -11,6 +11,11 @@ import {
 } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import {
+  CODIGO_PERFIL_NOTIFICADOR,
+  CODIGO_PERFIL_REVISOR_REPOSITORIO,
+  esPerfilAdministrador,
+} from "@/modules/perfiles/domain/entities/Perfil";
 import { FiltrosUsuarios } from "@/shared/components/FiltrosUsuarios";
 import { ListadoUsuarios } from "@/shared/components/ListadoUsuarios";
 import { RUTA_USUARIOS_REVISOR, construirRutaUsuariosRevisor } from "./ruta-usuarios";
@@ -23,13 +28,8 @@ type UsuariosRevisorPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-// Mismo mantenedor que `/dashboard/usuarios` (RF-06 extendido a REVISOR_REPOSITORIO): acceso
-// completo a las seis operaciones, salvo sobre cuentas con perfil ADMIN (ver
-// `TablaUsuarios`/`CrearUsuario`/`ActualizarUsuario`/`CambiarEstadoUsuario`/
-// `RestablecerContrasena`/`EmitirEnlaceContrasena`, que rechazan esa combinación con
-// PERFIL_ADMIN_RESTRINGIDO). La pantalla comparte componentes con `shared/components/`, y los
-// endpoints bajo `/api/usuarios/**` (guardados con `exigirAdminORevisor()`) son los mismos para
-// ambos paneles.
+// El revisor solo administra y visualiza cuentas NOTIFICADOR_RPC y REVISOR_REPOSITORIO. Las
+// cuentas ADMIN no se incluyen en su consulta, ni aun con una URL escrita manualmente.
 export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevisorPageProps) {
   const parametros = await searchParams;
   const usuarioCreado = parametros.creado === "1";
@@ -79,7 +79,7 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
         perfilInicial={filtro.perfil ?? ""}
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
-        opcionesPerfil={aOpcionesPerfil(perfiles)}
+        opcionesPerfil={aOpcionesPerfil(perfiles.filter((perfil) => !esPerfilAdministrador(perfil.codigo)))}
         rutaBase={RUTA_USUARIOS_REVISOR}
       />
 
@@ -105,6 +105,7 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
           rutaBase={RUTA_USUARIOS_REVISOR}
           construirHref={(pagina) => construirRutaUsuariosRevisor(filtro, pagina)}
           actorEsAdmin={false}
+          perfilesPermitidos={[CODIGO_PERFIL_NOTIFICADOR, CODIGO_PERFIL_REVISOR_REPOSITORIO]}
         />
       </Suspense>
     </div>
