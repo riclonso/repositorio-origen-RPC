@@ -16,6 +16,18 @@ import { useAccionConfirmable } from "@/shared/hooks/useAccionConfirmable";
 // buscador: no es un formato real, así que no puede viajar como uno de `opcionesFormatoExcel`.
 const OPCION_TODOS_LOS_FORMATOS: OpcionSelect = { valor: "", etiqueta: "Todos" };
 
+// El año se elige desde una lista cerrada, en vez de escribirse libremente: evita valores
+// negativos y mantiene el rango exactamente alineado con `anioVentanaCargaSchema`.
+const ANIO_MINIMO_VENTANA = 2015;
+const ANIO_MAXIMO_VENTANA = new Date().getFullYear();
+const OPCIONES_ANIO_VENTANA: OpcionSelect[] = [
+  { valor: "", etiqueta: "Selecciona un año" },
+  ...Array.from({ length: ANIO_MAXIMO_VENTANA - ANIO_MINIMO_VENTANA + 1 }, (_, indice) => {
+    const anio = String(ANIO_MINIMO_VENTANA + indice);
+    return { valor: anio, etiqueta: anio };
+  }),
+];
+
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
 
 // Vista liviana para la tabla: fechas ya como texto ISO (llegan así del servidor). `abierta` es
@@ -656,22 +668,12 @@ export function TablaVentanasCarga({
         </h2>
 
         <div className="mt-3 grid gap-4 sm:grid-cols-4">
-          <CampoTexto
+          <CampoSelect
             id="anio-nueva-ventana"
             etiqueta="Año"
-            type="number"
+            opciones={OPCIONES_ANIO_VENTANA}
             value={formulario.anio}
-            min={2021}
-            step={1}
-            onChange={(evento) => {
-              const valor = evento.target.value;
-
-              // Además del atributo `min` (que informa el rango al navegador), se descarta el
-              // valor al escribir para que un año negativo no llegue a mostrarse ni enviarse.
-              if (valor === "" || Number(valor) >= 2021) {
-                setFormulario((actual) => ({ ...actual, anio: valor }));
-              }
-            }}
+            onChange={(evento) => setFormulario((actual) => ({ ...actual, anio: evento.target.value }))}
             disabled={creando}
             error={erroresCreacion.anio}
           />
