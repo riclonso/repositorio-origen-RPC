@@ -16,9 +16,7 @@ export interface FormatoExcelRepository {
   // no trae columnas ni reglas, solo lo necesario para poblar un `<select>`.
   listarAsignadosAUsuario(usuarioId: string): Promise<FormatoExcelResumen[]>;
   obtenerPorId(id: string): Promise<FormatoExcel | null>;
-  existeActivo(id: string): Promise<boolean>;
-  tieneCargasPendientesVistoBueno(id: string): Promise<boolean>;
-  // Resuelve en UNA sola consulta (`WHERE id IN (...) AND activo = true`) cuáles de los ids
+  existeActivo(id: string): Promise<boolean>;  // Resuelve en UNA sola consulta (`WHERE id IN (...) AND activo = true`) cuáles de los ids
   // recibidos corresponden a un formato existente y vigente. Evita el N+1 de comprobar cada id
   // por separado al validar el arreglo de formatos asignados a un usuario.
   obtenerActivosEntre(ids: string[]): Promise<string[]>;

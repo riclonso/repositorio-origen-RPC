@@ -636,7 +636,10 @@ Toda columna declarada en el formato que falte en el archivo es `COLUMNA_FALTANT
 importar si es requerida o no**: la estructura del archivo (qué columnas trae) es una validación
 distinta de si una celda puede venir vacía. Columnas del archivo no declaradas en el formato son
 `COLUMNA_INESPERADA` (decisión explícita del usuario: no se ignoran en silencio). Ambos son errores
-de archivo completo (`numeroFila: 0`), no de una fila puntual.
+de archivo completo (`numeroFila: 0`), no de una fila puntual. Cada columna inesperada es su propio
+error (una fila por columna en el resumen y en el Excel de errores), y si hay al menos una **se
+detiene la validación**: no se evalúan filas, tipos ni reglas, solo se informan los errores de
+estructura (inesperadas y faltantes). `cantidadFilasDatos` sigue reflejando las filas leídas.
 
 ### Convención chilena de formato de celda (primera vez definida en el proyecto)
 
@@ -673,12 +676,12 @@ una regla equivalente, y recreó el enum `TipoDatoColumna` sin `RUT`.
 - **Separador:** enum `SeparadorCsv` (`COMA`, `PUNTO_Y_COMA`, `TABULADOR`, `BARRA_VERTICAL`) en
   `formato_excel.separadorCsv`, NULL si y solo si `tipoArchivo = EXCEL` (CHECK
   `formato_excel_separador_csv_check`). exceljs lo recibe vía `parserOptions.delimiter` /
-  `formatterOptions.delimiter`. En una carga, el separador **siempre** sale del formato persistido,
-  nunca del cliente, y el notificador debe subir el mismo tipo de archivo que el formato.
-- **Edición del separador:** está permitida, pero no mientras el formato tenga cargas
-  `PENDIENTE_VISTO_BUENO` (409, `SEPARADOR_CON_CARGAS_PENDIENTES`). `DarVistoBueno` re-lee el
-  archivo con el separador **actual** del formato, así que cambiarlo en ese momento leería con un
-  separador distinto al que se usó para validar.
+  `formatterOptions.delimiter`. El separador es editable y solo afecta a la plantilla.
+- **Cargas del notificador: siempre Excel.** El tipo de archivo y el separador describen solo la
+  plantilla con que el administrador define el formato. `ValidarYCargarArchivo` exige `.xlsx`
+  (`ARCHIVO_NO_EXCEL`) sin importar el tipo del formato, así que `LectorArchivoReporte` no recibe
+  separador. Su rama CSV (con coma) sigue existiendo solo para que `DarVistoBueno` pueda re-leer
+  cargas CSV anteriores a esta regla.
 
 **Limitación de origen, no de código:** en `.xlsx`, `exceljs` entrega siempre un `Date` nativo para
 una celda de fecha, tenga o no componente de hora en Excel — a nivel de valor no hay forma de

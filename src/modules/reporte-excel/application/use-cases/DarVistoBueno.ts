@@ -56,7 +56,6 @@ export async function darVistoBueno(
   const { filas: filasArchivo } = await dependencias.lector.leer(
     contenido.contenidoArchivo,
     contenido.tipoContenidoArchivo,
-    { separadorCsv: contenido.separadorCsv },
   );
 
   // Mismo desplazamiento que `ValidarYCargarArchivo`: la fila 1 es el encabezado, así que la

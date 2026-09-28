@@ -146,15 +146,6 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     return registros.map((registro) => registro.id);
   },
 
-  async tieneCargasPendientesVistoBueno(id) {
-    const registro = await prisma.cargaArchivo.findFirst({
-      where: { formatoExcelId: id, estado: "PENDIENTE_VISTO_BUENO" },
-      select: { id: true },
-    });
-
-    return registro !== null;
-  },
-
   async estaAsignadoYActivo(usuarioId, formatoExcelId) {
     // Una sola consulta contra la tabla de asociación, con el estado del formato filtrado en el
     // mismo `WHERE` (nunca dos llamadas separadas que dejen ventana de carrera).

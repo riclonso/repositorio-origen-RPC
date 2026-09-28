@@ -410,7 +410,6 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       select: {
         tipoContenidoArchivo: true,
         contenidoArchivo: true,
-        formatoExcel: { select: { separadorCsv: true } },
       },
     });
 
@@ -419,7 +418,6 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return {
       contenidoArchivo: Buffer.from(registro.contenidoArchivo),
       tipoContenidoArchivo: registro.tipoContenidoArchivo,
-      separadorCsv: registro.formatoExcel.separadorCsv,
     };
   },
 

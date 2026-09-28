@@ -184,12 +184,12 @@ export type MotivoAuditoria =
   // original. No se permite anidar delegaciones.
   | "SESION_DELEGADA_ACTIVA"
   | "FORMATO_CON_VENTANAS"
-  // De `FORMATO_EXCEL_CREADO` y `CARGA_ARCHIVO_REGISTRADA`: el archivo no es del tipo (Excel/CSV)
-  // elegido para el formato o exigido por él.
+  // De `FORMATO_EXCEL_CREADO`: el archivo no es del tipo (Excel/CSV) elegido para el formato.
   | "TIPO_ARCHIVO_NO_COINCIDE"
+  // De `CARGA_ARCHIVO_REGISTRADA`: el notificador subió algo que no es Excel.
+  | "ARCHIVO_NO_EXCEL"
   // De `FORMATO_EXCEL_ACTUALIZADO`: separador CSV incoherente con el tipo de archivo del formato.
-  | "SEPARADOR_INVALIDO"
-  | "SEPARADOR_CON_CARGAS_PENDIENTES";
+  | "SEPARADOR_INVALIDO";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.

@@ -215,12 +215,8 @@ export async function POST(request: Request) {
         return respuestaFormatoNoAsignado();
       }
 
-      if (resultado.motivo === "TIPO_ARCHIVO_NO_COINCIDE") {
-        return respuestaArchivoInvalido(
-          resultado.tipoArchivoFormato === "CSV"
-            ? "Este formato exige un archivo CSV (.csv). Sube el archivo en ese tipo"
-            : "Este formato exige un archivo Excel (.xlsx). Sube el archivo en ese tipo",
-        );
+      if (resultado.motivo === "ARCHIVO_NO_EXCEL") {
+        return respuestaArchivoInvalido("El archivo debe ser Excel (.xlsx)");
       }
 
       if (resultado.motivo === "REEMPLAZO_NO_AUTORIZADO") {
