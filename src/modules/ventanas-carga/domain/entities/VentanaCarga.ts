@@ -7,6 +7,11 @@
 // genérico (`TipoArchivo`, EXCEL/CSV), sino un `FormatoExcel` concreto (`formatoExcelId`), que es
 // el que trae las reglas y el número de columnas requeridas/opcionales reales.
 
+import { instanteAParedChile } from "@/shared/utils/fecha";
+
+// `fechaApertura`/`fechaVencimiento` son hora de pared de Chile escrita en UTC (apertura 00:00,
+// vencimiento 23:59:59.999). Toda comparación contra un instante real pasa por
+// `instanteAParedChile()`.
 export type VentanaCarga = {
   id: string;
   anio: number;
@@ -77,7 +82,11 @@ export function estaAbierta(
   ventana: Pick<VentanaCarga, "fechaApertura" | "fechaVencimiento" | "eliminadaEn">,
   ahora: Date,
 ): boolean {
-  return ventana.eliminadaEn === null && ventana.fechaApertura <= ahora && ahora <= ventana.fechaVencimiento;
+  // Las fechas de la ventana son hora de pared de Chile: se compara contra la hora de pared actual.
+  const paredAhora = instanteAParedChile(ahora);
+  return (
+    ventana.eliminadaEn === null && ventana.fechaApertura <= paredAhora && paredAhora <= ventana.fechaVencimiento
+  );
 }
 
 // RF-15 (ampliación): una ventana solo debe ofrecerse a un notificador si, además de estar
@@ -122,7 +131,7 @@ const MILISEGUNDOS_POR_DIA = 24 * 60 * 60 * 1000;
 // filtrada por `listarDisponibles()`/`disponibleParaNotificador()`, `fechaVencimiento >= ahora`
 // siempre debería cumplirse, pero no cuesta nada blindarlo contra un `ahora` inconsistente.
 export function calcularDiasRestantes(fechaVencimiento: Date, ahora: Date): number {
-  const diferenciaMs = fechaVencimiento.getTime() - ahora.getTime();
+  const diferenciaMs = fechaVencimiento.getTime() - instanteAParedChile(ahora).getTime();
   return Math.max(0, Math.ceil(diferenciaMs / MILISEGUNDOS_POR_DIA));
 }
 
@@ -140,7 +149,7 @@ export function calcularFraccionTiempoTranscurrido(
   // creación lo valida), pero de darse se trata como "ya consumida" en vez de dividir por cero.
   if (duracionTotalMs <= 0) return 1;
 
-  const transcurridoMs = ahora.getTime() - fechaApertura.getTime();
+  const transcurridoMs = instanteAParedChile(ahora).getTime() - fechaApertura.getTime();
   return Math.min(1, Math.max(0, transcurridoMs / duracionTotalMs));
 }
 
@@ -162,12 +171,14 @@ export function esDiaDeEnvioAutomatico(
     ventana.fechaVencimiento.getTime() - ventana.diasAnticipacionInicio * MILISEGUNDOS_POR_DIA,
   );
 
-  if (ahora < fechaInicioAlertas) {
+  const paredAhora = instanteAParedChile(ahora);
+
+  if (paredAhora < fechaInicioAlertas) {
     return false;
   }
 
   const diasTranscurridosDesdeInicio = Math.floor(
-    (ahora.getTime() - fechaInicioAlertas.getTime()) / MILISEGUNDOS_POR_DIA,
+    (paredAhora.getTime() - fechaInicioAlertas.getTime()) / MILISEGUNDOS_POR_DIA,
   );
 
   return diasTranscurridosDesdeInicio % ventana.intervaloRepeticionDias === 0;

@@ -2,6 +2,7 @@ import { ViewTransition } from "react";
 import Link from "next/link";
 import type { CargaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
+import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
 import { ETIQUETAS_ESTADO } from "@/shared/utils/estadoCargaArchivo";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
@@ -20,9 +21,22 @@ export function DetalleCargaPropia({ carga }: DetalleCargaPropiaProps) {
       <div className="flex flex-col gap-6">
         <Link
           href="/notificador"
-          className="w-fit text-sm font-medium text-gob-primary underline-offset-4 hover:underline"
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-gob-primary/20 bg-gob-primary/5 px-3 py-2 text-sm font-semibold text-gob-primary transition-colors hover:bg-gob-primary/10 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
-           Volver a atrás
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <path d="m12 19-7-7 7-7" />
+            <path d="M19 12H5" />
+          </svg>
+          Volver atrás
         </Link>
 
         <div>
@@ -69,6 +83,8 @@ export function DetalleCargaPropia({ carga }: DetalleCargaPropiaProps) {
         ) : null}</dd>
           </div>
         </dl>
+
+        <SugerenciaErrorEstructura errores={carga.errores} />
 
         <ResumenErroresCarga errores={carga.errores} />
 

@@ -5,6 +5,8 @@
 // reemplazo (o, para el segundo origen, antes de rechazar la carga original y liberar la
 // combinación formato/ventana).
 
+import { finDelDiaChile } from "@/shared/utils/fecha";
+
 export const ESTADOS_SOLICITUD_REEMPLAZO_CARGA = ["PENDIENTE", "APROBADA", "RECHAZADA"] as const;
 export type EstadoSolicitudReemplazoCarga = (typeof ESTADOS_SOLICITUD_REEMPLAZO_CARGA)[number];
 
@@ -27,7 +29,6 @@ export const LONGITUD_MAXIMA_COMENTARIO_REVISION = 500;
 // `ahora` recibido como parámetro, nunca persistida como un estado propio — mismo patrón que
 // `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`.
 export const DIAS_VIGENCIA_SOLICITUD_APROBADA = 5;
-const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 // Vista denormalizada (join a `CargaArchivo`/`FormatoExcel`/`VentanaCarga`/`Usuario`) para que los
 // listados de revisión y de seguimiento propio no necesiten una consulta aparte por fila.
@@ -87,8 +88,8 @@ export function solicitudUtilizable(solicitud: SolicitudReemplazoCarga, ahora: D
   // (`RevisarSolicitudReemplazo`). Defensivo: sin ancla de vigencia, se trata como no utilizable.
   if (!solicitud.revisadoEn) return false;
 
-  const vencimiento = new Date(solicitud.revisadoEn.getTime() + DIAS_VIGENCIA_SOLICITUD_APROBADA * MS_POR_DIA);
-  return ahora <= vencimiento;
+  // Vence a las 23:59 (hora de Chile) del 5º día desde la aprobación, no a la hora exacta de ella.
+  return ahora <= finDelDiaChile(solicitud.revisadoEn, DIAS_VIGENCIA_SOLICITUD_APROBADA);
 }
 
 // Para el badge "Vencida" en los listados (revisor y notificador), sin duplicar la fecha de corte:

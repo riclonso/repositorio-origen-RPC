@@ -83,10 +83,15 @@ export default async function NotificadorPage() {
     vencida: solicitudVencida(solicitud, ahora),
   }));
 
-  const reaperturasIniciales: ReaperturaVigentePropiaVista[] = reaperturasVigentes.map((reapertura) => ({
-    ...reapertura,
-    fechaLimite: reapertura.fechaLimite.toISOString(),
-  }));
+  // El aviso de rechazo solo se muestra si la ventana está publicada y abierta: con una ventana en
+  // borrador o cerrada el notificador no puede volver a subir, y el aviso solo generaría confusión.
+  const idsVentanasDisponibles = new Set(ventanasDisponibles.map((ventana) => ventana.id));
+  const reaperturasIniciales: ReaperturaVigentePropiaVista[] = reaperturasVigentes
+    .filter((reapertura) => idsVentanasDisponibles.has(reapertura.ventanaCargaId))
+    .map((reapertura) => ({
+      ...reapertura,
+      fechaLimite: reapertura.fechaLimite.toISOString(),
+    }));
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">

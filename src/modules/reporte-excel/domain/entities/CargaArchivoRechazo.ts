@@ -2,6 +2,8 @@
 // "solicitud pendiente": quien rechaza decide directamente). Habilita una REAPERTURA de la
 // combinación (formato, ventana) para que el mismo notificador vuelva a subir un archivo.
 
+import { finDelDiaChile, paredChileAInstante } from "@/shared/utils/fecha";
+
 // Longitud máxima del motivo de rechazo, mismo criterio y mismo valor que
 // `SolicitudReemplazoCarga.LONGITUD_MAXIMA_MOTIVO`: texto libre, sin reglas de complejidad que
 // reutilizar de `shared/schemas/` (esas son de contraseñas).
@@ -11,7 +13,6 @@ export const LONGITUD_MAXIMA_MOTIVO_RECHAZO = 500;
 // del rechazo. Mismo valor que `DIAS_VIGENCIA_SOLICITUD_APROBADA` de solicitudes de reemplazo, sin
 // compartir la constante: son conceptos de dominio distintos que solo coinciden en el número.
 export const DIAS_REAPERTURA_TRAS_VENCIMIENTO = 5;
-const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 // Vista denormalizada (join a `CargaArchivo`/`FormatoExcel`/`VentanaCarga`/`Usuario`), mismo
 // criterio que `SolicitudReemplazoCarga`: los listados (banner del notificador, sección
@@ -48,13 +49,17 @@ export type VentanaParaReapertura = {
 // Fecha límite hasta la cual se puede usar la reapertura: si la ventana NO había vencido al
 // momento del rechazo, dura hasta su `fechaVencimiento` original (ni más ni menos); si ya había
 // vencido, dura `DIAS_REAPERTURA_TRAS_VENCIMIENTO` días adicionales desde el rechazo. Decisión
-// explícita del usuario, confirmada en el diseño aprobado.
+// explícita del usuario, confirmada en el diseño aprobado. Ambos plazos terminan a las 23:59 hora de
+// Chile, y el resultado es un instante real (no hora de pared): se compara con `ahora` y se muestra
+// con `formatearFechaHora`.
 export function fechaLimiteReapertura(rechazo: Pick<CargaArchivoRechazo, "rechazadoEn">, ventana: VentanaParaReapertura): Date {
-  if (ventana.fechaVencimiento.getTime() > rechazo.rechazadoEn.getTime()) {
-    return ventana.fechaVencimiento;
+  const vencimientoVentana = paredChileAInstante(ventana.fechaVencimiento);
+
+  if (vencimientoVentana.getTime() > rechazo.rechazadoEn.getTime()) {
+    return vencimientoVentana;
   }
 
-  return new Date(rechazo.rechazadoEn.getTime() + DIAS_REAPERTURA_TRAS_VENCIMIENTO * MS_POR_DIA);
+  return finDelDiaChile(rechazo.rechazadoEn, DIAS_REAPERTURA_TRAS_VENCIMIENTO);
 }
 
 // `true` solo si el rechazo todavía no consumió su reapertura y `ahora` no superó la fecha límite.

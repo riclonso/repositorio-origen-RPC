@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, ViewTransition, type ReactNode } from "react";
+import { useEffect, useState, ViewTransition, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type {
   CargaArchivoResumen,
   ErrorCargaArchivo,
@@ -12,11 +13,16 @@ import type {
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
-import { BannerReaperturaCarga, type ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
+import {
+  BannerReaperturaCarga,
+  idTarjetaVentana,
+  type ReaperturaVigentePropiaVista,
+} from "@/shared/components/BannerReaperturaCarga";
 import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
+import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
 import {
   IconoAprobado,
   IconoDescargar,
@@ -455,14 +461,18 @@ function TarjetaCargaArchivo({
   }
 
   return (
-    <section aria-labelledby={idTitulo} className="rounded-lg border border-gob-accent bg-white p-6">
+    <section
+      id={idTarjetaVentana(combinacion.ventanaCargaId)}
+      aria-labelledby={idTitulo}
+      className="scroll-mt-6 rounded-lg border border-gob-accent bg-white p-6"
+    >
       <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
         {combinacion.formatoNombre} · {combinacion.anio}
       </h3>
 
       <a
         href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
-        className="mt-3 inline-flex w-fit items-center gap-2 rounded-md border border-gob-primary px-3 py-2 text-sm font-semibold text-gob-primary transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        className="mt-3 bg-green-800 inline-flex w-fit items-center gap-2 rounded-md border border-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
       >
         <IconoDescargar className="shrink-0" />
         Descargar plantilla
@@ -531,6 +541,7 @@ function TarjetaCargaArchivo({
                   Descargar errores (Excel)
                 </a>
               </div>
+              <SugerenciaErrorEstructura errores={resultado.errores} />
               <ResumenErroresCarga errores={resultado.errores} />
             </>
           )}
@@ -598,6 +609,19 @@ export function PanelCargaArchivo({
   // recibe una respuesta exitosa para la combinación correspondiente, sin esperar a que la página
   // se recargue (ver comentario de `ReaperturaVigentePropiaVista` en `BannerReaperturaCarga.tsx`).
   const [reaperturas, setReaperturas] = useState<ReaperturaVigentePropiaVista[]>(reaperturasIniciales);
+
+  // Al volver a la pestaña se vuelve a pedir la página al servidor: una ventana publicada o
+  // despublicada mientras tanto aparece o desaparece sin que el notificador tenga que recargar. El
+  // estado local de cada tarjeta (archivo elegido, resultado) se conserva: su `key` no cambia.
+  const router = useRouter();
+  useEffect(() => {
+    function alVolverALaPestana() {
+      if (document.visibilityState === "visible") router.refresh();
+    }
+
+    document.addEventListener("visibilitychange", alVolverALaPestana);
+    return () => document.removeEventListener("visibilitychange", alVolverALaPestana);
+  }, [router]);
 
   const [objetivoFinalizar, setObjetivoFinalizar] = useState<CargaResumenVista | null>(null);
   const [procesandoFinalizar, setProcesandoFinalizar] = useState(false);
@@ -676,7 +700,11 @@ export function PanelCargaArchivo({
 
   return (
     <div className="flex flex-col gap-6">
-      <BannerReaperturaCarga reaperturas={reaperturas} />
+      <BannerReaperturaCarga
+        reaperturas={reaperturas.filter((reapertura) =>
+          combinaciones.some((combinacion) => combinacion.ventanaCargaId === reapertura.ventanaCargaId),
+        )}
+      />
 
       {combinaciones.length === 0 ? (
         <section

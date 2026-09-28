@@ -22,6 +22,9 @@ import type { CargaArchivoRechazo } from "@/modules/reporte-excel/domain/entitie
 // dentro de la MISMA transacción abierta (ver `darVistoBueno`), no una por lote de forma aislada.
 const TAMANO_LOTE_FILAS_PUBLICADAS = 5_000;
 
+const COMENTARIO_SOLICITUD_CERRADA_POR_RECHAZO =
+  "Cerrada automáticamente: la carga fue rechazada y ya puedes volver a subir un archivo.";
+
 // JSONB no admite `Date`: cada valor de celda se serializa a un tipo que Prisma acepta para un
 // campo `Json`, con las fechas ya convertidas a ISO string (mismo criterio de tipos que el resto
 // del módulo aplica tras serializar, ver DTOs de `_lib/http.ts`).
@@ -689,6 +692,20 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
 
       await tx.cargaArchivoRechazo.create({
         data: { cargaArchivoId: id, rechazadoPorId: datos.rechazadoPorId, motivo: datos.motivo },
+      });
+
+      // Una solicitud de reemplazo todavía PENDIENTE sobre esta carga pierde sentido: el rechazo ya
+      // reabre la combinación. Se cierra en la misma transacción (escritura cross-módulo, mismo
+      // criterio documentado que `crear()`). Una solicitud ya APROBADA (camino RF-22, que es el que
+      // dispara este rechazo) no se toca.
+      await tx.solicitudReemplazoCarga.updateMany({
+        where: { cargaArchivoId: id, estado: "PENDIENTE" },
+        data: {
+          estado: "RECHAZADA",
+          revisadoPorId: datos.rechazadoPorId,
+          revisadoEn: new Date(),
+          comentarioRevision: COMENTARIO_SOLICITUD_CERRADA_POR_RECHAZO,
+        },
       });
 
       // La publicación deja de ser visible para el revisor (baja lógica, su detalle se conserva

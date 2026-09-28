@@ -1707,6 +1707,49 @@ este efecto automático, sin ambigüedad con `estadoOrigenRechazo` (que ya exist
 respondiendo una pregunta distinta: de qué **estado de carga** venía el rechazo, no quién/qué lo
 disparó).
 
+### Fechas de ventana en hora de pared de Chile y plazos que vencen a las 23:59
+
+`VentanaCarga.fechaApertura`/`fechaVencimiento` se guardan como **hora de pared de Chile escrita en
+UTC**: "abre el 01-09" es `…-09-01T00:00:00.000Z` y "vence el 31-12" es `…-12-31T23:59:59.999Z`. No se
+migraron los datos: ese mismo convenio lo usa la regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` al comparar
+las fechas del archivo (también de pared) contra la ventana, y se muestran con
+`formatearFechaCalendario` (zona UTC).
+
+El error era comparar esas fechas de pared contra instantes reales: la ventana cerraba a las 23:59
+UTC, es decir, a las 20:59 en Chile (19:59 en horario de invierno), y abría a las 21:00 del día
+anterior. Ahora toda comparación contra un instante real pasa por los helpers de
+`shared/utils/fecha.ts`:
+
+- `instanteAParedChile(instante)`: lleva `ahora` a hora de pared de Chile. Lo usan `estaAbierta()`,
+  `listarDisponibles()` (en el `WHERE`), `calcularDiasRestantes()`,
+  `calcularFraccionTiempoTranscurrido()` y `esDiaDeEnvioAutomatico()`.
+- `paredChileAInstante(pared)`: el inverso. `fechaLimiteReapertura()` lo usa para devolver el
+  vencimiento de la ventana como instante real, que luego se muestra con `formatearFechaHora`
+  (31-12, 23:59).
+- `finDelDiaChile(instante, dias)`: las 23:59:59.999 hora de Chile del día `instante + dias`. Los dos
+  plazos de 5 días terminan así, no a la hora exacta del evento: la reapertura tras un rechazo con la
+  ventana ya vencida (`DIAS_REAPERTURA_TRAS_VENCIMIENTO`) y la vigencia de una solicitud de reemplazo
+  aprobada (`DIAS_VIGENCIA_SOLICITUD_APROBADA`).
+
+El desfase se calcula con `Intl` en cada instante, así que respeta el cambio de horario de
+verano/invierno de Chile, sin depender de la zona horaria del servidor.
+
+### Un rechazo cierra las solicitudes de reemplazo pendientes de esa carga
+
+Si un ADMIN/REVISOR_REPOSITORIO rechaza una carga que tiene una `SolicitudReemplazoCarga` todavía
+`PENDIENTE`, esa solicitud queda sin sentido: el rechazo ya reabre la combinación para el
+notificador. `PrismaCargaArchivoRepository.rechazar()` la cierra como `RECHAZADA` **dentro de la
+misma transacción** del rechazo, con `revisadoPorId` = quien rechazó y un comentario fijo del
+sistema, así que no queda colgando en la bandeja de revisión. Solo toca solicitudes `PENDIENTE`: en
+el camino RF-22 la solicitud ya está `APROBADA` cuando se llama a `rechazar()`, y no se toca. Es una
+escritura directa a la tabla de `solicitudes-reemplazo`, el mismo atajo cross-módulo que
+`crear()` (ver deuda técnica en `docs/requerimientos.md`). No dispara correo ni evento de auditoría
+propio: el evento del rechazo (`CARGA_ARCHIVO_RECHAZADA`) ya lo cubre.
+
+En `/notificador`, el aviso de rechazo (`BannerReaperturaCarga`) enlaza con "Subir nuevo archivo" a
+la tarjeta de subida de esa ventana, usando un ancla `idTarjetaVentana(ventanaCargaId)` compartida
+por ambos componentes (una ventana tiene un único formato, así que su id basta).
+
 ## Rechazo de una carga aprobada + confirmación de aprobación por correo (RF-20)
 
 A diferencia de RF-19 (el notificador pide, un tercero aprueba), acá el rechazo es una decisión

@@ -1,4 +1,11 @@
 import { formatearFechaHora } from "@/shared/utils/fecha";
+import { IconoSubir } from "@/shared/components/iconos";
+
+// Ancla de la tarjeta de subida de una ventana en `/notificador`: una ventana tiene un único
+// formato, así que el id de la ventana basta para identificar la tarjeta.
+export function idTarjetaVentana(ventanaCargaId: string): string {
+  return `tarjeta-ventana-${ventanaCargaId}`;
+}
 
 // Vista liviana de `ReaperturaVigenteVista` (`application/use-cases/ListarReaperturasVigentesPropias`)
 // con `fechaLimite` ya como texto ISO: mismo criterio que `CargaResumenVista` en
@@ -41,6 +48,13 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
             Puedes volver a subir un archivo para esta combinación hasta el{" "}
             <strong>{formatearFechaHora(new Date(reapertura.fechaLimite))}</strong>.
           </p>
+          <a
+            href={`#${idTarjetaVentana(reapertura.ventanaCargaId)}`}
+            className="mt-3 inline-flex w-fit items-center gap-2 rounded-md bg-gob-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-gob-tertiary active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+          >
+            <IconoSubir className="shrink-0" />
+            Subir nuevo archivo
+          </a>
         </div>
       ))}
     </div>

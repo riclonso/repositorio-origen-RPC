@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
+import { instanteAParedChile } from "@/shared/utils/fecha";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { CODIGO_PERFIL_NOTIFICADOR } from "@/modules/perfiles/domain/entities/Perfil";
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
@@ -157,12 +158,13 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
 
   async listarDisponibles(ahora) {
     // Exclusión real en el `WHERE`, no solo en la UI: una ventana no publicada nunca llega hasta
-    // acá, sin importar sus fechas.
+    // acá, sin importar sus fechas. Las fechas son hora de pared de Chile (ver `estaAbierta`).
+    const paredAhora = instanteAParedChile(ahora);
     const registros = await prisma.ventanaCarga.findMany({
       where: {
         eliminadaEn: null,
-        fechaApertura: { lte: ahora },
-        fechaVencimiento: { gte: ahora },
+        fechaApertura: { lte: paredAhora },
+        fechaVencimiento: { gte: paredAhora },
         publicada: true,
       },
       select: SELECCION_VENTANA,
