@@ -1,9 +1,7 @@
-import { Readable } from "node:stream";
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-
-const TIPO_CONTENIDO_CSV = "text/csv";
+import { abrirPrimeraHojaExcelJs } from "@/infrastructure/hojas-calculo/abrirHojaExcelJs";
 
 // Tope de seguridad: mismo criterio que `LectorPlantillaExcelJs`, evita recorrer columnas
 // indefinidamente si la primera fila viniera sin ninguna celda vacía.
@@ -35,21 +33,12 @@ function celdaAValor(valor: ExcelJS.CellValue): ValorCeldaArchivo {
   return String(valor);
 }
 
-// Implementación del puerto `LectorArchivoReporte` con `exceljs`. Csv se lee SOLO con separador
-// coma y codificación UTF-8, mismo criterio ya establecido por `LectorPlantillaExcelJs`.
+// Implementación del puerto `LectorArchivoReporte` con `exceljs`. Un CSV se lee con el separador
+// del formato y se decodifica igual que la plantilla (`abrirPrimeraHojaExcelJs`): UTF-8 con o sin
+// BOM, o Windows-1252.
 export const lectorArchivoReporteExcelJs: LectorArchivoReporte = {
-  async leer(buffer, tipoContenido) {
-    const workbook = new ExcelJS.Workbook();
-    let hoja: ExcelJS.Worksheet | undefined;
-
-    if (tipoContenido === TIPO_CONTENIDO_CSV) {
-      hoja = await workbook.csv.read(Readable.from(buffer));
-    } else {
-      // Mismo desajuste de tipos entre el `.d.ts` de exceljs y el `Buffer` de Node ya documentado
-      // en `LectorPlantillaExcelJs`; no afecta el runtime.
-      await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
-      hoja = workbook.worksheets[0];
-    }
+  async leer(buffer, tipoContenido, opciones) {
+    const { hoja } = await abrirPrimeraHojaExcelJs(buffer, tipoContenido, opciones.separadorCsv);
 
     if (!hoja) return { encabezados: [], filas: [] };
 

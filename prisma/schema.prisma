@@ -100,8 +100,10 @@ model Usuario {
   @@map("usuario")
 }
 
-// Ocho tipos fijos, no configurables: agregar uno nuevo es una decisión de producto que exige
-// código nuevo (un parser propio), así que vive en el enum y no en una tabla de catálogo.
+// Siete tipos fijos, no configurables: agregar uno nuevo es una decisión de producto que exige
+// código nuevo (un parser propio), así que vive en el enum y no en una tabla de catálogo. `RUT`
+// dejó de ser un tipo de dato: el RUT se valida con la regla `RUT_VALIDO`, que admite el RUT
+// completo en una columna o repartido en número + dígito verificador.
 enum TipoDatoColumna {
   TEXTO
   ENTERO
@@ -109,7 +111,6 @@ enum TipoDatoColumna {
   BOOLEANO
   FECHA
   FECHA_HORA
-  RUT
   EMAIL
 }
 
@@ -120,6 +121,15 @@ enum TipoDatoColumna {
 enum TipoArchivo {
   EXCEL
   CSV
+}
+
+// Separador de campos de un formato CSV. Lista fija (decisión explícita): agregar uno nuevo exige
+// declarar su carácter en `CARACTER_SEPARADOR_CSV` (`domain/entities/FormatoExcel.ts`).
+enum SeparadorCsv {
+  COMA
+  PUNTO_Y_COMA
+  TABULADOR
+  BARRA_VERTICAL
 }
 
 // Especifica la cantidad de columnas, sus nombres y cuáles son obligatorias para un archivo que
@@ -134,6 +144,9 @@ model FormatoExcel {
   // Derivado del `tipoContenidoPlantilla` real detectado al crear (RF-15 ampliación), NUNCA
   // recibido del cliente. Inmutable: no forma parte de `DatosEdicionFormatoExcel`.
   tipoArchivo            TipoArchivo
+  // NULL si y solo si `tipoArchivo = EXCEL` (CHECK en la migración). A diferencia de
+  // `tipoArchivo`, sí es editable.
+  separadorCsv           SeparadorCsv?
   contenidoPlantilla     Bytes
   activo                 Boolean     @default(true)
   createdAt              DateTime    @default(now())
@@ -186,6 +199,7 @@ enum TipoReglaValidacionFormatoExcel {
   FECHA_DENTRO_DE_VENTANA_VIGENTE
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
   FILA_DUPLICADA
+  RUT_VALIDO
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de

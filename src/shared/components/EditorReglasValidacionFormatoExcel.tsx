@@ -8,12 +8,22 @@ import { CampoTexto } from "@/shared/components/CampoTexto";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Boton } from "@/shared/components/Boton";
 import { IconoEliminar } from "@/shared/components/iconos";
+import { EditorColumnasReglaRut, type ModoReglaRut } from "@/shared/components/EditorColumnasReglaRut";
 
 export type ReglaValidacionEditable = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
+  // Solo de UI, para `RUT_VALIDO`: no viaja al servidor (la forma real la da `columnas[]`).
+  modoRut?: ModoReglaRut;
 };
+
+// Sin modo explícito (p. ej. una regla ya guardada que se abre para editar), se deduce de la
+// cantidad de columnas: la convención de `columnas[]` de `RUT_VALIDO` es 1 = RUT completo,
+// 2 = número + dígito verificador.
+function modoReglaRut(regla: ReglaValidacionEditable): ModoReglaRut {
+  return regla.modoRut ?? (regla.columnas.length === 2 ? "NUMERO_Y_DV" : "COMPLETO");
+}
 
 // Columna del formato, tal como la ve este editor: solo lo necesario para listar nombres y
 // filtrar por tipo de dato (RF-15).
@@ -32,6 +42,7 @@ const OPCIONES_TIPO_REGLA: OpcionSelect[] = [
     etiqueta: "Fecha efectiva (principal o alternativa más antigua) dentro del año de la ventana",
   },
   { valor: "FILA_DUPLICADA", etiqueta: "Fila duplicada" },
+  { valor: "RUT_VALIDO", etiqueta: "Validar RUT" },
 ];
 
 const REGLA_POR_DEFECTO: ReglaValidacionEditable = {
@@ -112,7 +123,9 @@ export function EditorReglasValidacionFormatoExcel({
           ventana. &ldquo;Fila duplicada&rdquo; exige que, de un conjunto de columnas, ninguna
           fila repita exactamente los mismos valores que otra fila anterior del mismo archivo
           (comparación sensible a mayúsculas); solo se rechaza la 2ª aparición en adelante, y las
-          filas con esas columnas totalmente vacías quedan excluidas del chequeo. Se evalúan
+          filas con esas columnas totalmente vacías quedan excluidas del chequeo. &ldquo;Validar
+          RUT&rdquo; comprueba el dígito verificador del RUT, ya sea completo en una columna o
+          repartido en número y dígito verificador. Se evalúan
           después de comprobar las columnas requeridas.
         </p>
       </div>
@@ -124,8 +137,10 @@ export function EditorReglasValidacionFormatoExcel({
       ) : (
         <div className="flex flex-col gap-3">
           {reglas.map((regla, indice) => {
+            // Las posiciones vacías (columna aún sin elegir) no son columnas "faltantes".
             const columnasFaltantes = regla.columnas.filter(
-              (nombreColumna) => !columnaExiste(nombreColumna, nombresColumnasDisponibles),
+              (nombreColumna) =>
+                nombreColumna.length > 0 && !columnaExiste(nombreColumna, nombresColumnasDisponibles),
             );
 
             return (
@@ -155,11 +170,21 @@ export function EditorReglasValidacionFormatoExcel({
                     actualizarRegla(indice, {
                       tipo: evento.target.value as TipoReglaValidacion,
                       columnas: [],
+                      modoRut: undefined,
                     })
                   }
                 />
 
-                {regla.tipo === "FECHA_DENTRO_DE_VENTANA_VIGENTE" ? (
+                {regla.tipo === "RUT_VALIDO" ? (
+                  <EditorColumnasReglaRut
+                    idBase={`regla-${indice}`}
+                    modo={modoReglaRut(regla)}
+                    columnas={regla.columnas}
+                    opcionesColumnas={opcionesColumnas}
+                    columnasFaltantes={columnasFaltantes}
+                    onCambiar={(cambios) => actualizarRegla(indice, cambios)}
+                  />
+                ) : regla.tipo === "FECHA_DENTRO_DE_VENTANA_VIGENTE" ? (
                   <CampoSelect
                     id={`regla-${indice}-columna-fecha`}
                     etiqueta="Columna de fecha"

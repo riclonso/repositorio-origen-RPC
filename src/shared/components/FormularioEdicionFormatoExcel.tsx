@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { FormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type { FormatoExcel, SeparadorCsv } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { CampoSelect } from "@/shared/components/CampoSelect";
+import { useEliminarColumnaFormato } from "@/shared/components/useEliminarColumnaFormato";
+import {
+  ETIQUETA_TIPO_ARCHIVO,
+  OPCIONES_SEPARADOR_CSV,
+  esSeparadorCsv,
+} from "@/shared/components/opciones-formato-excel";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { CampoTexto } from "@/shared/components/CampoTexto";
@@ -27,6 +34,9 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
   const router = useRouter();
   const [nombre, setNombre] = useState(formato.nombre);
   const [descripcion, setDescripcion] = useState(formato.descripcion ?? "");
+  // Solo aplica a formatos CSV; `tipoArchivo` es inmutable y se muestra de solo lectura. Valor
+  // inicial del formulario (la página remonta el componente con `key={formato.id}`).
+  const [separadorCsv, setSeparadorCsv] = useState<SeparadorCsv | null>(() => formato.separadorCsv);
   // Inicializador perezoso (función, no valor): sin él, `map()` se ejecuta de nuevo en cada
   // render aunque `useState` descarte el resultado después del primero.
   const [columnas, setColumnas] = useState<ColumnaEditable[]>(() =>
@@ -47,7 +57,8 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
   const [enviando, setEnviando] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
-  const [columnaPendienteEliminacion, setColumnaPendienteEliminacion] = useState<ColumnaEditable | null>(null);
+  const { columnaPendienteEliminacion, solicitarEliminarColumna, confirmarEliminarColumna, cancelarEliminarColumna } =
+    useEliminarColumnaFormato(reglasValidacion, setColumnas, setReglasValidacion);
 
   async function guardar() {
     setEnviando(true);
@@ -61,6 +72,7 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
         body: JSON.stringify({
           nombre,
           descripcion: descripcion.trim().length > 0 ? descripcion : null,
+          separadorCsv: formato.tipoArchivo === "CSV" ? separadorCsv : null,
           columnas: columnas.map(({ nombre: nombreColumna, requerida, tipoDato }) => ({
             nombre: nombreColumna,
             requerida,
@@ -96,42 +108,6 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
     }
   }
 
-  function eliminarColumnaYReglas(columnaAEliminar: ColumnaEditable) {
-    const nombreNormalizado = columnaAEliminar.nombre.trim().toLocaleLowerCase();
-
-    setColumnas((actuales) =>
-      actuales
-        .filter((columna) => columna !== columnaAEliminar)
-        .map((columna, indice) => ({ ...columna, orden: indice + 1 })),
-    );
-    setReglasValidacion((actuales) =>
-      actuales.filter(
-        (regla) =>
-          !regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
-      ),
-    );
-  }
-
-  function solicitarEliminarColumna(columna: ColumnaEditable) {
-    const nombreNormalizado = columna.nombre.trim().toLocaleLowerCase();
-    const tieneReglasAsociadas = reglasValidacion.some((regla) =>
-      regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
-    );
-
-    if (tieneReglasAsociadas) {
-      setColumnaPendienteEliminacion(columna);
-      return;
-    }
-
-    eliminarColumnaYReglas(columna);
-  }
-
-  function confirmarEliminarColumna() {
-    if (!columnaPendienteEliminacion) return;
-    eliminarColumnaYReglas(columnaPendienteEliminacion);
-    setColumnaPendienteEliminacion(null);
-  }
-
   return (
     <div className="mt-6 flex flex-col gap-5">
       <div className="grid gap-5 md:grid-cols-2">
@@ -149,6 +125,26 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
           onChange={(evento) => setDescripcion(evento.target.value)}
           error={errores.descripcion}
         />
+        <CampoTexto
+          id="tipo-archivo"
+          etiqueta="Tipo de archivo"
+          value={ETIQUETA_TIPO_ARCHIVO[formato.tipoArchivo]}
+          readOnly
+          ayuda="No se puede cambiar después de crear el formato."
+        />
+        {formato.tipoArchivo === "CSV" ? (
+          <CampoSelect
+            id="separador-csv"
+            etiqueta="Separador"
+            opciones={OPCIONES_SEPARADOR_CSV}
+            value={separadorCsv ?? ""}
+            onChange={(evento) => {
+              if (esSeparadorCsv(evento.target.value)) setSeparadorCsv(evento.target.value);
+            }}
+            ayuda="Los archivos que suban los notificadores se leerán con este separador."
+            error={errores.separadorCsv}
+          />
+        ) : null}
       </div>
 
       <TablaColumnasFormatoExcel
@@ -201,7 +197,7 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
         textoConfirmando="Eliminando..."
         variante="peligro"
         onConfirmar={confirmarEliminarColumna}
-        onCancelar={() => setColumnaPendienteEliminacion(null)}
+        onCancelar={cancelarEliminarColumna}
       />
 
     </div>

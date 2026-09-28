@@ -6,6 +6,13 @@ import Link from "next/link";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { CampoTexto } from "@/shared/components/CampoTexto";
+import type { SeparadorCsv, TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { useEliminarColumnaFormato } from "@/shared/components/useEliminarColumnaFormato";
+import {
+  PasoSubirPlantillaFormato,
+  PasoTipoArchivoFormato,
+  ResumenTipoArchivoFormato,
+} from "@/shared/components/PasosInicialesFormatoExcel";
 import { TablaColumnasFormatoExcel, type ColumnaEditable } from "@/shared/components/TablaColumnasFormatoExcel";
 import {
   EditorReglasValidacionFormatoExcel,
@@ -13,12 +20,33 @@ import {
 } from "@/shared/components/EditorReglasValidacionFormatoExcel";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
-const EXTENSIONES_ACEPTADAS = ".xlsx,.csv";
 const TIPO_DATO_POR_DEFECTO = "TEXTO";
+const SEPARADOR_POR_DEFECTO: SeparadorCsv = "COMA";
+
+// Carácter de cada separador, solo para detectar en el cliente un CSV leído con el separador
+// equivocado (una única columna cuyo nombre contiene otro separador). La lectura real la hace el
+// servidor.
+const CARACTER_SEPARADOR: Record<SeparadorCsv, string> = {
+  COMA: ",",
+  PUNTO_Y_COMA: ";",
+  TABULADOR: "\t",
+  BARRA_VERTICAL: "|",
+};
 
 type ColumnaDetectada = { orden: number; nombre: string };
 
-type PasoAsistente = "subir" | "configurar";
+type PasoAsistente = "tipo" | "subir" | "configurar";
+
+function detectarOtroSeparador(columnas: ColumnaDetectada[], elegido: SeparadorCsv): SeparadorCsv | null {
+  if (columnas.length !== 1) return null;
+  const caracteresEncabezado = new Set(columnas[0].nombre);
+
+  for (const [separador, caracter] of Object.entries(CARACTER_SEPARADOR) as [SeparadorCsv, string][]) {
+    if (separador !== elegido && caracteresEncabezado.has(caracter)) return separador;
+  }
+
+  return null;
+}
 
 type AsistenteFormatoExcelProps = {
   // Ruta base de la pantalla que aloja este asistente ("/dashboard/formatos-excel" o
@@ -27,13 +55,17 @@ type AsistenteFormatoExcelProps = {
   rutaBase: string;
 };
 
-// Asistente de dos pasos: (1) sube una plantilla y detecta sus columnas sin persistir nada, (2)
+// Asistente de tres pasos: (0) elige el tipo de archivo (Excel o CSV) y, si es CSV, su
+// separador; (1) sube una plantilla de ese tipo y detecta sus columnas sin persistir nada; (2)
 // permite marcar cuáles son requeridas y su tipo de dato antes de enviarlo todo junto —el
 // archivo original incluido— a `POST /api/formatos-excel`. No se mantiene estado de sesión entre
 // pasos: si se recarga la página hay que volver a subir el archivo.
 export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) {
   const router = useRouter();
-  const [paso, setPaso] = useState<PasoAsistente>("subir");
+  const [paso, setPaso] = useState<PasoAsistente>("tipo");
+  const [tipoArchivo, setTipoArchivo] = useState<TipoArchivo>("EXCEL");
+  const [separadorCsv, setSeparadorCsv] = useState<SeparadorCsv>(SEPARADOR_POR_DEFECTO);
+  const [otroSeparadorDetectado, setOtroSeparadorDetectado] = useState<SeparadorCsv | null>(null);
   // `archivo` solo se lee dentro de `enviarFormulario` (nunca en el JSX), así que se guarda en un
   // ref y no en estado: un `useState` aquí forzaría un re-render extra en cada selección de
   // archivo que no cambia nada visible en pantalla.
@@ -46,7 +78,8 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
   const [enviando, setEnviando] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
-  const [columnaPendienteEliminacion, setColumnaPendienteEliminacion] = useState<ColumnaEditable | null>(null);
+  const { columnaPendienteEliminacion, solicitarEliminarColumna, confirmarEliminarColumna, cancelarEliminarColumna } =
+    useEliminarColumnaFormato(reglasValidacion, setColumnas, setReglasValidacion);
 
   async function subirPlantilla(evento: ChangeEvent<HTMLInputElement>) {
     const seleccionado = evento.target.files?.[0] ?? null;
@@ -60,24 +93,28 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
     try {
       const formData = new FormData();
       formData.append("archivo", seleccionado);
+      agregarTipoYSeparador(formData);
 
       const respuesta = await fetch("/api/formatos-excel/leer-plantilla", {
         method: "POST",
         body: formData,
       });
 
-      const datos = await respuesta.json().catch(() => null);
-
       if (!respuesta.ok) {
-        setErrorGeneral(datos?.error ?? MENSAJE_ERROR_GENERICO);
+        const datosError = await respuesta.json().catch(() => null);
+        setErrorGeneral(datosError?.error ?? MENSAJE_ERROR_GENERICO);
         return;
       }
 
-      const columnasDetectadas = datos?.columnas as ColumnaDetectada[] | undefined;
+      const datos = await respuesta.json().catch(() => null);
+      const columnasDetectadas = (datos?.columnas as ColumnaDetectada[] | undefined) ?? [];
 
       archivoRef.current = seleccionado;
+      setOtroSeparadorDetectado(
+        tipoArchivo === "CSV" ? detectarOtroSeparador(columnasDetectadas, separadorCsv) : null,
+      );
       setColumnas(
-        (columnasDetectadas ?? []).map((columna) => ({
+        columnasDetectadas.map((columna) => ({
           ...columna,
           requerida: false,
           tipoDato: TIPO_DATO_POR_DEFECTO,
@@ -92,6 +129,22 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
     }
   }
 
+  // El tipo y el separador viajan en ambas peticiones (lectura y creación): no hay estado de
+  // sesión entre pasos, y el servidor vuelve a validar que el archivo sea del tipo elegido.
+  function agregarTipoYSeparador(formData: FormData) {
+    formData.append("tipoArchivo", tipoArchivo);
+    if (tipoArchivo === "CSV") {
+      formData.append("separadorCsv", separadorCsv);
+    }
+  }
+
+  function continuarASubir() {
+    // Cambiar de tipo invalida la plantilla ya leída: se vuelve a pedir el archivo.
+    archivoRef.current = null;
+    setErrorGeneral(null);
+    setPaso("subir");
+  }
+
   async function enviarFormulario() {
     const archivo = archivoRef.current;
     if (!archivo) return;
@@ -103,6 +156,7 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
     try {
       const formData = new FormData();
       formData.append("archivo", archivo);
+      agregarTipoYSeparador(formData);
       formData.append("nombre", nombre);
       formData.append("descripcion", descripcion);
       formData.append(
@@ -150,81 +204,43 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
     }
   }
 
-  function eliminarColumnaYReglas(columnaAEliminar: ColumnaEditable) {
-    const nombreNormalizado = columnaAEliminar.nombre.trim().toLocaleLowerCase();
-
-    setColumnas((actuales) =>
-      actuales
-        .filter((columna) => columna !== columnaAEliminar)
-        .map((columna, indice) => ({ ...columna, orden: indice + 1 })),
+  if (paso === "tipo") {
+    return (
+      <PasoTipoArchivoFormato
+        rutaBase={rutaBase}
+        tipoArchivo={tipoArchivo}
+        separadorCsv={separadorCsv}
+        onCambiarTipo={setTipoArchivo}
+        onCambiarSeparador={setSeparadorCsv}
+        onContinuar={continuarASubir}
+      />
     );
-    // Una regla que mencionaba la columna eliminada deja de ser válida por definición. Se elimina
-    // completa para no conservar una regla parcial con semántica distinta a la configurada.
-    setReglasValidacion((actuales) =>
-      actuales.filter(
-        (regla) =>
-          !regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
-      ),
-    );
-  }
-
-  function solicitarEliminarColumna(columna: ColumnaEditable) {
-    const nombreNormalizado = columna.nombre.trim().toLocaleLowerCase();
-    const tieneReglasAsociadas = reglasValidacion.some((regla) =>
-      regla.columnas.some((nombre) => nombre.trim().toLocaleLowerCase() === nombreNormalizado),
-    );
-
-    if (tieneReglasAsociadas) {
-      setColumnaPendienteEliminacion(columna);
-      return;
-    }
-
-    eliminarColumnaYReglas(columna);
-  }
-
-  function confirmarEliminarColumna() {
-    if (!columnaPendienteEliminacion) return;
-    eliminarColumnaYReglas(columnaPendienteEliminacion);
-    setColumnaPendienteEliminacion(null);
   }
 
   if (paso === "subir") {
     return (
-      <div className="mt-6 flex flex-col items-start gap-4 rounded-lg border border-gob-accent bg-white p-6">
-        <p className="text-sm text-gob-gray-a">
-          Sube un archivo de ejemplo (.xlsx o .csv, máximo 10 MB). El sistema leerá las columnas
-          de la primera fila para que definas cuáles son requeridas y su tipo de dato.
-        </p>
-
-        <label className="inline-flex w-fit cursor-pointer items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-gob-primary">
-          {cargandoPlantilla ? "Leyendo..." : "Seleccionar plantilla"}
-          <input
-            type="file"
-            accept={EXTENSIONES_ACEPTADAS}
-            className="sr-only"
-            disabled={cargandoPlantilla}
-            onChange={subirPlantilla}
-          />
-        </label>
-
-        {errorGeneral ? (
-          <p role="alert" className="text-sm font-medium text-gob-danger">
-            {errorGeneral}
-          </p>
-        ) : null}
-
-        <Link
-          href={rutaBase}
-          className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
-        >
-          Cancelar
-        </Link>
-      </div>
+      <PasoSubirPlantillaFormato
+        rutaBase={rutaBase}
+        tipoArchivo={tipoArchivo}
+        separadorCsv={separadorCsv}
+        cargando={cargandoPlantilla}
+        error={errorGeneral}
+        onSeleccionar={subirPlantilla}
+        onCambiarTipo={() => setPaso("tipo")}
+      />
     );
   }
 
+  const errorArchivo = errores.archivo ?? errores.separadorCsv;
+
   return (
     <div className="mt-6 flex flex-col gap-5">
+      <ResumenTipoArchivoFormato
+        tipoArchivo={tipoArchivo}
+        separadorCsv={separadorCsv}
+        otroSeparadorDetectado={otroSeparadorDetectado}
+      />
+
       <div className="grid gap-5 md:grid-cols-2">
         <CampoTexto
           id="nombre"
@@ -256,6 +272,12 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
         error={errores.reglasValidacion}
       />
 
+      {errorArchivo ? (
+        <p role="alert" className="text-sm font-medium text-gob-danger">
+          {errorArchivo}
+        </p>
+      ) : null}
+
       {errorGeneral ? (
         <p role="alert" className="text-sm font-medium text-gob-danger">
           {errorGeneral}
@@ -275,9 +297,12 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
         <Boton type="button" variante="secundario" disabled={enviando} onClick={() => setPaso("subir")}>
           Volver
         </Boton>
+        <Boton type="button" variante="secundario" disabled={enviando} onClick={() => setPaso("tipo")}>
+          Cambiar tipo de archivo
+        </Boton>
         <Link
           href={rutaBase}
-          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar
         </Link>
@@ -295,7 +320,7 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
         textoConfirmando="Eliminando..."
         variante="peligro"
         onConfirmar={confirmarEliminarColumna}
-        onCancelar={() => setColumnaPendienteEliminacion(null)}
+        onCancelar={cancelarEliminarColumna}
       />
 
     </div>

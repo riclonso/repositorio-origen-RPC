@@ -1,4 +1,5 @@
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
+import type { TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
@@ -29,6 +30,9 @@ export type DatosValidarYCargarArchivo = {
   usuarioId: string;
   nombreArchivoOriginal: string;
   tipoContenidoArchivo: string;
+  // Detectado por el servidor a partir del contenido real del archivo; debe coincidir con el
+  // `tipoArchivo` del formato.
+  tipoArchivoDetectado: TipoArchivo;
   contenidoArchivo: Buffer;
 };
 
@@ -38,6 +42,8 @@ export type ResultadoValidarYCargarArchivo =
   // selector y envió el archivo": ambos casos son indistinguibles desde este endpoint y se tratan
   // igual, cerrando la ventana de carrera.
   | { ok: false; motivo: "FORMATO_NO_ASIGNADO" }
+  // El archivo subido no es del tipo (Excel/CSV) que exige el formato elegido.
+  | { ok: false; motivo: "TIPO_ARCHIVO_NO_COINCIDE"; tipoArchivoFormato: TipoArchivo }
   // Cubre "no existe ninguna ventana para ese año y ese formato exacto" y "existe pero ya cerró o
   // todavía no abre": mismo criterio que `FORMATO_NO_ASIGNADO`, indistinguibles desde este
   // endpoint (no revela detalle interno). La corrección que reemplazó
@@ -109,6 +115,10 @@ export async function validarYCargarArchivo(
 
   if (!formato) {
     return { ok: false, motivo: "FORMATO_NO_ASIGNADO" };
+  }
+
+  if (datos.tipoArchivoDetectado !== formato.tipoArchivo) {
+    return { ok: false, motivo: "TIPO_ARCHIVO_NO_COINCIDE", tipoArchivoFormato: formato.tipoArchivo };
   }
 
   // Barato primero, antes de leer el archivo completo: si no hay una ventana abierta para el año
@@ -194,6 +204,8 @@ export async function validarYCargarArchivo(
   const { encabezados, filas } = await dependencias.lector.leer(
     datos.contenidoArchivo,
     datos.tipoContenidoArchivo,
+    // El separador sale del formato persistido, nunca del cliente.
+    { separadorCsv: formato.separadorCsv },
   );
 
   const errores: DatosNuevoErrorCargaArchivo[] = [];

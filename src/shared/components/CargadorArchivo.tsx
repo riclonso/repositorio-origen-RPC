@@ -6,10 +6,21 @@ import { IconoSubir } from "@/shared/components/iconos";
 type CargadorArchivoProps = {
   id: string;
   disabled?: boolean;
+  // Extensión aceptada (p. ej. ".csv") y descripción visible del tipo esperado (p. ej. "CSV (.csv)
+  // separado por punto y coma (;)"). El `accept` es solo una ayuda del navegador: el servidor
+  // vuelve a exigir el tipo del formato.
+  extension?: string;
+  descripcionTipo?: string;
   onArchivo: (archivo: File | null) => void;
 };
 
-export function CargadorArchivo({ id, disabled = false, onArchivo }: CargadorArchivoProps) {
+export function CargadorArchivo({
+  id,
+  disabled = false,
+  extension = ".xlsx,.csv",
+  descripcionTipo = ".xlsx o .csv",
+  onArchivo,
+}: CargadorArchivoProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -41,7 +52,7 @@ export function CargadorArchivo({ id, disabled = false, onArchivo }: CargadorArc
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="text-sm font-medium text-gob-black">
-        Archivo (.xlsx o .csv, máximo 10 MB)
+        Archivo ({descripcionTipo}, máximo 10 MB)
       </label>
 
       <div
@@ -61,7 +72,7 @@ export function CargadorArchivo({ id, disabled = false, onArchivo }: CargadorArc
           ref={inputRef}
           id={id}
           type="file"
-          accept=".xlsx,.csv"
+          accept={extension}
           disabled={disabled}
           onChange={handleInputChange}
           className="absolute inset-0 cursor-pointer opacity-0"

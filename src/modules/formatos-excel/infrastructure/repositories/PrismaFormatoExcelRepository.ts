@@ -37,6 +37,7 @@ const SELECCION_DETALLE = {
   nombreArchivoPlantilla: true,
   tipoContenidoPlantilla: true,
   tipoArchivo: true,
+  separadorCsv: true,
   activo: true,
   createdAt: true,
   updatedAt: true,
@@ -51,6 +52,7 @@ type RegistroDetalle = {
   nombreArchivoPlantilla: string;
   tipoContenidoPlantilla: string;
   tipoArchivo: FormatoExcel["tipoArchivo"];
+  separadorCsv: FormatoExcel["separadorCsv"];
   activo: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -66,6 +68,7 @@ function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
     nombreArchivoPlantilla: registro.nombreArchivoPlantilla,
     tipoContenidoPlantilla: registro.tipoContenidoPlantilla,
     tipoArchivo: registro.tipoArchivo,
+    separadorCsv: registro.separadorCsv,
     activo: registro.activo,
     createdAt: registro.createdAt,
     updatedAt: registro.updatedAt,
@@ -95,6 +98,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
         nombre: true,
         descripcion: true,
         tipoArchivo: true,
+        separadorCsv: true,
         activo: true,
         createdAt: true,
         _count: { select: { columnas: true, reglasValidacion: true, usuariosAsignados: true, ventanasCarga: true } },
@@ -107,6 +111,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       nombre: registro.nombre,
       descripcion: registro.descripcion,
       tipoArchivo: registro.tipoArchivo,
+      separadorCsv: registro.separadorCsv,
       activo: registro.activo,
       createdAt: registro.createdAt,
       cantidadColumnas: registro._count.columnas,
@@ -141,6 +146,15 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     return registros.map((registro) => registro.id);
   },
 
+  async tieneCargasPendientesVistoBueno(id) {
+    const registro = await prisma.cargaArchivo.findFirst({
+      where: { formatoExcelId: id, estado: "PENDIENTE_VISTO_BUENO" },
+      select: { id: true },
+    });
+
+    return registro !== null;
+  },
+
   async estaAsignadoYActivo(usuarioId, formatoExcelId) {
     // Una sola consulta contra la tabla de asociación, con el estado del formato filtrado en el
     // mismo `WHERE` (nunca dos llamadas separadas que dejen ventana de carrera).
@@ -162,6 +176,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
             nombre: true,
             descripcion: true,
             tipoArchivo: true,
+            separadorCsv: true,
             activo: true,
             createdAt: true,
             _count: { select: { columnas: true, reglasValidacion: true, usuariosAsignados: true } },
@@ -176,6 +191,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       nombre: formatoExcel.nombre,
       descripcion: formatoExcel.descripcion,
       tipoArchivo: formatoExcel.tipoArchivo,
+      separadorCsv: formatoExcel.separadorCsv,
       activo: formatoExcel.activo,
       createdAt: formatoExcel.createdAt,
       cantidadColumnas: formatoExcel._count.columnas,
@@ -198,6 +214,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
           nombreArchivoPlantilla: datos.nombreArchivoPlantilla,
           tipoContenidoPlantilla: datos.tipoContenidoPlantilla,
           tipoArchivo: datos.tipoArchivo,
+          separadorCsv: datos.separadorCsv,
           // `Uint8Array.from` produce un `Uint8Array<ArrayBuffer>` "de fábrica", el tipo exacto
           // que exige el campo `Bytes` generado por Prisma; el `Buffer<ArrayBufferLike>` de Node
           // es más amplio (admite `SharedArrayBuffer`) y por eso no encaja directo.
@@ -238,6 +255,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
         data: {
           nombre: datos.nombre,
           descripcion: datos.descripcion,
+          separadorCsv: datos.separadorCsv,
           columnas: {
             deleteMany: {},
             create: datos.columnas.map((columna) => ({
@@ -327,7 +345,12 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     // Única consulta de todo el módulo que trae `contenidoPlantilla`.
     const registro = await prisma.formatoExcel.findUnique({
       where: { id },
-      select: { nombreArchivoPlantilla: true, tipoContenidoPlantilla: true, contenidoPlantilla: true },
+      select: {
+        nombreArchivoPlantilla: true,
+        tipoContenidoPlantilla: true,
+        separadorCsv: true,
+        contenidoPlantilla: true,
+      },
     });
 
     if (!registro) return null;
@@ -335,6 +358,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     return {
       nombreArchivoPlantilla: registro.nombreArchivoPlantilla,
       tipoContenidoPlantilla: registro.tipoContenidoPlantilla,
+      separadorCsv: registro.separadorCsv,
       contenidoPlantilla: Buffer.from(registro.contenidoPlantilla),
     };
   },

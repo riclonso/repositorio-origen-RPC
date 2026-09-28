@@ -1,11 +1,37 @@
 import { z } from "zod";
 import {
+  SEPARADORES_CSV,
+  TIPOS_ARCHIVO,
   TIPOS_DATO_COLUMNA,
   TIPOS_REGLA_VALIDACION,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 
 export const tipoDatoColumnaSchema = z.enum(TIPOS_DATO_COLUMNA);
 export const tipoReglaValidacionSchema = z.enum(TIPOS_REGLA_VALIDACION);
+export const tipoArchivoSchema = z.enum(TIPOS_ARCHIVO, { error: "Selecciona el tipo de archivo" });
+export const separadorCsvSchema = z.enum(SEPARADORES_CSV, { error: "Selecciona un separador válido" });
+
+// Tipo de archivo declarado + separador, compartido entre la lectura de la plantilla y la
+// creación del formato. El separador es obligatorio en CSV y prohibido en EXCEL (un Excel no
+// tiene separador de campos). Los valores vacíos llegan como `null` desde el multipart.
+export const tipoArchivoYSeparadorSchema = z
+  .object({
+    tipoArchivo: tipoArchivoSchema,
+    separadorCsv: separadorCsvSchema.nullable(),
+  })
+  .superRefine((datos, contexto) => {
+    if (datos.tipoArchivo === "CSV" && datos.separadorCsv === null) {
+      contexto.addIssue({ code: "custom", path: ["separadorCsv"], message: "Selecciona el separador del CSV" });
+    }
+    if (datos.tipoArchivo === "EXCEL" && datos.separadorCsv !== null) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["separadorCsv"],
+        message: "Un archivo Excel no lleva separador",
+      });
+    }
+  });
+export type TipoArchivoYSeparadorInput = z.infer<typeof tipoArchivoYSeparadorSchema>;
 
 const NOMBRE_MAXIMO = 150;
 const DESCRIPCION_MAXIMA = 1000;
@@ -47,7 +73,7 @@ const columnasFormatoExcelSchema = z
 const reglaValidacionFormatoExcelSchema = z.object({
   tipo: tipoReglaValidacionSchema,
   columnas: z
-    .array(z.string().trim().min(1))
+    .array(z.string().trim().min(1, "Selecciona todas las columnas de la regla"))
     .min(1, "Selecciona al menos una columna")
     .refine(
       // Comparación case-insensitive: mismo criterio que `nombresDeColumnaUnicos` y
@@ -99,6 +125,11 @@ const TIPOS_DATO_FECHA: readonly string[] = ["FECHA", "FECHA_HORA"];
 // `domain/entities/FormatoExcel.ts`), sin tope fijo de alternativas.
 const MINIMO_COLUMNAS_FECHA_EFECTIVA = 2;
 
+// RUT completo en una columna, o número + dígito verificador en dos (convención de `columnas[]`
+// en `domain/entities/FormatoExcel.ts`).
+const MINIMO_COLUMNAS_RUT = 1;
+const MAXIMO_COLUMNAS_RUT = 2;
+
 // Las columnas referenciadas por cada regla deben existir entre las columnas del mismo payload
 // (comparación case-insensitive, mismo criterio que `nombresDeColumnaUnicos` usa para la
 // unicidad de nombres de columna), y cada tipo de regla exige su propia cantidad y tipo de
@@ -135,6 +166,19 @@ function validarReferenciasDeReglas(
         code: "custom",
         path: ["reglasValidacion", indiceRegla, "columnas"],
         message: `La regla ${indiceRegla + 1} debe tener al menos ${MINIMO_COLUMNAS_POR_REGLA} columnas`,
+      });
+    }
+
+    // `RUT_VALIDO`: 1 columna (RUT completo) o 2 (número + dígito verificador), sin restricción
+    // de tipo de dato: el RUT puede venir como texto o como número en un Excel.
+    if (
+      regla.tipo === "RUT_VALIDO" &&
+      (regla.columnas.length < MINIMO_COLUMNAS_RUT || regla.columnas.length > MAXIMO_COLUMNAS_RUT)
+    ) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["reglasValidacion", indiceRegla, "columnas"],
+        message: `La regla ${indiceRegla + 1} debe tener una columna con el RUT completo, o dos columnas: número y dígito verificador`,
       });
     }
 
@@ -187,9 +231,13 @@ function validarReferenciasDeReglas(
 export const crearFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDeReglas);
 export type CrearFormatoExcelInput = z.infer<typeof crearFormatoExcelSchema>;
 
-// La creación y la edición comparten exactamente los mismos campos (la plantilla no se
-// reemplaza al editar, así que no forma parte de este esquema en ningún caso).
-export const editarFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDeReglas);
+// La edición comparte los campos de la creación (la plantilla no se reemplaza al editar) y agrega
+// el separador CSV, editable. `tipoArchivo` NO viaja: es inmutable. Si `separadorCsv` se omite se
+// conserva el actual; su coherencia con el `tipoArchivo` persistido se valida en
+// `ActualizarFormatoExcel`, que es quien lo conoce.
+export const editarFormatoExcelSchema = z
+  .object({ ...camposFormatoExcelSchema, separadorCsv: separadorCsvSchema.nullable().optional() })
+  .superRefine(validarReferenciasDeReglas);
 export type EditarFormatoExcelInput = z.infer<typeof editarFormatoExcelSchema>;
 
 export const cambiarEstadoFormatoExcelSchema = z.object({ activo: z.boolean() });

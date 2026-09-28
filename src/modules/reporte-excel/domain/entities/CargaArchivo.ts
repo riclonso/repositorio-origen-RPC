@@ -3,6 +3,8 @@
 // binario fuera hace imposible filtrarlo por descuido. El único lugar que sí lo necesita usa
 // `CargaArchivoParaDescarga`, más abajo.
 
+import type { SeparadorCsv } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+
 export const ESTADOS_CARGA_ARCHIVO = [
   "CON_ERRORES",
   "PENDIENTE_VISTO_BUENO",
@@ -176,6 +178,8 @@ export type DatosNuevaCargaArchivo = {
 export type ContenidoCargaArchivo = {
   contenidoArchivo: Buffer;
   tipoContenidoArchivo: string;
+  // Separador vigente del formato de la carga, para volver a leer un CSV igual que al validarlo.
+  separadorCsv: SeparadorCsv | null;
 };
 
 // Una fila de datos ya validada, lista para publicarse como `CargaArchivoPublicadaFila`.

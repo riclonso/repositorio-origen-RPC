@@ -10,7 +10,6 @@ export const TIPOS_DATO_COLUMNA = [
   "BOOLEANO",
   "FECHA",
   "FECHA_HORA",
-  "RUT",
   "EMAIL",
 ] as const;
 
@@ -22,6 +21,19 @@ export type TipoDatoColumna = (typeof TIPOS_DATO_COLUMNA)[number];
 export const TIPOS_ARCHIVO = ["EXCEL", "CSV"] as const;
 
 export type TipoArchivo = (typeof TIPOS_ARCHIVO)[number];
+
+// Separador de campos de un formato CSV. Lista fija (decisión explícita). `null` en formatos
+// EXCEL; obligatorio en formatos CSV. A diferencia de `tipoArchivo`, sí es editable.
+export const SEPARADORES_CSV = ["COMA", "PUNTO_Y_COMA", "TABULADOR", "BARRA_VERTICAL"] as const;
+
+export type SeparadorCsv = (typeof SEPARADORES_CSV)[number];
+
+export const CARACTER_SEPARADOR_CSV: Record<SeparadorCsv, string> = {
+  COMA: ",",
+  PUNTO_Y_COMA: ";",
+  TABULADOR: "\t",
+  BARRA_VERTICAL: "|",
+};
 
 export type ColumnaFormatoExcel = {
   id: string;
@@ -45,6 +57,7 @@ export const TIPOS_REGLA_VALIDACION = [
   "FECHA_DENTRO_DE_VENTANA_VIGENTE",
   "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
   "FILA_DUPLICADA",
+  "RUT_VALIDO",
 ] as const;
 
 export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
@@ -65,6 +78,11 @@ export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 // una fila (sin columna principal ni alternativas, a diferencia de la regla anterior); el orden
 // de `columnas[]` sí importa para construir la clave de comparación, aunque el resultado de la
 // regla es el mismo sin importar el orden en que se declararon.
+//
+// Convención de `columnas[]` específica de `RUT_VALIDO`: 1 o 2 columnas. Con 1, `columnas[0]`
+// trae el RUT completo (con o sin puntos y guion). Con 2, `columnas[0]` es el NÚMERO (cuerpo) y
+// `columnas[1]` el DÍGITO VERIFICADOR. Si todas las columnas vienen vacías la regla no falla; si
+// solo una de las dos viene vacía, falla.
 export type ReglaValidacionFormatoExcel = {
   id: string;
   orden: number;
@@ -80,6 +98,7 @@ export type FormatoExcel = {
   nombreArchivoPlantilla: string;
   tipoContenidoPlantilla: string;
   tipoArchivo: TipoArchivo;
+  separadorCsv: SeparadorCsv | null;
   activo: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -95,6 +114,7 @@ export type FormatoExcelResumen = {
   nombre: string;
   descripcion: string | null;
   tipoArchivo: TipoArchivo;
+  separadorCsv: SeparadorCsv | null;
   activo: boolean;
   createdAt: Date;
   cantidadColumnas: number;
@@ -126,16 +146,19 @@ export type DatosNuevoFormatoExcel = {
   nombreArchivoPlantilla: string;
   tipoContenidoPlantilla: string;
   tipoArchivo: TipoArchivo;
+  separadorCsv: SeparadorCsv | null;
   contenidoPlantilla: Buffer;
   columnas: DatosColumnaNueva[];
   reglasValidacion: DatosReglaValidacionNueva[];
 };
 
 // La plantilla persistida NO se reemplaza al editar (decisión ya tomada): editar solo toca
-// nombre, descripción, el conjunto de columnas y el de reglas de validación.
+// nombre, descripción, el separador CSV (solo en formatos CSV), el conjunto de columnas y el de
+// reglas de validación. `tipoArchivo` es inmutable.
 export type DatosEdicionFormatoExcel = {
   nombre: string;
   descripcion: string | null;
+  separadorCsv: SeparadorCsv | null;
   columnas: DatosColumnaNueva[];
   reglasValidacion: DatosReglaValidacionNueva[];
 };
@@ -144,5 +167,6 @@ export type DatosEdicionFormatoExcel = {
 export type PlantillaFormatoExcel = {
   nombreArchivoPlantilla: string;
   tipoContenidoPlantilla: string;
+  separadorCsv: SeparadorCsv | null;
   contenidoPlantilla: Buffer;
 };

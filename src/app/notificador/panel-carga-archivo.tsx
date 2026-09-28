@@ -15,6 +15,8 @@ import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { BannerReaperturaCarga, type ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
+import type { SeparadorCsv, TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { EXTENSION_TIPO_ARCHIVO, describirTipoArchivo } from "@/shared/components/opciones-formato-excel";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import {
@@ -58,6 +60,10 @@ export type SolicitudReemplazoPropiaVista = {
 export type CombinacionCargaVista = {
   formatoExcelId: string;
   formatoNombre: string;
+  // El notificador debe subir el mismo tipo de archivo del formato (y, si es CSV, con su
+  // separador); el servidor lo vuelve a exigir.
+  tipoArchivo: TipoArchivo;
+  separadorCsv: SeparadorCsv | null;
   anio: number;
   ventanaCargaId: string;
 };
@@ -478,6 +484,8 @@ function TarjetaCargaArchivo({
       <div className="mt-4 flex flex-col gap-4 sm:max-w-md">
         <CargadorArchivo
           id={idArchivo}
+          extension={EXTENSION_TIPO_ARCHIVO[combinacion.tipoArchivo]}
+          descripcionTipo={describirTipoArchivo(combinacion.tipoArchivo, combinacion.separadorCsv)}
           disabled={subiendo}
           onArchivo={(archivo) => setArchivo(archivo)}
         />

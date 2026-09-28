@@ -91,6 +91,32 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
         return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
       }
 
+      if (resultado.motivo === "SEPARADOR_CON_CARGAS_PENDIENTES") {
+        auditarFormatoExcel(acceso.sesion, request, {
+          accion: "FORMATO_EXCEL_ACTUALIZADO",
+          resultado: "RECHAZADO",
+          motivo: "SEPARADOR_CON_CARGAS_PENDIENTES",
+          formatoExcelId: idValido.data,
+        });
+        return respuestaError(
+          "No se puede cambiar el separador mientras haya cargas pendientes de visto bueno con este formato",
+          409,
+          { campo: "separadorCsv" },
+        );
+      }
+
+      if (resultado.motivo === "SEPARADOR_INVALIDO") {
+        auditarFormatoExcel(acceso.sesion, request, {
+          accion: "FORMATO_EXCEL_ACTUALIZADO",
+          resultado: "RECHAZADO",
+          motivo: "SEPARADOR_INVALIDO",
+          formatoExcelId: idValido.data,
+        });
+        return respuestaError("El separador solo aplica a formatos CSV, y en ellos es obligatorio", 400, {
+          campo: "separadorCsv",
+        });
+      }
+
       auditarFormatoExcel(acceso.sesion, request, {
         accion: "FORMATO_EXCEL_ACTUALIZADO",
         resultado: "RECHAZADO",
@@ -107,6 +133,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       resultado: "EXITO",
       formatoExcelId: resultado.formato.id,
       formatoExcelNombre: resultado.formato.nombre,
+      ...(resultado.separadorCsvCambiado ? { campos: ["separadorCsv"] } : {}),
     });
 
     return NextResponse.json({ formato: aFormatoExcelDTO(resultado.formato) });

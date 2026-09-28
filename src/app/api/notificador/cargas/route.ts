@@ -28,6 +28,7 @@ import {
   respuestaReemplazoNoAutorizado,
   respuestaSinAcceso,
   respuestaSinVentanaAbierta,
+  tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
   tipoContenidoDesdeNombre,
 } from "@/app/api/notificador/cargas/_lib/http";
@@ -184,6 +185,7 @@ export async function POST(request: Request) {
         usuarioId: acceso.sesion.sub,
         nombreArchivoOriginal: archivo.name,
         tipoContenidoArchivo: tipoContenido,
+        tipoArchivoDetectado: tipoArchivoDesdeTipoContenido(tipoContenido),
         contenidoArchivo: buffer,
       },
       {
@@ -211,6 +213,14 @@ export async function POST(request: Request) {
       });
       if (resultado.motivo === "FORMATO_NO_ASIGNADO") {
         return respuestaFormatoNoAsignado();
+      }
+
+      if (resultado.motivo === "TIPO_ARCHIVO_NO_COINCIDE") {
+        return respuestaArchivoInvalido(
+          resultado.tipoArchivoFormato === "CSV"
+            ? "Este formato exige un archivo CSV (.csv). Sube el archivo en ese tipo"
+            : "Este formato exige un archivo Excel (.xlsx). Sube el archivo en ese tipo",
+        );
       }
 
       if (resultado.motivo === "REEMPLAZO_NO_AUTORIZADO") {

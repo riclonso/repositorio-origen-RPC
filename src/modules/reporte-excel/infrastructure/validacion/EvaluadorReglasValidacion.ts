@@ -5,6 +5,16 @@ import {
   parsearFecha,
   serializarValorParaClaveDuplicado,
 } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
+import { esRutValidoFlexible } from "@/shared/utils/rut";
+
+// Un RUT (o su número) puede llegar como número desde un `.xlsx` o desde un CSV cuyo campo es
+// solo dígitos. Un entero se escribe sin decimales ni notación exponencial; cualquier otra cosa
+// (decimal, fecha, booleano) se convierte a texto y no calzará con el patrón de RUT.
+function aTextoRut(valor: ValorCeldaArchivo): string {
+  if (typeof valor === "number" && Number.isSafeInteger(valor)) return valor.toFixed(0);
+  if (valor instanceof Date) return valor.toISOString();
+  return String(valor ?? "").trim();
+}
 
 // Contexto adicional que necesitan `FECHA_DENTRO_DE_VENTANA_VIGENTE` y
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, a diferencia de `ALGUNA_COLUMNA_CON_VALOR`: el rango
@@ -94,6 +104,17 @@ export function cumpleReglaValidacion(
     // (`crearRastreadorFilasDuplicadas`/`evaluarFilaDuplicada`), no aquí.
     case "FILA_DUPLICADA":
       return true;
+    // Convención de `columnas[]` en `domain/entities/FormatoExcel.ts`: 1 columna = RUT completo;
+    // 2 columnas = número + dígito verificador. Todas vacías → no falla (el dato es opcional,
+    // su obligatoriedad la decide `requerida`); solo una de dos vacía → falla (RUT incompleto).
+    case "RUT_VALIDO": {
+      const valores = regla.columnas.map((nombreColumna) => fila[nombreColumna] ?? null);
+      if (valores.length === 0 || valores.every((valor) => celdaVacia(valor))) return true;
+      if (valores.some((valor) => celdaVacia(valor))) return false;
+
+      const rut = valores.map(aTextoRut).join("-");
+      return esRutValidoFlexible(rut);
+    }
     default:
       return true;
   }

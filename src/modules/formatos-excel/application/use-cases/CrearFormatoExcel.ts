@@ -1,5 +1,6 @@
 import type {
   FormatoExcel,
+  SeparadorCsv,
   TipoArchivo,
   TipoDatoColumna,
   TipoReglaValidacion,
@@ -24,7 +25,11 @@ export type DatosCreacionFormatoExcel = {
   descripcion: string | null;
   nombreArchivoPlantilla: string;
   tipoContenidoPlantilla: string;
+  // Detectado por el servidor a partir del contenido real del archivo; nunca del cliente.
   tipoArchivo: TipoArchivo;
+  // El que eligió el usuario en el asistente. Debe coincidir con `tipoArchivo`.
+  tipoArchivoDeclarado: TipoArchivo;
+  separadorCsv: SeparadorCsv | null;
   contenidoPlantilla: Buffer;
   columnas: DatosColumnaCreacion[];
   reglasValidacion: DatosReglaValidacionCreacion[];
@@ -32,12 +37,17 @@ export type DatosCreacionFormatoExcel = {
 
 export type ResultadoCrearFormatoExcel =
   | { ok: true; formato: FormatoExcel }
+  | { ok: false; motivo: "TIPO_NO_COINCIDE" }
   | { ok: false; motivo: "DUPLICADO"; nombre: string };
 
 export async function crearFormatoExcel(
   datos: DatosCreacionFormatoExcel,
   dependencias: { repositorio: FormatoExcelRepository },
 ): Promise<ResultadoCrearFormatoExcel> {
+  if (datos.tipoArchivoDeclarado !== datos.tipoArchivo) {
+    return { ok: false, motivo: "TIPO_NO_COINCIDE" };
+  }
+
   const existente = await dependencias.repositorio.buscarPorNombre(datos.nombre);
 
   if (existente) {
@@ -59,6 +69,9 @@ export async function crearFormatoExcel(
       nombreArchivoPlantilla: datos.nombreArchivoPlantilla,
       tipoContenidoPlantilla: datos.tipoContenidoPlantilla,
       tipoArchivo: datos.tipoArchivo,
+      // Defensa en profundidad: aunque el esquema ya exige esa coherencia, un EXCEL nunca
+      // persiste separador.
+      separadorCsv: datos.tipoArchivo === "CSV" ? datos.separadorCsv : null,
       contenidoPlantilla: datos.contenidoPlantilla,
       columnas: columnasConOrden,
       reglasValidacion: reglasValidacionConOrden,

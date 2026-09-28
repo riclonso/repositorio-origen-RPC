@@ -80,6 +80,7 @@ async function probarAltaSinContrasena() {
         listarAsignadosAUsuario: async () => [],
         obtenerPorId: async () => null,
         existeActivo: async () => true,
+        tieneCargasPendientesVistoBueno: async () => false,
         obtenerActivosEntre: async () => [],
         crear: async () => {
           throw new Error("No esperado");
