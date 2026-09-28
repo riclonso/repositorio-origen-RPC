@@ -34,7 +34,6 @@ export type ResultadoActualizarFormatoExcel =
   // Separador incoherente con el `tipoArchivo` persistido (inmutable): falta en un CSV o viene
   // en un EXCEL.
   | { ok: false; motivo: "SEPARADOR_INVALIDO" }
-  | { ok: false; motivo: "SEPARADOR_CON_CARGAS_PENDIENTES" }
   | { ok: false; motivo: "DUPLICADO"; nombre: string };
 
 // La plantilla persistida NO se toca aquí (decisión ya tomada): solo se reemplazan
@@ -54,15 +53,6 @@ export async function actualizarFormatoExcel(
 
   if ((actual.tipoArchivo === "CSV") !== (separadorCsv !== null)) {
     return { ok: false, motivo: "SEPARADOR_INVALIDO" };
-  }
-
-  // El visto bueno re-lee el archivo con el separador del formato: cambiarlo con cargas
-  // pendientes las leería con un separador distinto al que se validó.
-  if (
-    separadorCsv !== actual.separadorCsv &&
-    (await dependencias.repositorio.tieneCargasPendientesVistoBueno(id))
-  ) {
-    return { ok: false, motivo: "SEPARADOR_CON_CARGAS_PENDIENTES" };
   }
 
   if (datos.nombre !== actual.nombre) {

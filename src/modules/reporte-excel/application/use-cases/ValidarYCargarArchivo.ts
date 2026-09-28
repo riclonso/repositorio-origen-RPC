@@ -30,8 +30,8 @@ export type DatosValidarYCargarArchivo = {
   usuarioId: string;
   nombreArchivoOriginal: string;
   tipoContenidoArchivo: string;
-  // Detectado por el servidor a partir del contenido real del archivo; debe coincidir con el
-  // `tipoArchivo` del formato.
+  // Detectado por el servidor a partir del contenido real del archivo. El notificador siempre
+  // sube Excel, sin importar si el formato se definió desde un CSV.
   tipoArchivoDetectado: TipoArchivo;
   contenidoArchivo: Buffer;
 };
@@ -42,8 +42,7 @@ export type ResultadoValidarYCargarArchivo =
   // selector y envió el archivo": ambos casos son indistinguibles desde este endpoint y se tratan
   // igual, cerrando la ventana de carrera.
   | { ok: false; motivo: "FORMATO_NO_ASIGNADO" }
-  // El archivo subido no es del tipo (Excel/CSV) que exige el formato elegido.
-  | { ok: false; motivo: "TIPO_ARCHIVO_NO_COINCIDE"; tipoArchivoFormato: TipoArchivo }
+  | { ok: false; motivo: "ARCHIVO_NO_EXCEL" }
   // Cubre "no existe ninguna ventana para ese año y ese formato exacto" y "existe pero ya cerró o
   // todavía no abre": mismo criterio que `FORMATO_NO_ASIGNADO`, indistinguibles desde este
   // endpoint (no revela detalle interno). La corrección que reemplazó
@@ -117,8 +116,8 @@ export async function validarYCargarArchivo(
     return { ok: false, motivo: "FORMATO_NO_ASIGNADO" };
   }
 
-  if (datos.tipoArchivoDetectado !== formato.tipoArchivo) {
-    return { ok: false, motivo: "TIPO_ARCHIVO_NO_COINCIDE", tipoArchivoFormato: formato.tipoArchivo };
+  if (datos.tipoArchivoDetectado !== "EXCEL") {
+    return { ok: false, motivo: "ARCHIVO_NO_EXCEL" };
   }
 
   // Barato primero, antes de leer el archivo completo: si no hay una ventana abierta para el año
@@ -204,8 +203,6 @@ export async function validarYCargarArchivo(
   const { encabezados, filas } = await dependencias.lector.leer(
     datos.contenidoArchivo,
     datos.tipoContenidoArchivo,
-    // El separador sale del formato persistido, nunca del cliente.
-    { separadorCsv: formato.separadorCsv },
   );
 
   const errores: DatosNuevoErrorCargaArchivo[] = [];
@@ -230,14 +227,18 @@ export async function validarYCargarArchivo(
     (encabezado) => !nombresDeColumnaDelFormato.has(normalizarNombre(encabezado)),
   );
 
-  if (columnasInesperadas.length > 0) {
+  for (const columnaInesperada of columnasInesperadas) {
     errores.push({
       numeroFila: 0,
-      columna: columnasInesperadas.join(", "),
+      columna: columnaInesperada,
       tipoError: "COLUMNA_INESPERADA",
-      mensaje: `El archivo trae columnas no declaradas en el formato: ${columnasInesperadas.join(", ")}`,
+      mensaje: `La columna "${columnaInesperada}" no pertenece al formato`,
     });
   }
+
+  // Con columnas que no pertenecen al formato la estructura ya está mal: validar las filas solo
+  // agregaría ruido (típicamente, una columna renombrada vacía todas sus celdas requeridas).
+  const validarFilas = columnasInesperadas.length === 0;
 
   // Solo se validan las columnas del formato que sí están presentes en el archivo: una columna
   // ausente ya quedó cubierta por `COLUMNA_FALTANTE` y no se repite fila por fila.
@@ -248,7 +249,7 @@ export async function validarYCargarArchivo(
   // Estructural: encabezados sin ninguna fila de datos debajo. Sin este chequeo, el `forEach` de
   // abajo simplemente no itera y el archivo queda como `PENDIENTE_VISTO_BUENO` con 0 errores,
   // dejando pasar un archivo que nunca llegó a validar sus columnas requeridas.
-  if (filas.length === 0) {
+  if (validarFilas && filas.length === 0) {
     errores.push({
       numeroFila: 0,
       columna: null,
@@ -257,7 +258,8 @@ export async function validarYCargarArchivo(
     });
   }
 
-  const filasAValidar = filas.slice(0, TOPE_FILAS_DATOS);
+  const filasLeidas = filas.slice(0, TOPE_FILAS_DATOS);
+  const filasAValidar = validarFilas ? filasLeidas : [];
 
   // Reglas `FILA_DUPLICADA` del formato: a diferencia del resto, necesitan memoria entre filas
   // (ver comentario en `EvaluadorReglasValidacion.ts`). El rastreador se crea una sola vez, antes
@@ -331,7 +333,7 @@ export async function validarYCargarArchivo(
     nombreArchivoOriginal: datos.nombreArchivoOriginal,
     tipoContenidoArchivo: datos.tipoContenidoArchivo,
     contenidoArchivo: datos.contenidoArchivo,
-    cantidadFilasDatos: filasAValidar.length,
+    cantidadFilasDatos: filasLeidas.length,
     // Total real de errores encontrados, no el acotado: `erroresAcotados` puede terminar más
     // corto que `errores` (tope de `TOPE_ERRORES_PERSISTIDOS`), y `cantidadErrores` debe reflejar
     // el conteo real para no contradecir el mensaje "... y N errores más" de la fila resumen.

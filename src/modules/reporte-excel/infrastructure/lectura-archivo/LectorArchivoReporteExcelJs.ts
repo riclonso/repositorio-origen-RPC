@@ -33,12 +33,12 @@ function celdaAValor(valor: ExcelJS.CellValue): ValorCeldaArchivo {
   return String(valor);
 }
 
-// Implementación del puerto `LectorArchivoReporte` con `exceljs`. Un CSV se lee con el separador
-// del formato y se decodifica igual que la plantilla (`abrirPrimeraHojaExcelJs`): UTF-8 con o sin
-// BOM, o Windows-1252.
+// Implementación del puerto `LectorArchivoReporte` con `exceljs`. Las cargas nuevas son siempre
+// Excel; la rama CSV (separador coma) solo existe para volver a leer cargas antiguas al darles el
+// visto bueno.
 export const lectorArchivoReporteExcelJs: LectorArchivoReporte = {
-  async leer(buffer, tipoContenido, opciones) {
-    const { hoja } = await abrirPrimeraHojaExcelJs(buffer, tipoContenido, opciones.separadorCsv);
+  async leer(buffer, tipoContenido) {
+    const { hoja } = await abrirPrimeraHojaExcelJs(buffer, tipoContenido, null);
 
     if (!hoja) return { encabezados: [], filas: [] };
 

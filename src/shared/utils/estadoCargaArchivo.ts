@@ -5,7 +5,7 @@ import type { EstadoCargaArchivo } from "@/modules/reporte-excel/domain/entities
 // lugar evita que ambas vistas del mismo dato diverjan.
 export const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
   CON_ERRORES: "Con errores",
-  PENDIENTE_VISTO_BUENO: "Pendiente de visto bueno",
+  PENDIENTE_VISTO_BUENO: "Pendiente de Aprobación",
   APROBADA: "Aprobada",
   RECHAZADA: "Rechazada",
 };
