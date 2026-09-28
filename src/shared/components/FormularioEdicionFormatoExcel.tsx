@@ -28,9 +28,14 @@ type FormularioEdicionFormatoExcelProps = {
   // "/revisor/formatos-excel"): el componente es compartido entre ambos paneles, así que no
   // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras guardar.
   rutaBase: string;
+  permitirEditarNombresColumnas?: boolean;
 };
 
-export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioEdicionFormatoExcelProps) {
+export function FormularioEdicionFormatoExcel({
+  formato,
+  rutaBase,
+  permitirEditarNombresColumnas = false,
+}: FormularioEdicionFormatoExcelProps) {
   const router = useRouter();
   const [nombre, setNombre] = useState(formato.nombre);
   const [descripcion, setDescripcion] = useState(formato.descripcion ?? "");
@@ -151,6 +156,7 @@ export function FormularioEdicionFormatoExcel({ formato, rutaBase }: FormularioE
         columnas={columnas}
         onCambiar={setColumnas}
         onEliminarColumna={solicitarEliminarColumna}
+        permitirEditarNombres={permitirEditarNombresColumnas}
         error={errores.columnas}
       />
 

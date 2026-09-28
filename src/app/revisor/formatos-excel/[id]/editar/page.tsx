@@ -49,7 +49,12 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
           (ver comentario del inicializador perezoso en el propio componente), así que sin
           esta key una navegación cliente-a-cliente entre dos ids dejaría los campos con los
           valores del formato anterior. */}
-      <FormularioEdicionFormatoExcel key={formato.id} formato={formato} rutaBase="/revisor/formatos-excel" />
+      <FormularioEdicionFormatoExcel
+        key={formato.id}
+        formato={formato}
+        rutaBase="/revisor/formatos-excel"
+        permitirEditarNombresColumnas
+      />
     </div>
   );
 }

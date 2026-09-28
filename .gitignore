@@ -51,3 +51,6 @@ respaldo_*.sql
 
 # Artefactos de verificación en navegador (Playwright MCP): snapshots y logs de consola
 /.playwright-mcp/
+
+# Inventario funcional local; no debe versionarse ni enviarse a GitHub.
+/caracteristicas.md

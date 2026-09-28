@@ -13,7 +13,8 @@ export const ETIQUETAS_TIPO_ERROR: Record<ErrorCargaArchivo["tipoError"], string
 };
 
 // Los errores estructurales (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`) no son de una fila puntual
-// y se representan con `numeroFila = 0`.
+// y se representan con `numeroFila = 0`. En la interfaz se identifican como una columna
+// desconocida para que el mensaje describa mejor el problema que debe corregirse.
 export function etiquetaFila(numeroFila: number): string {
-  return numeroFila === 0 ? "Archivo completo" : String(numeroFila);
+  return numeroFila === 0 ? "Columna desconocida" : String(numeroFila);
 }

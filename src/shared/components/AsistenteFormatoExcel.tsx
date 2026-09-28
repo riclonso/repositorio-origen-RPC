@@ -53,6 +53,7 @@ type AsistenteFormatoExcelProps = {
   // "/revisor/formatos-excel"): el componente es compartido entre ambos paneles, así que no
   // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras crear.
   rutaBase: string;
+  permitirEditarNombresColumnas?: boolean;
 };
 
 // Asistente de tres pasos: (0) elige el tipo de archivo (Excel o CSV) y, si es CSV, su
@@ -60,7 +61,10 @@ type AsistenteFormatoExcelProps = {
 // permite marcar cuáles son requeridas y su tipo de dato antes de enviarlo todo junto —el
 // archivo original incluido— a `POST /api/formatos-excel`. No se mantiene estado de sesión entre
 // pasos: si se recarga la página hay que volver a subir el archivo.
-export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) {
+export function AsistenteFormatoExcel({
+  rutaBase,
+  permitirEditarNombresColumnas = false,
+}: AsistenteFormatoExcelProps) {
   const router = useRouter();
   const [paso, setPaso] = useState<PasoAsistente>("tipo");
   const [tipoArchivo, setTipoArchivo] = useState<TipoArchivo>("EXCEL");
@@ -262,6 +266,7 @@ export function AsistenteFormatoExcel({ rutaBase }: AsistenteFormatoExcelProps) 
         columnas={columnas}
         onCambiar={setColumnas}
         onEliminarColumna={solicitarEliminarColumna}
+        permitirEditarNombres={permitirEditarNombresColumnas}
         error={errores.columnas}
       />
 

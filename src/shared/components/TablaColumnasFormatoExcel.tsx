@@ -5,7 +5,7 @@ import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { reorder } from "@atlaskit/pragmatic-drag-and-drop/reorder";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
-import { IconoEliminar } from "@/shared/components/iconos";
+import { IconoEditar, IconoEliminar } from "@/shared/components/iconos";
 import { ModalVistaPreviaColumnas } from "@/shared/components/ModalVistaPreviaColumnas";
 
 export type ColumnaEditable = {
@@ -13,8 +13,8 @@ export type ColumnaEditable = {
   nombre: string;
   requerida: boolean;
   tipoDato: string;
-  // Las columnas detectadas pertenecen a la cabecera del archivo cargado y se mantienen de solo
-  // lectura. Una fila agregada manualmente sí necesita un campo de nombre antes de guardarse.
+  // Una fila agregada manualmente necesita un campo de nombre antes de guardarse. Las pantallas
+  // que habiliten `permitirEditarNombres` también pueden modificar las cabeceras detectadas.
   agregadaManualmente?: boolean;
 };
 
@@ -35,6 +35,7 @@ type TablaColumnasFormatoExcelProps = {
   columnas: ColumnaEditable[];
   onCambiar: (columnas: ColumnaEditable[]) => void;
   onEliminarColumna?: (columna: ColumnaEditable) => void;
+  permitirEditarNombres?: boolean;
   error?: string | null;
 };
 
@@ -47,6 +48,7 @@ type FilaColumnaFormatoExcelProps = {
   onReordenar: (indiceOrigen: number, indiceDestino: number) => void;
   onEliminar: () => void;
   puedeEliminar: boolean;
+  puedeEditarNombre: boolean;
 };
 
 // Cada fila se registra como origen y destino con Pragmatic Drag and Drop. Mantener este hook en
@@ -59,9 +61,12 @@ function FilaColumnaFormatoExcel({
   onReordenar,
   onEliminar,
   puedeEliminar,
+  puedeEditarNombre,
 }: FilaColumnaFormatoExcelProps) {
   const referenciaFila = useRef<HTMLTableRowElement>(null);
+  const referenciaNombre = useRef<HTMLInputElement>(null);
   const [estadoArrastre, setEstadoArrastre] = useState<EstadoArrastre>("reposo");
+  const [editandoNombre, setEditandoNombre] = useState(false);
 
   useEffect(() => {
     const elemento = referenciaFila.current;
@@ -93,6 +98,13 @@ function FilaColumnaFormatoExcel({
     );
   }, [indice, onReordenar]);
 
+  useEffect(() => {
+    if (!editandoNombre) return;
+
+    referenciaNombre.current?.focus();
+    referenciaNombre.current?.select();
+  }, [editandoNombre]);
+
   const clasesArrastre =
     estadoArrastre === "arrastrando"
       ? "cursor-grabbing scale-[1.01] bg-gob-primary/10 opacity-85 shadow-[0_8px_20px_rgba(23,59,105,0.22)] ring-2 ring-inset ring-gob-primary/35"
@@ -108,7 +120,7 @@ function FilaColumnaFormatoExcel({
       <td className="px-3 py-2 tabular-nums text-gob-gray-a">{columna.orden}</td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-2">
-          {columna.agregadaManualmente ? (
+          {columna.agregadaManualmente && !puedeEditarNombre ? (
             <input
               value={columna.nombre}
               onChange={(evento) => onActualizar({ nombre: evento.target.value })}
@@ -117,8 +129,36 @@ function FilaColumnaFormatoExcel({
               placeholder="Nombre de la columna"
               className="w-full rounded-md border border-gob-accent bg-white px-2 py-1.5 text-sm text-gob-black outline-none placeholder:text-gob-gray-a focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
             />
+          ) : editandoNombre ? (
+            <input
+              ref={referenciaNombre}
+              value={columna.nombre}
+              onChange={(evento) => onActualizar({ nombre: evento.target.value })}
+              onBlur={() => setEditandoNombre(false)}
+              onKeyDown={(evento) => {
+                if (evento.key === "Enter") evento.currentTarget.blur();
+                if (evento.key === "Escape") setEditandoNombre(false);
+              }}
+              aria-label={`Nombre de la columna ${columna.orden}`}
+              maxLength={100}
+              placeholder="Nombre de la columna"
+              className="w-full rounded-md border border-gob-accent bg-white px-2 py-1.5 text-sm text-gob-black outline-none placeholder:text-gob-gray-a focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
+            />
           ) : (
-            <span className="min-w-0 flex-1 font-medium text-gob-black">{columna.nombre}</span>
+            <>
+              <span className="min-w-0 flex-1 font-medium text-gob-black">{columna.nombre}</span>
+              {puedeEditarNombre ? (
+                <button
+                  type="button"
+                  onClick={() => setEditandoNombre(true)}
+                  aria-label={`Editar nombre de la columna ${columna.nombre || columna.orden}`}
+                  title="Editar nombre de columna"
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-gob-primary transition-colors hover:bg-gob-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+                >
+                  <IconoEditar />
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </td>
@@ -168,6 +208,7 @@ export function TablaColumnasFormatoExcel({
   columnas,
   onCambiar,
   onEliminarColumna,
+  permitirEditarNombres = false,
   error,
 }: TablaColumnasFormatoExcelProps) {
   const [vistaPreviaAbierta, setVistaPreviaAbierta] = useState(false);
@@ -223,8 +264,9 @@ export function TablaColumnasFormatoExcel({
     <div className="flex flex-col gap-2">
       <span className="text-sm font-medium text-gob-black">Columnas del formato</span>
       <p className="text-sm text-gob-gray-a">
-        Puedes agregar columnas adicionales. Los archivos que se carguen con este formato deberán
-        incluirlas en su encabezado.
+        {permitirEditarNombres
+          ? "Puedes editar los nombres, agregar columnas adicionales y definir su configuración. Los archivos que se carguen con este formato deberán incluirlas en su encabezado."
+          : "Puedes agregar columnas adicionales. Los archivos que se carguen con este formato deberán incluirlas en su encabezado."}
       </p>
 
       <div className="overflow-x-auto rounded-lg border border-gob-accent bg-white">
@@ -251,6 +293,7 @@ export function TablaColumnasFormatoExcel({
                 onReordenar={reordenarColumnas}
                 onEliminar={() => eliminarColumna(columna)}
                 puedeEliminar={columnas.length > 1}
+                puedeEditarNombre={permitirEditarNombres}
               />
             ))}
           </tbody>

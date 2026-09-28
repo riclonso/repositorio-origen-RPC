@@ -3,7 +3,7 @@ import { ETIQUETAS_TIPO_ERROR, etiquetaFila } from "@/shared/utils/erroresCargaA
 
 // Resumen de errores de una carga (RF-14): número de fila, columna y tipo de error, con el
 // mensaje correspondiente. Los errores estructurales (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`)
-// no son de una fila puntual y se muestran con `numeroFila = 0` como "Archivo completo".
+// no son de una fila puntual y se muestran con `numeroFila = 0` como "Columna desconocida".
 type ResumenErroresCargaProps = {
   errores: ErrorCargaArchivo[];
 };

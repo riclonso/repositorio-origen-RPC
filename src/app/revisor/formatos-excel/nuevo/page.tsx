@@ -13,7 +13,10 @@ export default function NuevoFormatoExcelRevisorPage() {
         Define la estructura que deben cumplir los archivos que suban los notificadores.
       </p>
 
-      <AsistenteFormatoExcel rutaBase="/revisor/formatos-excel" />
+      <AsistenteFormatoExcel
+        rutaBase="/revisor/formatos-excel"
+        permitirEditarNombresColumnas
+      />
     </div>
   );
 }
