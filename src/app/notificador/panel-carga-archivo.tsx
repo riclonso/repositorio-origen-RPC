@@ -486,6 +486,7 @@ function TarjetaCargaArchivo({
           id={idArchivo}
           extension={EXTENSION_TIPO_ARCHIVO[combinacion.tipoArchivo]}
           descripcionTipo={describirTipoArchivo(combinacion.tipoArchivo, combinacion.separadorCsv)}
+          archivo={archivo}
           disabled={subiendo}
           onArchivo={(archivo) => setArchivo(archivo)}
         />
