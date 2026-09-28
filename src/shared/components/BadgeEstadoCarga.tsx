@@ -7,7 +7,7 @@ import { CLASES_ESTADO, ETIQUETAS_ESTADO } from "@/shared/utils/estadoCargaArchi
 export function BadgeEstadoCarga({ estado }: { estado: EstadoCargaArchivo }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[estado]}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${CLASES_ESTADO[estado]}`}
     >
       {ETIQUETAS_ESTADO[estado]}
     </span>

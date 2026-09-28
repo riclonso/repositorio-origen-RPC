@@ -1,9 +1,21 @@
-// Solicitud de un notificador para reemplazar una carga ya `APROBADA` (RF nuevo, ver diseño
-// aprobado). Requiere aprobación de un ADMIN o REVISOR_REPOSITORIO antes de habilitar la subida
-// del archivo de reemplazo.
+// Solicitud de un notificador para reemplazar una de sus cargas (RF nuevo, ver diseño aprobado).
+// Cubre dos orígenes (ver `OrigenSolicitudReemplazoCarga`): una carga ya `APROBADA`, o una
+// `PENDIENTE_VISTO_BUENO` que el notificador ya finalizó y envió pero que todavía nadie decidió.
+// Requiere aprobación de un ADMIN o REVISOR_REPOSITORIO antes de habilitar la subida del archivo de
+// reemplazo (o, para el segundo origen, antes de rechazar la carga original y liberar la
+// combinación formato/ventana).
 
 export const ESTADOS_SOLICITUD_REEMPLAZO_CARGA = ["PENDIENTE", "APROBADA", "RECHAZADA"] as const;
 export type EstadoSolicitudReemplazoCarga = (typeof ESTADOS_SOLICITUD_REEMPLAZO_CARGA)[number];
+
+// `CARGA_APROBADA`: camino original, reemplazar una carga ya aprobada.
+// `CARGA_PENDIENTE_DECISION`: ampliación, reemplazar una carga `PENDIENTE_VISTO_BUENO` ya
+// finalizada por el notificador y todavía sin decisión de un ADMIN/REVISOR_REPOSITORIO. Al
+// aprobarse, dispara el rechazo de la carga original (ver `PATCH
+// /api/dashboard/solicitudes-reemplazo/[id]`), a diferencia del camino `CARGA_APROBADA`, que
+// habilita una subida nueva sin tocar la carga original.
+export const ORIGENES_SOLICITUD_REEMPLAZO_CARGA = ["CARGA_APROBADA", "CARGA_PENDIENTE_DECISION"] as const;
+export type OrigenSolicitudReemplazoCarga = (typeof ORIGENES_SOLICITUD_REEMPLAZO_CARGA)[number];
 
 // Longitud máxima de `motivo` y `comentarioRevision`: texto libre, sin reglas de complejidad que
 // reutilizar de `shared/schemas/` (esas son de contraseñas). 500 caracteres es suficiente para una
@@ -30,6 +42,7 @@ export type SolicitudReemplazoCarga = {
   solicitadoPorRut: string;
   motivo: string;
   estado: EstadoSolicitudReemplazoCarga;
+  origen: OrigenSolicitudReemplazoCarga;
   revisadoPorId: string | null;
   revisadoPorNombre: string | null;
   revisadoEn: Date | null;
@@ -44,6 +57,7 @@ export type DatosNuevaSolicitudReemplazoCarga = {
   cargaArchivoId: string;
   solicitadoPorId: string;
   motivo: string;
+  origen: OrigenSolicitudReemplazoCarga;
 };
 
 export type DatosRevisionSolicitudReemplazoCarga = {

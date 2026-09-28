@@ -137,7 +137,14 @@ export async function validarYCargarArchivo(
   // Nuevo (rechazo de cargas aprobadas): una ventana ya vencida sigue habilitando la subida si el
   // notificador tiene una reapertura vigente (su carga anterior para esta combinación fue
   // rechazada, y el plazo de reapertura no expiró). Se consume por el intento en sí, exista o no
-  // error de validación en él, mismo criterio que una autorización de reemplazo.
+  // error de validación en él (decisión de diseño de RF-20: aquí la reapertura es la única
+  // autorización que habilita subir con la ventana cerrada, así que se agota al primer intento).
+  //
+  // Con la ventana todavía abierta, en cambio, una reapertura pendiente NO se consume aquí: solo
+  // cumple el rol de apagar el banner `BannerReaperturaCarga`, y hacerlo en el intento de subida
+  // (en vez de al finalizar con éxito) apagaría el aviso ante un archivo con errores que el
+  // notificador ni siquiera llegó a enviar. Ese consumo vive en `FinalizarYEnviarCarga`/
+  // `CargaArchivoRepository.finalizar()`, que solo se alcanza con una carga sin errores.
   let cargaArchivoRechazoAConsumirId: string | null = null;
 
   if (!estaAbierta(ventana, new Date())) {
@@ -237,6 +244,18 @@ export async function validarYCargarArchivo(
   const columnasAValidar = formato.columnas.filter((columna) =>
     encabezadosPresentes.has(normalizarNombre(columna.nombre)),
   );
+
+  // Estructural: encabezados sin ninguna fila de datos debajo. Sin este chequeo, el `forEach` de
+  // abajo simplemente no itera y el archivo queda como `PENDIENTE_VISTO_BUENO` con 0 errores,
+  // dejando pasar un archivo que nunca llegó a validar sus columnas requeridas.
+  if (filas.length === 0) {
+    errores.push({
+      numeroFila: 0,
+      columna: null,
+      tipoError: "SIN_FILAS_DATOS",
+      mensaje: "El archivo parece estar vacío: solo trae la fila de encabezados, sin filas de datos",
+    });
+  }
 
   const filasAValidar = filas.slice(0, TOPE_FILAS_DATOS);
 

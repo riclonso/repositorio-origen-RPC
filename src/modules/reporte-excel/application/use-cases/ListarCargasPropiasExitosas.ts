@@ -1,5 +1,6 @@
 import {
   agruparCargasAprobadasPorVentana,
+  type CargaArchivoResumenPropia,
   type GrupoCargaAprobada,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
@@ -13,7 +14,7 @@ export type FiltroListarCargasPropiasExitosas = {
 
 export type ResultadoListarCargasPropiasExitosas = {
   ok: true;
-  grupos: GrupoCargaAprobada[];
+  grupos: GrupoCargaAprobada<CargaArchivoResumenPropia>[];
   paginacion: PaginacionCargas;
 };
 

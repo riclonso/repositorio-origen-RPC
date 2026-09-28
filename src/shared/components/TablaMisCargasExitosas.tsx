@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import type { FilaCargaExitosaVista, GrupoCargaExitosaVista } from "@/shared/components/mis-cargas-exitosas";
 
@@ -77,13 +76,7 @@ function BuscadorMisCargasExitosas({
 // Historial de reemplazadas de un grupo, anidado dentro de su fila vigente (`<details>/<summary>`,
 // mismo patrón accesible ya usado en `app/dashboard/logs/page.tsx`): colapsable sin JavaScript y
 // operable por teclado.
-function HistorialReemplazadas({
-  reemplazadas,
-  rutaBase,
-}: {
-  reemplazadas: FilaCargaExitosaVista[];
-  rutaBase: string;
-}) {
+function HistorialReemplazadas({ reemplazadas }: { reemplazadas: FilaCargaExitosaVista[] }) {
   if (reemplazadas.length === 0) return null;
 
   return (
@@ -98,10 +91,8 @@ function HistorialReemplazadas({
           <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
             <tr>
               <th scope="col" className="px-3 py-2 font-semibold">Archivo</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Reemplazada el</th>
-              <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">
-                Detalle
-              </th>
+              <th scope="col" className="px-3 py-2 font-semibold">Fecha de Rechazo</th>
+              <th scope="col" className="px-3 py-2 font-semibold">Detalle</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gob-accent/60">
@@ -111,15 +102,23 @@ function HistorialReemplazadas({
                   {carga.nombreArchivoOriginal}
                 </th>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                  {carga.vistoBuenoEl}
+                  {carga.desactivadaEl ?? "—"}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  <Link
-                    href={`${rutaBase}/${carga.id}`}
-                    className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                <td className="min-w-56 px-3 py-2 text-gob-gray-a">
+                  {carga.motivo ? (
+                    <p>
+                      <span className="font-medium text-gob-black">
+                        {carga.motivoTipo === "RECHAZO" ? "Rechazada" : "Reemplazada"}:
+                      </span>{" "}
+                      {carga.motivo}
+                    </p>
+                  ) : null}
+                  <a
+                    href={`/api/notificador/cargas/${carga.id}/archivo`}
+                    className="mt-1 inline-block text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
                   >
-                    Ver detalle
-                  </Link>
+                    Ver archivo
+                  </a>
                 </td>
               </tr>
             ))}
@@ -130,34 +129,28 @@ function HistorialReemplazadas({
   );
 }
 
-function FilaGrupoCargaExitosa({
-  grupo,
-  rutaBase,
-}: {
-  grupo: GrupoCargaExitosaVista;
-  rutaBase: string;
-}) {
+function FilaGrupoCargaExitosa({ grupo }: { grupo: GrupoCargaExitosaVista }) {
   return (
     <tr className="align-top transition-colors hover:bg-gob-neutral/50">
       <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
         {grupo.vigente.nombreArchivoOriginal}
-        {grupo.vigente.rechazo ? (
+        {grupo.vigente.motivoTipo === "RECHAZO" ? (
           <span className="mt-1 block rounded-md border border-gob-danger bg-white px-2 py-1 text-xs font-medium text-gob-danger">
-            Rechazada: {grupo.vigente.rechazo.motivo}
+            Rechazada: {grupo.vigente.motivo}
           </span>
         ) : null}
-        <HistorialReemplazadas reemplazadas={grupo.reemplazadas} rutaBase={rutaBase} />
+        <HistorialReemplazadas reemplazadas={grupo.reemplazadas} />
       </th>
       <td className="px-3 py-2 text-gob-gray-a">{grupo.formatoExcelNombre}</td>
       <td className="px-3 py-2 tabular-nums text-gob-gray-a">{grupo.anio}</td>
       <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">{grupo.vigente.vistoBuenoEl}</td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
-        <Link
-          href={`${rutaBase}/${grupo.vigente.id}`}
+        <a
+          href={`/api/notificador/cargas/${grupo.vigente.id}/archivo`}
           className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
         >
-          Ver detalle
-        </Link>
+          Ver archivo
+        </a>
       </td>
     </tr>
   );
@@ -169,10 +162,9 @@ function FilaGrupoCargaExitosa({
 // reemplazadas para esa misma combinación, quedan como historial anidado dentro de la misma fila.
 type TablaMisCargasExitosasProps = {
   grupos: GrupoCargaExitosaVista[];
-  rutaBase: string;
 };
 
-export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExitosasProps) {
+export function TablaMisCargasExitosas({ grupos }: TablaMisCargasExitosasProps) {
   const [filtroFormato, setFiltroFormato] = useState("");
   const [filtroAnio, setFiltroAnio] = useState("");
 
@@ -222,7 +214,7 @@ export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExito
                 <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Formato</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Año</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Visto bueno el</th>
+                <th scope="col" className="px-3 py-3 font-semibold">Aprobada el</th>
                 <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                   Detalle
                 </th>
@@ -230,7 +222,7 @@ export function TablaMisCargasExitosas({ grupos, rutaBase }: TablaMisCargasExito
             </thead>
             <tbody className="divide-y divide-gob-accent/60">
               {gruposFiltrados.map((grupo) => (
-                <FilaGrupoCargaExitosa key={grupo.ventanaCargaId} grupo={grupo} rutaBase={rutaBase} />
+                <FilaGrupoCargaExitosa key={grupo.ventanaCargaId} grupo={grupo} />
               ))}
             </tbody>
           </table>

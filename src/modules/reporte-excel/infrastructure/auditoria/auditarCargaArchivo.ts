@@ -24,6 +24,10 @@ export type DesenlaceAuditoriaCargaArchivo = {
   usuarioObjetivoRut?: string | null;
   // Solo se completa en `CARGA_ARCHIVO_RECHAZADA` (ampliación RF-20): de qué estado venía la carga.
   estadoOrigenRechazo?: "PENDIENTE_VISTO_BUENO" | "APROBADA" | null;
+  // Solo se completa en `CARGA_ARCHIVO_RECHAZADA`: si fue una decisión unilateral del
+  // ADMIN/REVISOR o el efecto automático de aprobar una solicitud de reemplazo (ver
+  // `PATCH /api/dashboard/solicitudes-reemplazo/[id]`).
+  origenRechazo?: "DECISION_UNILATERAL" | "REEMPLAZO_APROBADO" | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
@@ -52,6 +56,7 @@ async function construirYRegistrar(
     cargaArchivoId: desenlace.cargaArchivoId ?? null,
     cantidadErrores: desenlace.cantidadErrores ?? null,
     estadoOrigenRechazo: desenlace.estadoOrigenRechazo ?? null,
+    origenRechazo: desenlace.origenRechazo ?? null,
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

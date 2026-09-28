@@ -9,6 +9,7 @@ export const ETIQUETAS_TIPO_ERROR: Record<ErrorCargaArchivo["tipoError"], string
   VALOR_REQUERIDO_VACIO: "Valor requerido vacío",
   TIPO_DATO_INVALIDO: "Tipo de dato inválido",
   REGLA_VALIDACION: "Regla de validación",
+  SIN_FILAS_DATOS: "Sin filas de datos",
 };
 
 // Los errores estructurales (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`) no son de una fila puntual

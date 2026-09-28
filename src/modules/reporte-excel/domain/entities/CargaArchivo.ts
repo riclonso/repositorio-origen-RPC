@@ -21,6 +21,11 @@ export const TIPOS_ERROR_CARGA_ARCHIVO = [
   "VALOR_REQUERIDO_VACIO",
   "TIPO_DATO_INVALIDO",
   "REGLA_VALIDACION",
+  // Estructural: el archivo trae la fila de encabezados pero ninguna fila de datos debajo. Sin
+  // esto, un archivo así pasaba el `forEach` de validación sin ejecutarse ni una vez y quedaba
+  // como `PENDIENTE_VISTO_BUENO` con 0 errores, sin que ninguna regla de columna requerida llegara
+  // a evaluarse.
+  "SIN_FILAS_DATOS",
 ] as const;
 export type TipoErrorCargaArchivo = (typeof TIPOS_ERROR_CARGA_ARCHIVO)[number];
 
@@ -107,6 +112,29 @@ export type CargaArchivoResumen = {
   finalizadaEn: Date | null;
   createdAt: Date;
   rechazo: InfoRechazoCargaArchivo | null;
+};
+
+// Espejo del enum `TipoDesactivacionCargaPublicada` de Prisma (`CargaArchivoPublicada`): por qué
+// una publicación dejó de estar vigente. `REEMPLAZO` cuando una solicitud de reemplazo consentida
+// terminó en una carga nueva ya aprobada; `RECHAZO` cuando alguien la rechazó unilateralmente (o
+// aprobó una solicitud de reemplazo sobre una carga todavía sin decidir, ver RF-22).
+export type TipoDesactivacionCargaPublicada = "REEMPLAZO" | "RECHAZO";
+
+// Vista de `CargaArchivoResumen` para "Mis cargas" (histórico propio del notificador,
+// `listarPropiasAprobadas`): agrega el motivo por el que esta carga dejó de ser la vigente de su
+// combinación (formato, ventana). Se resuelve combinando dos fuentes, mutuamente excluyentes:
+// `rechazo.motivo` cuando `estado = RECHAZADA` (cubre también una `PENDIENTE_VISTO_BUENO` que
+// nunca llegó a publicarse, RF-22), o `CargaArchivoPublicada.motivoDesactivacion` cuando la carga
+// sí llegó a `APROBADA` y luego fue reemplazada o rechazada (ver `aCargaArchivoResumenPropia` en
+// el repositorio). `null` en la carga vigente de un grupo (todavía no le pasó nada).
+export type CargaArchivoResumenPropia = CargaArchivoResumen & {
+  motivoDesactivacion: string | null;
+  motivoDesactivacionTipo: TipoDesactivacionCargaPublicada | null;
+  // Fecha del rechazo (`CargaArchivoRechazo.rechazadoEn`) o de la desactivación de la publicación
+  // (`CargaArchivoPublicada.desactivadaEn`) según cuál de las dos fuentes aplique — mismo criterio
+  // que `motivoDesactivacion`. Para "Mis cargas": la columna "Reemplazada el" del historial debe
+  // mostrar cuándo pasó eso, no `vistoBuenoEn` (cuándo se había aprobado originalmente).
+  desactivadaEn: Date | null;
 };
 
 export type DatosNuevoErrorCargaArchivo = {
@@ -232,9 +260,13 @@ export type CargaArchivoParaDescarga = {
 // que RF-15 ampliación, para no confundir una ventana eliminada y recreada con la vigente). Entre
 // las `APROBADA` que comparten `ventanaCargaId`, la de mayor `vistoBuenoEn` es la vigente; el resto
 // quedan como historial de reemplazadas.
-export type GrupoCargaAprobada = {
-  vigente: CargaArchivoResumen;
-  reemplazadas: CargaArchivoResumen[];
+// Genérico sobre `T extends CargaArchivoResumen` para que `listarPropiasAprobadas` (que trae
+// `CargaArchivoResumenPropia`, con el motivo de reemplazo/rechazo) no pierda ese campo extra al
+// agrupar: `GrupoCargaAprobada<CargaArchivoResumenPropia>` conserva `motivoDesactivacion` en
+// `vigente`/`reemplazadas` hasta la vista (`mis-cargas-exitosas.ts`).
+export type GrupoCargaAprobada<T extends CargaArchivoResumen = CargaArchivoResumen> = {
+  vigente: T;
+  reemplazadas: T[];
 };
 
 // Agrupa las `APROBADA` de un notificador por `ventanaCargaId`. Requiere que `cargas` ya venga
@@ -244,11 +276,11 @@ export type GrupoCargaAprobada = {
 // conserva el orden de inserción, los grupos resultantes quedan ordenados por
 // `vigente.vistoBuenoEn` descendente sin necesidad de un `sort` aparte.
 // Precondición: toda fila con estado APROBADA tiene vistoBuenoEn no nulo (único camino a APROBADA
-// es darVistoBueno(), que setea ambos atómicamente). Si esa invariante cambiara, el orderBy
-// "vistoBuenoEn desc" de Postgres colocaría los NULL primero (NULLS FIRST por defecto en DESC),
-// haciendo que una fila sin vistoBuenoEn se cuele como "vigente" del grupo.
-export function agruparCargasAprobadasPorVentana(cargas: CargaArchivoResumen[]): GrupoCargaAprobada[] {
-  const gruposPorVentana = new Map<string, GrupoCargaAprobada>();
+// es darVistoBueno(), que setea ambos atómicamente). Una `RECHAZADA` puede tener `vistoBuenoEn`
+// nulo (RF-22: rechazo de una `PENDIENTE_VISTO_BUENO` que nunca llegó a aprobarse), así que el
+// repositorio ordena con `NULLS LAST` explícito para que esa fila nunca se cuele como "vigente".
+export function agruparCargasAprobadasPorVentana<T extends CargaArchivoResumen>(cargas: T[]): GrupoCargaAprobada<T>[] {
+  const gruposPorVentana = new Map<string, GrupoCargaAprobada<T>>();
 
   for (const carga of cargas) {
     const grupoExistente = gruposPorVentana.get(carga.ventanaCargaId);

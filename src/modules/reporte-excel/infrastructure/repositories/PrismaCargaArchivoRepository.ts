@@ -5,6 +5,7 @@ import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type {
   CargaArchivo,
+  CargaArchivoResumenPropia,
   DatosNuevaCargaArchivo,
   DatosPublicacionCarga,
   DatosRechazoCargaArchivo,
@@ -185,6 +186,38 @@ function aCargaArchivoResumen(registro: RegistroResumen) {
   };
 }
 
+// Extensión de `SELECCION_RESUMEN` exclusiva de `listarPropiasAprobadas` ("Mis cargas"): agrega la
+// publicación (si esta carga llegó a `APROBADA`) para poder resolver el motivo de reemplazo. No se
+// agrega al `SELECCION_RESUMEN` compartido para no sumar ese join a los demás listados
+// (`listarAprobadas`, `listarPendientesODecididas`, `listarRechazadas`) que no lo necesitan.
+const SELECCION_RESUMEN_PROPIA = {
+  ...SELECCION_RESUMEN,
+  publicacion: { select: { motivoDesactivacion: true, motivoDesactivacionTipo: true, desactivadaEn: true } },
+} as const;
+
+type RegistroResumenPropia = RegistroResumen & {
+  publicacion: {
+    motivoDesactivacion: string | null;
+    motivoDesactivacionTipo: "REEMPLAZO" | "RECHAZO" | null;
+    desactivadaEn: Date | null;
+  } | null;
+};
+
+// Combina las dos fuentes posibles del motivo (ver comentario de `CargaArchivoResumenPropia` en el
+// dominio): `rechazo.motivo`/`rechazo.rechazadoEn` cuando `estado = RECHAZADA` (siempre presente
+// ahí, exista o no publicación), o `publicacion.motivoDesactivacion`/`desactivadaEn` cuando la
+// carga sí llegó a `APROBADA` y luego fue reemplazada o rechazada. Nunca conviven ambas fuentes con
+// valores distintos: un rechazo desde `APROBADA` escribe el mismo motivo y fecha en las dos tablas
+// en la misma transacción (ver `rechazar()` más abajo).
+function aCargaArchivoResumenPropia(registro: RegistroResumenPropia): CargaArchivoResumenPropia {
+  return {
+    ...aCargaArchivoResumen(registro),
+    motivoDesactivacion: registro.rechazo?.motivo ?? registro.publicacion?.motivoDesactivacion ?? null,
+    motivoDesactivacionTipo: registro.rechazo ? "RECHAZO" : (registro.publicacion?.motivoDesactivacionTipo ?? null),
+    desactivadaEn: registro.rechazo?.rechazadoEn ?? registro.publicacion?.desactivadaEn ?? null,
+  };
+}
+
 // Vista denormalizada de `CargaArchivoRechazo`, mismo criterio que `PrismaSolicitudReemplazoCargaRepository`.
 const SELECCION_RECHAZO_ENTIDAD = {
   id: true,
@@ -306,6 +339,24 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
           data: { reaperturaConsumidaEn: ahora, reaperturaConsumidaPorCargaArchivoId: idNuevo },
         }),
       );
+
+      // Cualquier OTRO rechazo sin consumir de esta misma combinación (usuario, ventana) queda
+      // superado por esta subida (p.ej. dos reemplazos aprobados sucesivos sobre la misma ventana
+      // antes de subir el archivo nuevo): se marca resuelto igual, pero sin apuntarlo a esta carga
+      // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1, ya la usa
+      // el `updateMany` de arriba con `cargaArchivoRechazoAConsumirId`). Sin esto, un rechazo viejo
+      // suelto seguía apareciendo en `BannerReaperturaCarga` (`/notificador`) como una segunda
+      // alerta duplicada para la misma `ventanaCargaId`.
+      operaciones.push(
+        prisma.cargaArchivoRechazo.updateMany({
+          where: {
+            id: { not: datos.cargaArchivoRechazoAConsumirId },
+            reaperturaConsumidaEn: null,
+            cargaArchivo: { usuarioId: datos.usuarioId, ventanaCargaId: datos.ventanaCargaId },
+          },
+          data: { reaperturaConsumidaEn: ahora },
+        }),
+      );
     }
 
     const [registro] = (await prisma.$transaction(operaciones)) as [RegistroDetalle, ...unknown[]];
@@ -395,20 +446,25 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
 
   async listarPropiasAprobadas(usuarioId) {
     // Ownership (`usuarioId`) y `estado IN (APROBADA, RECHAZADA)` siempre en el mismo `WHERE`,
-    // nunca filtrado en JS después. Incluye `RECHAZADA`: una carga rechazada YA fue `APROBADA`
-    // antes (conserva su `vistoBuenoEn`), así que sigue siendo parte del histórico de "Mis cargas"
-    // de esa combinación (formato, ventana), ahora con el motivo del rechazo visible. Tope
-    // defensivo (no paginado): evita traer un histórico sin límite si un notificador acumula miles
-    // de correcciones sucesivas; la agrupación/paginación de GRUPOS vive en
-    // `application/ListarCargasPropiasExitosas.ts`.
+    // nunca filtrado en JS después. Incluye `RECHAZADA`: una carga rechazada, aprobada antes o no
+    // (RF-22 rechaza también una `PENDIENTE_VISTO_BUENO` que nunca llegó a publicarse), sigue
+    // siendo parte del histórico de "Mis cargas" de esa combinación (formato, ventana), con el
+    // motivo visible. Tope defensivo (no paginado): evita traer un histórico sin límite si un
+    // notificador acumula miles de correcciones sucesivas; la agrupación/paginación de GRUPOS vive
+    // en `application/ListarCargasPropiasExitosas.ts`.
+    //
+    // `NULLS LAST` explícito: una `RECHAZADA` de origen `PENDIENTE_VISTO_BUENO` (RF-22) nunca tuvo
+    // `vistoBuenoEn`; sin este orden, Postgres coloca los `NULL` primero en `DESC` por defecto, y
+    // esa fila se colaría como "vigente" de su grupo en `agruparCargasAprobadasPorVentana` en vez
+    // de la carga que sí llegó a aprobarse.
     const registros = await prisma.cargaArchivo.findMany({
       where: { usuarioId, estado: { in: ["APROBADA", "RECHAZADA"] } },
-      select: SELECCION_RESUMEN,
-      orderBy: { vistoBuenoEn: "desc" },
+      select: SELECCION_RESUMEN_PROPIA,
+      orderBy: { vistoBuenoEn: { sort: "desc", nulls: "last" } },
       take: 500,
     });
 
-    return registros.map(aCargaArchivoResumen);
+    return registros.map(aCargaArchivoResumenPropia);
   },
 
   async listarAprobadas(filtro) {
@@ -534,7 +590,23 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     if (resultado.count === 0) return null;
 
     const registro = await prisma.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
-    return registro ? aCargaArchivo(registro) : null;
+    if (!registro) return null;
+
+    // Con la ventana todavía abierta, una reapertura pendiente de esta combinación (usuario,
+    // ventana) no se consume al subir el archivo (ver `ValidarYCargarArchivo`): recién aquí, al
+    // finalizar y enviar con éxito, se considera que el notificador ya corrigió lo que motivó el
+    // rechazo. Cierra todas las que sigan sin consumir (no solo una), sin apuntarlas a esta carga
+    // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1 exclusiva
+    // del camino de ventana vencida) — solo apaga el banner `BannerReaperturaCarga`.
+    await prisma.cargaArchivoRechazo.updateMany({
+      where: {
+        reaperturaConsumidaEn: null,
+        cargaArchivo: { usuarioId, ventanaCargaId: registro.ventanaCargaId },
+      },
+      data: { reaperturaConsumidaEn: new Date() },
+    });
+
+    return aCargaArchivo(registro);
   },
 
   async contarNotificadoresDistintosPorVentana(ventanaCargaIds) {
@@ -565,6 +637,21 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     // Única consulta de todo el módulo que trae `contenidoArchivo`, y solo si ya está aprobada.
     const registro = await prisma.cargaArchivo.findFirst({
       where: { id, estado: "APROBADA" },
+      select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
+    });
+
+    if (!registro) return null;
+
+    return {
+      nombreArchivoOriginal: registro.nombreArchivoOriginal,
+      tipoContenidoArchivo: registro.tipoContenidoArchivo,
+      contenidoArchivo: Buffer.from(registro.contenidoArchivo),
+    };
+  },
+
+  async obtenerPropiaParaDescarga(id, usuarioId) {
+    const registro = await prisma.cargaArchivo.findFirst({
+      where: { id, usuarioId },
       select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
     });
 

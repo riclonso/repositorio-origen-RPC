@@ -1,7 +1,7 @@
 import type {
   CargaArchivo,
   CargaArchivoParaDescarga,
-  CargaArchivoResumen,
+  CargaArchivoResumenPropia,
   ContenidoCargaArchivo,
   DatosNuevaCargaArchivo,
   DatosPublicacionCarga,
@@ -40,13 +40,17 @@ export interface CargaArchivoRepository {
   // detalle de filas a publicar. Ownership por `usuarioId` siempre en el `WHERE`.
   obtenerContenidoParaProcesar(id: string, usuarioId: string): Promise<ContenidoCargaArchivo | null>;
   listarPropias(filtro: FiltroListadoCargasPropias): Promise<PaginaCargas>;
-  // "Mis cargas" (histórico de exitosas): TODAS las `APROBADA` de un notificador, ordenadas
-  // `vistoBuenoEn desc` (contrato del que depende `agruparCargasAprobadasPorVentana` en
-  // `domain/entities/CargaArchivo.ts` para detectar la vigente como la primera ocurrencia de cada
-  // `ventanaCargaId`). Sin paginar en SQL: la agrupación y la paginación de los GRUPOS resultantes
-  // ocurren en `application/`, nunca sobre las filas crudas, para que una reemplazada no quede
-  // separada de su vigente por un corte de página. Ownership por `usuarioId` siempre en el `WHERE`.
-  listarPropiasAprobadas(usuarioId: string): Promise<CargaArchivoResumen[]>;
+  // "Mis cargas" (histórico de exitosas): TODAS las `APROBADA`/`RECHAZADA` de un notificador,
+  // ordenadas `vistoBuenoEn desc NULLS LAST` (contrato del que depende
+  // `agruparCargasAprobadasPorVentana` en `domain/entities/CargaArchivo.ts` para detectar la
+  // vigente como la primera ocurrencia de cada `ventanaCargaId`; `NULLS LAST` importa porque una
+  // `RECHAZADA` de origen `PENDIENTE_VISTO_BUENO`, RF-22, nunca tuvo `vistoBuenoEn`). Sin paginar
+  // en SQL: la agrupación y la paginación de los GRUPOS resultantes ocurren en `application/`,
+  // nunca sobre las filas crudas, para que una reemplazada no quede separada de su vigente por un
+  // corte de página. Ownership por `usuarioId` siempre en el `WHERE`. Devuelve
+  // `CargaArchivoResumenPropia` (no el `CargaArchivoResumen` genérico) porque esta vista sí
+  // necesita el motivo de reemplazo/rechazo para "Mis cargas" (`TablaMisCargasExitosas.tsx`).
+  listarPropiasAprobadas(usuarioId: string): Promise<CargaArchivoResumenPropia[]>;
   // Filtra siempre `estado = APROBADA` a nivel de consulta SQL, nunca solo en la UI.
   listarAprobadas(filtro: FiltroListadoCargasAprobadas): Promise<PaginaCargas>;
   // Nuevo (fin de la autoaprobación): la tabla "Notificaciones de archivos pendientes de aprobación
@@ -76,6 +80,10 @@ export interface CargaArchivoRepository {
   finalizar(id: string, usuarioId: string): Promise<CargaArchivo | null>;
   // Única operación que trae el binario. Solo devuelve datos si `estado = APROBADA`.
   obtenerParaDescarga(id: string): Promise<CargaArchivoParaDescarga | null>;
+  // Descarga para el propio notificador desde "Mis cargas": a diferencia de `obtenerParaDescarga`,
+  // sin restricción de `estado` (aprobada, pendiente de decisión o rechazada, todas descargables por
+  // su dueño), pero con `usuarioId` en el mismo `WHERE` — ownership, nunca filtrado después en JS.
+  obtenerPropiaParaDescarga(id: string, usuarioId: string): Promise<CargaArchivoParaDescarga | null>;
   // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS tienen al menos una carga APROBADA
   // en cada ventana ("ya reportaron"). `CargaArchivo` no tiene restricción de unicidad sobre
   // `(usuarioId, ventanaCargaId)` — un notificador puede tener varias cargas APROBADA en la misma

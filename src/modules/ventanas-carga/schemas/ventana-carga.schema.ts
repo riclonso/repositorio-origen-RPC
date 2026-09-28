@@ -2,8 +2,8 @@ import { z } from "zod";
 
 // Rango amplio y razonable: no hay un límite de negocio documentado, solo una defensa contra un
 // valor absurdo tecleado por error.
-const ANIO_MINIMO = 2021;
-const ANIO_MAXIMO = 2100;
+const ANIO_MINIMO = 2015;
+const ANIO_MAXIMO = new Date().getFullYear();
 
 export const anioVentanaCargaSchema = z.coerce
   .number()

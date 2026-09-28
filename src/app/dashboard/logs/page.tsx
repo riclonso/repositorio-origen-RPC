@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   leerLog,
+  leerErroresPersistentes,
   esTipoLog,
   esFechaValida,
   normalizarTamano,
@@ -71,12 +72,15 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
   const paginaSolicitada = Number.isFinite(paginaCruda) && paginaCruda >= 1 ? paginaCruda : 1;
 
   const activa = PESTANAS.find((p) => p.tipo === tipo)!;
-  const { entradas, total, pagina, totalPaginas } = await leerLog(tipo, {
+  const filtro = {
     desde,
     hasta,
     pagina: paginaSolicitada,
     tamano,
-  });
+  };
+  const { entradas, total, pagina, totalPaginas } = tipo === "errores"
+    ? await leerErroresPersistentes(filtro)
+    : await leerLog(tipo, filtro);
   const hayFiltro = desde !== undefined || hasta !== undefined;
 
   return (

@@ -72,6 +72,7 @@ export async function ListadoSolicitudesReemplazo({ filtro, construirHref }: Lis
     solicitadoPorRut: solicitud.solicitadoPorRut,
     motivo: solicitud.motivo,
     estado: solicitud.estado,
+    origen: solicitud.origen,
     revisadoPorNombre: solicitud.revisadoPorNombre,
     revisadoEnTexto: solicitud.revisadoEn ? formatearFechaHora(solicitud.revisadoEn) : null,
     comentarioRevision: solicitud.comentarioRevision,

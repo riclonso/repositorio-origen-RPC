@@ -338,6 +338,8 @@ enum TipoErrorCargaArchivo {
   VALOR_REQUERIDO_VACIO
   TIPO_DATO_INVALIDO
   REGLA_VALIDACION
+  // Estructural: el archivo trae la fila de encabezados pero ninguna fila de datos debajo.
+  SIN_FILAS_DATOS
 }
 
 // El binario se persiste igual que `FormatoExcel.contenidoPlantilla` (`Bytes`, sin cifrado
@@ -508,8 +510,20 @@ enum EstadoSolicitudReemplazoCarga {
   RECHAZADA
 }
 
+// Origen de la solicitud: `CARGA_APROBADA` es el camino original (reemplazar una carga ya
+// aprobada); `CARGA_PENDIENTE_DECISION` es la ampliación que cubre una carga
+// `PENDIENTE_VISTO_BUENO` ya finalizada por el notificador pero todavía sin decisión de un
+// ADMIN/REVISOR_REPOSITORIO. Determina el efecto secundario al APROBAR (ver
+// `PATCH /api/dashboard/solicitudes-reemplazo/[id]`): para `CARGA_PENDIENTE_DECISION` también
+// rechaza la carga original para liberar la combinación (formato, ventana).
+enum OrigenSolicitudReemplazoCarga {
+  CARGA_APROBADA
+  CARGA_PENDIENTE_DECISION
+}
+
 // Autoriza a un notificador a volver a subir un archivo para una combinación (formato, ventana) que
-// ya tiene una carga APROBADA vigente. La autorización se CONSUME al subir el archivo de reemplazo
+// ya tiene una carga APROBADA vigente, o que tiene una carga PENDIENTE_VISTO_BUENO ya finalizada y
+// todavía sin decisión (ver `origen`). La autorización se CONSUME al subir el archivo de reemplazo
 // (`utilizadaEn`/`nuevaCargaArchivoId`) y EXPIRA 5 días después de aprobada si no se usa (calculado
 // en lectura, nunca persistido como estado propio — mismo patrón que
 // `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`).
@@ -521,6 +535,8 @@ model SolicitudReemplazoCarga {
   solicitadoPorId String
   solicitadoPor   Usuario @relation("SolicitudesReemplazoSolicitadasPor", fields: [solicitadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   motivo          String
+
+  origen OrigenSolicitudReemplazoCarga
 
   estado EstadoSolicitudReemplazoCarga @default(PENDIENTE)
 
@@ -671,4 +687,16 @@ model ErrorCargaArchivo {
   mensaje        String
 
   @@map("error_carga_archivo")
+}
+
+// Errores técnicos persistentes. A diferencia de los archivos locales de Winston, esta tabla
+// sobrevive reinicios y cambios de instancia en producción.
+model RegistroErrorSistema {
+  id        String   @id @default(uuid())
+  mensaje   String
+  campos    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("registro_error_sistema")
 }

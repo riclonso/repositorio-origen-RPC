@@ -1,5 +1,8 @@
 import type { NextResponse } from "next/server";
-import type { SolicitudReemplazoCarga } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import type {
+  OrigenSolicitudReemplazoCarga,
+  SolicitudReemplazoCarga,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import {
   exigirAdminORevisor,
@@ -29,6 +32,7 @@ export type SolicitudReemplazoRevisionDTO = {
   solicitadoPorRut: string;
   motivo: string;
   estado: SolicitudReemplazoCarga["estado"];
+  origen: OrigenSolicitudReemplazoCarga;
   revisadoPorNombre: string | null;
   revisadoEn: string | null;
   comentarioRevision: string | null;
@@ -50,6 +54,7 @@ export function aSolicitudReemplazoRevisionDTO(
     solicitadoPorRut: solicitud.solicitadoPorRut,
     motivo: solicitud.motivo,
     estado: solicitud.estado,
+    origen: solicitud.origen,
     revisadoPorNombre: solicitud.revisadoPorNombre,
     revisadoEn: solicitud.revisadoEn ? solicitud.revisadoEn.toISOString() : null,
     comentarioRevision: solicitud.comentarioRevision,
