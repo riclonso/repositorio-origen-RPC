@@ -512,9 +512,14 @@ luego se sirve tal cual en el `Content-Type` de la descarga. Orden en ambos endp
 ahí se lee con `exceljs` o se persiste, para no gastar trabajo en un archivo que ya iba a
 rechazarse por una verificación más barata.
 
-**Limitación conocida:** el heurístico de CSV solo cubre UTF-8 (ya era la única codificación
-soportada por `LectorPlantillaExcelJs`); un CSV real en UTF-16 se rechazaría por contener bytes NUL,
-pero eso ya era una limitación preexistente, no una introducida por esta verificación.
+**Limitación conocida:** el heurístico de firma de CSV rechaza un CSV en UTF-16 (bytes NUL). Los
+CSV en UTF-8 (con o sin BOM) y Windows-1252 sí se aceptan (ver "Decodificación y separador de CSV",
+RF-23).
+
+Desde RF-23 el tipo de archivo lo **declara** el administrador en el asistente (`tipoArchivo`, más
+`separadorCsv` si es CSV) y el servidor lo contrasta con el tipo detectado por extensión + firma;
+si no coinciden responde 400 "El archivo no corresponde al tipo seleccionado". El declarado nunca se
+acepta sin esa verificación.
 
 ### La regla "todo NOTIFICADOR_RPC tiene al menos un formato" vive en Zod + `application/`, no en la BD
 
@@ -540,9 +545,11 @@ conjunto nunca quede a medio reemplazar.
 `application/` no importa `exceljs` directamente: depende de la interfaz `LectorPlantilla`
 (`modules/formatos-excel/application/ports.ts`), implementada en
 `infrastructure/lectura-plantilla/LectorPlantillaExcelJs.ts`. La rama `.csv` envuelve el `Buffer`
-con `Readable.from()` (`node:stream`) porque `workbook.csv.read()` espera un stream, y se lee solo
-con separador coma y UTF-8 (sin opciones adicionales: `;` u otras codificaciones quedan fuera de
-este alcance). **Nota de compatibilidad de tipos:** el `.d.ts` de `exceljs` 4.4.0 declara un
+con `Readable.from()` (`node:stream`) porque `workbook.csv.read()` espera un stream. Desde RF-23 la
+apertura y escritura con exceljs vive en un único punto transversal,
+`src/infrastructure/hojas-calculo/abrirHojaExcelJs.ts`, usado por `LectorPlantillaExcelJs`,
+`SincronizadorCabeceraPlantillaExcelJs` y `LectorArchivoReporteExcelJs` (ver "Decodificación y
+separador de CSV" más abajo). **Nota de compatibilidad de tipos:** el `.d.ts` de `exceljs` 4.4.0 declara un
 `Buffer` ambiental propio (`declare interface Buffer extends ArrayBuffer {}`) que, bajo
 `lib: ["esnext"]` (este proyecto), no es asignable al `Buffer` real de Node — es un bug de tipos de
 la librería, no del dato. Se resuelve con una aserción de tipo puntual en la llamada a
@@ -634,8 +641,40 @@ de archivo completo (`numeroFila: 0`), no de una fila puntual.
 Convención fijada por decisión explícita del usuario, sin antecedente previo que seguir: decimal con
 coma o punto; fecha en texto `DD-MM-AAAA` o `DD/MM/AAAA`; fecha y hora en texto
 `DD-MM-AAAA HH:mm[:ss]` (con `/` o `T` como separadores alternativos de fecha/hora); booleano acepta
-`SI/NO`, `VERDADERO/FALSO`, `1/0` (case-insensitive). RUT reutiliza `esRutValido()` de
-`shared/utils/rut.ts` (mismo validador que el login); EMAIL usa `z.email()` de Zod.
+`SI/NO`, `VERDADERO/FALSO`, `1/0` (case-insensitive). EMAIL usa `z.email()` de Zod. El RUT dejó de
+ser un tipo de dato en RF-23: es la regla `RUT_VALIDO` (ver abajo).
+
+### RUT como regla sobre un conjunto de columnas (RF-23)
+
+Un tipo de dato valida una sola celda, y los reportes suelen traer el número y el dígito verificador
+en columnas separadas, así que el RUT pasó a ser una regla de validación, `RUT_VALIDO`, con esta
+convención de `columnas[]`: `[0]` es el RUT completo o el número, y `[1]` (opcional) el dígito
+verificador. El evaluador une ambas como `número-dv` (convierte los números de xlsx a texto entero)
+y valida con `esRutValidoFlexible()` (`shared/utils/rut.ts`), que acepta el RUT con o sin
+puntos/guion y un cuerpo de 1 a 8 dígitos. **No se usa `esRutValido()`**: es la validación estricta
+del login y se mantiene intacta. Si todas las columnas del conjunto vienen vacías, la regla no se
+aplica (la obligatoriedad la da "requerida"); si falta solo una de dos, se rechaza. La migración
+`20260928122049_migrar_tipo_dato_rut_a_regla` convirtió las columnas tipo RUT existentes en `TEXTO` +
+una regla equivalente, y recreó el enum `TipoDatoColumna` sin `RUT`.
+
+### Decodificación y separador de CSV (RF-23)
+
+- **Codificación:** `decodificarTextoCsv()` (`shared/utils/texto-csv.ts`) quita el BOM UTF-8 y
+  decodifica con `TextDecoder('utf-8', { fatal: true })`; si eso falla, usa `windows-1252` (el CSV
+  "delimitado" que guarda Excel en Windows). A exceljs se le entrega texto ya decodificado, nunca el
+  buffer. Es heurístico: un archivo Windows-1252 que por casualidad sea UTF-8 válido se lee como
+  UTF-8 (riesgo bajo con texto en español). La plantilla CSV que se descarga se escribe con BOM
+  (`agregarBomUtf8`) y se sirve como `text/csv; charset=utf-8` con `filename*=UTF-8''…`, para que
+  Excel la abra sin mojibake.
+- **Separador:** enum `SeparadorCsv` (`COMA`, `PUNTO_Y_COMA`, `TABULADOR`, `BARRA_VERTICAL`) en
+  `formato_excel.separadorCsv`, NULL si y solo si `tipoArchivo = EXCEL` (CHECK
+  `formato_excel_separador_csv_check`). exceljs lo recibe vía `parserOptions.delimiter` /
+  `formatterOptions.delimiter`. En una carga, el separador **siempre** sale del formato persistido,
+  nunca del cliente, y el notificador debe subir el mismo tipo de archivo que el formato.
+- **Edición del separador:** está permitida, pero no mientras el formato tenga cargas
+  `PENDIENTE_VISTO_BUENO` (409, `SEPARADOR_CON_CARGAS_PENDIENTES`). `DarVistoBueno` re-lee el
+  archivo con el separador **actual** del formato, así que cambiarlo en ese momento leería con un
+  separador distinto al que se usó para validar.
 
 **Limitación de origen, no de código:** en `.xlsx`, `exceljs` entrega siempre un `Date` nativo para
 una celda de fecha, tenga o no componente de hora en Excel — a nivel de valor no hay forma de

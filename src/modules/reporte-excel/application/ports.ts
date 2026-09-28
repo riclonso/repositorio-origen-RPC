@@ -1,4 +1,5 @@
 import type { ErrorCargaArchivo, ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import type { OpcionesLecturaArchivo } from "@/modules/formatos-excel/application/ports";
 
 // Interfaz técnica del módulo. `application/` nunca importa `exceljs` directamente: solo depende
 // de este puerto. Agnóstica de si el archivo es `.xlsx` o `.csv`; esa decisión la toma la
@@ -8,10 +9,13 @@ import type { ErrorCargaArchivo, ValorCeldaArchivo } from "@/modules/reporte-exc
 // arreglo incluye toda fila entre la 2 y la última usada en la hoja, aunque venga totalmente
 // vacía, para que el índice nunca se desalinee del número de fila real que ve el usuario al abrir
 // el archivo.
+//
+// `opciones.separadorCsv` sale SIEMPRE del formato persistido, nunca del cliente.
 export interface LectorArchivoReporte {
   leer(
     buffer: Buffer,
     tipoContenido: string,
+    opciones: OpcionesLecturaArchivo,
   ): Promise<{ encabezados: string[]; filas: Record<string, ValorCeldaArchivo>[] }>;
 }
 

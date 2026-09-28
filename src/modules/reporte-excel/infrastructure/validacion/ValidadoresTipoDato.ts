@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { TipoDatoColumna } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-import { esRutValido } from "@/shared/utils/rut";
 
 // Convención chilena de formato de dato por celda (primera vez que se define en el proyecto):
 // decimal acepta coma o punto, fecha en texto acepta DD-MM-AAAA o DD/MM/AAAA, booleano acepta
@@ -143,7 +142,8 @@ export function serializarValorParaClaveDuplicado(valor: ValorCeldaArchivo): str
   return valor.trim();
 }
 
-// Un validador por cada uno de los ocho tipos de dato. Se invoca únicamente sobre celdas que ya
+// Un validador por cada uno de los siete tipos de dato (el RUT ya no es un tipo de dato: se valida
+// con la regla `RUT_VALIDO`, ver `EvaluadorReglasValidacion.ts`). Se invoca únicamente sobre celdas que ya
 // pasaron `celdaVacia` (una celda vacía se reporta como `VALOR_REQUERIDO_VACIO`, nunca como
 // `TIPO_DATO_INVALIDO`).
 export const ValidadoresTipoDato: Record<TipoDatoColumna, (valor: ValorCeldaArchivo) => boolean> = {
@@ -154,6 +154,5 @@ export const ValidadoresTipoDato: Record<TipoDatoColumna, (valor: ValorCeldaArch
   BOOLEANO: esBooleanoValido,
   FECHA: esFechaValida,
   FECHA_HORA: esFechaHoraValida,
-  RUT: (valor) => esRutValido(aTextoCelda(valor)),
   EMAIL: (valor) => ESQUEMA_EMAIL.safeParse(aTextoCelda(valor)).success,
 };

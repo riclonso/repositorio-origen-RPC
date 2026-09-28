@@ -8,6 +8,7 @@ import {
   type AccesoNotificador,
 } from "@/app/api/_lib/http";
 import {
+  tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
   tipoContenidoDesdeNombre,
 } from "@/app/api/formatos-excel/_lib/http";
@@ -20,6 +21,7 @@ export {
   exigirNotificador,
   respuestaError,
   respuestaSinAcceso,
+  tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
   tipoContenidoDesdeNombre,
   type AccesoNotificador,

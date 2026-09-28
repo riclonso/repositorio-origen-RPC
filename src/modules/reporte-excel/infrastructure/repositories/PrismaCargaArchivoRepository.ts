@@ -356,7 +356,11 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     // antes de esa transición (`DarVistoBueno` reparsea el archivo para construir la publicación).
     const registro = await prisma.cargaArchivo.findFirst({
       where: { id, usuarioId },
-      select: { tipoContenidoArchivo: true, contenidoArchivo: true },
+      select: {
+        tipoContenidoArchivo: true,
+        contenidoArchivo: true,
+        formatoExcel: { select: { separadorCsv: true } },
+      },
     });
 
     if (!registro) return null;
@@ -364,6 +368,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return {
       contenidoArchivo: Buffer.from(registro.contenidoArchivo),
       tipoContenidoArchivo: registro.tipoContenidoArchivo,
+      separadorCsv: registro.formatoExcel.separadorCsv,
     };
   },
 

@@ -6,9 +6,12 @@ import {
   MENSAJE_ERROR_INTERNO,
   TAMANO_MAXIMO_PLANTILLA,
   exigirAdminORevisor,
+  leerTipoArchivoYSeparador,
   respuestaArchivoInvalido,
   respuestaError,
   respuestaSinAcceso,
+  respuestaTipoNoCoincide,
+  tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
   tipoContenidoDesdeNombre,
 } from "@/app/api/formatos-excel/_lib/http";
@@ -28,6 +31,12 @@ export async function POST(request: Request) {
 
   if (!(archivo instanceof File)) {
     return respuestaArchivoInvalido("Selecciona un archivo de plantilla");
+  }
+
+  const tipoYSeparador = leerTipoArchivoYSeparador(formData);
+
+  if (!tipoYSeparador.ok) {
+    return respuestaError(tipoYSeparador.mensaje, 400);
   }
 
   // Primer filtro, barato: rechaza una extensión no soportada sin leer el archivo completo.
@@ -55,11 +64,22 @@ export async function POST(request: Request) {
       return respuestaArchivoInvalido("El contenido del archivo no corresponde a su extensión");
     }
 
-    const resultado = await leerColumnasPlantilla(buffer, tipoContenido, {
-      lectorPlantilla: lectorPlantillaExcelJs,
-    });
+    const resultado = await leerColumnasPlantilla(
+      {
+        buffer,
+        tipoContenido,
+        tipoArchivoDeclarado: tipoYSeparador.datos.tipoArchivo,
+        tipoArchivoDetectado: tipoArchivoDesdeTipoContenido(tipoContenido),
+        separadorCsv: tipoYSeparador.datos.separadorCsv,
+      },
+      { lectorPlantilla: lectorPlantillaExcelJs },
+    );
 
     if (!resultado.ok) {
+      if (resultado.motivo === "TIPO_NO_COINCIDE") {
+        return respuestaTipoNoCoincide();
+      }
+
       const mensaje =
         resultado.motivo === "SIN_COLUMNAS"
           ? "La plantilla no tiene columnas en la primera fila"

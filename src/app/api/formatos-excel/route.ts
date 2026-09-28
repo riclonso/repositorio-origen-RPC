@@ -13,10 +13,12 @@ import {
   aFormatoExcelDTO,
   aFormatoExcelResumenDTO,
   exigirAdminORevisor,
+  leerTipoArchivoYSeparador,
   respuestaArchivoInvalido,
   respuestaDuplicado,
   respuestaError,
   respuestaSinAcceso,
+  respuestaTipoNoCoincide,
   tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
   tipoContenidoDesdeNombre,
@@ -128,6 +130,14 @@ export async function POST(request: Request) {
     return respuestaError(datos.error.issues[0]?.message ?? MENSAJE_DATOS_INVALIDOS, 400);
   }
 
+  const tipoYSeparador = leerTipoArchivoYSeparador(formData);
+
+  if (!tipoYSeparador.ok) {
+    return respuestaError(tipoYSeparador.mensaje, 400);
+  }
+
+  const { tipoArchivo: tipoArchivoDeclarado, separadorCsv } = tipoYSeparador.datos;
+
   try {
     const buffer = Buffer.from(await archivo.arrayBuffer());
 
@@ -155,6 +165,20 @@ export async function POST(request: Request) {
       return respuestaArchivoInvalido("El contenido del archivo no corresponde a su extensión");
     }
 
+    const tipoArchivoDetectado = tipoArchivoDesdeTipoContenido(tipoContenido);
+
+    // Barato primero, antes de reescribir la cabecera: el caso de uso lo vuelve a comprobar.
+    if (tipoArchivoDetectado !== tipoArchivoDeclarado) {
+      auditarFormatoExcel(acceso.sesion, request, {
+        accion: "FORMATO_EXCEL_CREADO",
+        resultado: "RECHAZADO",
+        motivo: "TIPO_ARCHIVO_NO_COINCIDE",
+        tipoArchivo: tipoArchivoDeclarado,
+        separadorCsv,
+      });
+      return respuestaTipoNoCoincide();
+    }
+
     // Las filas agregadas manualmente en el asistente deben formar parte de la plantilla que se
     // descarga después. Se escribe la cabecera con el conjunto validado de columnas ANTES de
     // persistir el binario, por lo que el archivo guardado y el formato nunca nacen desalineados.
@@ -162,6 +186,7 @@ export async function POST(request: Request) {
       buffer,
       tipoContenido,
       datos.data.columnas.map((columna) => columna.nombre),
+      separadorCsv,
     );
 
     if (plantillaConCabecera.byteLength > TAMANO_MAXIMO_PLANTILLA) {
@@ -179,7 +204,9 @@ export async function POST(request: Request) {
         descripcion: datos.data.descripcion,
         nombreArchivoPlantilla: archivo.name,
         tipoContenidoPlantilla: tipoContenido,
-        tipoArchivo: tipoArchivoDesdeTipoContenido(tipoContenido),
+        tipoArchivo: tipoArchivoDetectado,
+        tipoArchivoDeclarado,
+        separadorCsv,
         contenidoPlantilla: plantillaConCabecera,
         columnas: datos.data.columnas,
         reglasValidacion: datos.data.reglasValidacion,
@@ -188,6 +215,17 @@ export async function POST(request: Request) {
     );
 
     if (!resultado.ok) {
+      if (resultado.motivo === "TIPO_NO_COINCIDE") {
+        auditarFormatoExcel(acceso.sesion, request, {
+          accion: "FORMATO_EXCEL_CREADO",
+          resultado: "RECHAZADO",
+          motivo: "TIPO_ARCHIVO_NO_COINCIDE",
+          tipoArchivo: tipoArchivoDeclarado,
+          separadorCsv,
+        });
+        return respuestaTipoNoCoincide();
+      }
+
       auditarFormatoExcel(acceso.sesion, request, {
         accion: "FORMATO_EXCEL_CREADO",
         resultado: "RECHAZADO",
@@ -202,6 +240,8 @@ export async function POST(request: Request) {
       resultado: "EXITO",
       formatoExcelId: resultado.formato.id,
       formatoExcelNombre: resultado.formato.nombre,
+      tipoArchivo: resultado.formato.tipoArchivo,
+      separadorCsv: resultado.formato.separadorCsv,
     });
 
     return NextResponse.json({ formato: aFormatoExcelDTO(resultado.formato) }, { status: 201 });

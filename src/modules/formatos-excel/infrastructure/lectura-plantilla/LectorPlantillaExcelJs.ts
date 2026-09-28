@@ -1,32 +1,16 @@
-import { Readable } from "node:stream";
-import ExcelJS from "exceljs";
 import type { LectorPlantilla } from "@/modules/formatos-excel/application/ports";
-
-const TIPO_CONTENIDO_CSV = "text/csv";
+import { abrirPrimeraHojaExcelJs } from "@/infrastructure/hojas-calculo/abrirHojaExcelJs";
 
 // Tope de seguridad: si la primera fila viniera sin ninguna celda vacía (archivo corrupto o
 // generado por error), este límite evita recorrer columnas indefinidamente.
 const MAXIMO_COLUMNAS = 500;
 
-// Implementación del puerto `LectorPlantilla` con `exceljs`. Csv se lee SOLO con separador coma
-// y codificación UTF-8, sin opciones adicionales (decisión ya tomada: `;` u otras codificaciones
-// quedan fuera de este alcance).
+// Implementación del puerto `LectorPlantilla` con `exceljs`. Un CSV se lee con el separador
+// elegido para el formato y se decodifica como UTF-8 (con o sin BOM) o Windows-1252 (ver
+// `abrirPrimeraHojaExcelJs`).
 export const lectorPlantillaExcelJs: LectorPlantilla = {
-  async leer(buffer, tipoContenido) {
-    const workbook = new ExcelJS.Workbook();
-    let hoja: ExcelJS.Worksheet | undefined;
-
-    if (tipoContenido === TIPO_CONTENIDO_CSV) {
-      hoja = await workbook.csv.read(Readable.from(buffer));
-    } else {
-      // El `.d.ts` de exceljs declara un `Buffer` ambiental propio (`extends ArrayBuffer`) que
-      // choca con el `Buffer` real de Node bajo `lib: ["esnext"]` (agrega miembros de
-      // ArrayBuffer redimensionable que Node no implementa). Es una incompatibilidad de tipos
-      // de la librería, no del dato: en runtime `buffer` sigue siendo el `Buffer` de Node que
-      // `xlsx.load` espera.
-      await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
-      hoja = workbook.worksheets[0];
-    }
+  async leer(buffer, tipoContenido, opciones) {
+    const { hoja } = await abrirPrimeraHojaExcelJs(buffer, tipoContenido, opciones.separadorCsv);
 
     if (!hoja) return [];
 

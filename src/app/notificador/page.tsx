@@ -62,6 +62,8 @@ export default async function NotificadorPage() {
       .map((ventana) => ({
         formatoExcelId: formato.id,
         formatoNombre: formato.nombre,
+        tipoArchivo: formato.tipoArchivo,
+        separadorCsv: formato.separadorCsv,
         anio: ventana.anio,
         ventanaCargaId: ventana.id,
       })),

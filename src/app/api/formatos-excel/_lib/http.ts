@@ -11,6 +11,10 @@ import {
   respuestaSinAcceso,
   type AccesoAdminORevisor,
 } from "@/app/api/_lib/http";
+import {
+  tipoArchivoYSeparadorSchema,
+  type TipoArchivoYSeparadorInput,
+} from "@/modules/formatos-excel/schemas/formato-excel.schema";
 
 export { exigirAdminORevisor, respuestaError, respuestaSinAcceso, type AccesoAdminORevisor };
 
@@ -100,6 +104,33 @@ export function respuestaDuplicado(nombre: string): NextResponse {
     campo: "nombre",
     codigo: "DUPLICADO",
   });
+}
+
+// Lee los campos multipart `tipoArchivo` y `separadorCsv` del asistente de creación. Un campo
+// ausente o vacío llega como `null`, para que el esquema aplique la regla "obligatorio si CSV,
+// prohibido si EXCEL".
+export function leerTipoArchivoYSeparador(
+  formData: FormData | null,
+): { ok: true; datos: TipoArchivoYSeparadorInput } | { ok: false; mensaje: string } {
+  const tipoArchivo = formData?.get("tipoArchivo");
+  const separadorCsv = formData?.get("separadorCsv");
+
+  const resultado = tipoArchivoYSeparadorSchema.safeParse({
+    tipoArchivo: typeof tipoArchivo === "string" ? tipoArchivo : undefined,
+    separadorCsv: typeof separadorCsv === "string" && separadorCsv.length > 0 ? separadorCsv : null,
+  });
+
+  if (!resultado.success) {
+    return { ok: false, mensaje: resultado.error.issues[0]?.message ?? MENSAJE_DATOS_INVALIDOS };
+  }
+
+  return { ok: true, datos: resultado.data };
+}
+
+export const MENSAJE_TIPO_NO_COINCIDE = "El archivo no corresponde al tipo seleccionado";
+
+export function respuestaTipoNoCoincide(): NextResponse {
+  return respuestaArchivoInvalido(MENSAJE_TIPO_NO_COINCIDE);
 }
 
 // Rechazo de archivo (extensión/tipo o tamaño), siempre 400: es un dato inválido del formulario,

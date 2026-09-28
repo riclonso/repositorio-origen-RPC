@@ -1,11 +1,12 @@
-import { Readable } from "node:stream";
-import ExcelJS from "exceljs";
-
-const TIPO_CONTENIDO_CSV = "text/csv";
+import type { SeparadorCsv } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import {
+  abrirPrimeraHojaExcelJs,
+  serializarLibroExcelJs,
+} from "@/infrastructure/hojas-calculo/abrirHojaExcelJs";
 
 // Mantiene la cabecera binaria de la plantilla alineada con las columnas configuradas. En XLSX
-// conserva las hojas, filas, estilos y datos existentes; en CSV ExcelJS vuelve a serializar el
-// archivo como UTF-8, que es precisamente el formato que el lector de plantillas ya soporta.
+// conserva las hojas, filas, estilos y datos existentes; en CSV lo vuelve a serializar con el
+// separador del formato, en UTF-8 con BOM (el lector admite ambos).
 //
 // La función recibe los nombres ya validados por `formato-excel.schema.ts`: no interpreta datos
 // del cliente ni decide qué columnas son aceptables, solo escribe la primera fila del archivo.
@@ -13,16 +14,9 @@ export async function sincronizarCabeceraPlantillaExcelJs(
   contenido: Buffer,
   tipoContenido: string,
   columnas: readonly string[],
+  separadorCsv: SeparadorCsv | null,
 ): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  let hoja: ExcelJS.Worksheet | undefined;
-
-  if (tipoContenido === TIPO_CONTENIDO_CSV) {
-    hoja = await workbook.csv.read(Readable.from(contenido));
-  } else {
-    await workbook.xlsx.load(contenido as unknown as Parameters<typeof workbook.xlsx.load>[0]);
-    hoja = workbook.worksheets[0];
-  }
+  const { libro, hoja } = await abrirPrimeraHojaExcelJs(contenido, tipoContenido, separadorCsv);
 
   if (!hoja) {
     throw new Error("La plantilla no contiene una hoja para actualizar su cabecera");
@@ -34,10 +28,5 @@ export async function sincronizarCabeceraPlantillaExcelJs(
   });
   cabecera.commit();
 
-  const resultado =
-    tipoContenido === TIPO_CONTENIDO_CSV
-      ? await workbook.csv.writeBuffer()
-      : await workbook.xlsx.writeBuffer();
-
-  return Buffer.from(resultado);
+  return serializarLibroExcelJs(libro, tipoContenido, separadorCsv);
 }

@@ -120,6 +120,7 @@ src/
 │   ├── database/prisma.ts, config/env.ts
 │   ├── logging/            — logger.ts (Winston), auditoria.ts, leerLogs.ts
 │   ├── email/SmtpMailer.ts
+│   ├── hojas-calculo/      — abrirHojaExcelJs.ts (único punto de apertura/escritura exceljs, separador CSV)
 │   └── rate-limit/LimitadorMemoria.ts
 ├── shared/
 │   ├── utils/              — rut.ts, peticion.ts (extraerIp)

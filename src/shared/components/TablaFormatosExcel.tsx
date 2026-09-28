@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { FormatoExcelResumen, TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type { FormatoExcelResumen } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { ETIQUETA_SEPARADOR_CSV, ETIQUETA_TIPO_ARCHIVO } from "@/shared/components/opciones-formato-excel";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoDescargar, IconoEditar, IconoEliminar } from "@/shared/components/iconos";
@@ -10,11 +11,6 @@ import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del formato. Intenta nuevamente.";
 const MENSAJE_ERROR_ELIMINACION = "No se pudo eliminar el formato. Intenta nuevamente.";
-
-const ETIQUETAS_TIPO_ARCHIVO: Record<TipoArchivo, string> = {
-  EXCEL: "Excel (.xlsx)",
-  CSV: "CSV",
-};
 
 type TablaFormatosExcelProps = {
   filas: FormatoExcelResumen[];
@@ -120,7 +116,10 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
                   {fila.nombre}
                 </th>
                 <td className="whitespace-nowrap px-3 py-2 text-gob-gray-a">
-                  {ETIQUETAS_TIPO_ARCHIVO[fila.tipoArchivo]}
+                  {ETIQUETA_TIPO_ARCHIVO[fila.tipoArchivo]}
+                  {fila.separadorCsv ? (
+                    <span className="block text-xs">{ETIQUETA_SEPARADOR_CSV[fila.separadorCsv]}</span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadColumnas}</td>
                 <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadReglas}</td>

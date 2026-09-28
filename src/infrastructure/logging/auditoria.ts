@@ -183,7 +183,13 @@ export type MotivoAuditoria =
   // Se intentó abrir una segunda sesión delegada antes de volver a la sesión administrativa
   // original. No se permite anidar delegaciones.
   | "SESION_DELEGADA_ACTIVA"
-  | "FORMATO_CON_VENTANAS";
+  | "FORMATO_CON_VENTANAS"
+  // De `FORMATO_EXCEL_CREADO` y `CARGA_ARCHIVO_REGISTRADA`: el archivo no es del tipo (Excel/CSV)
+  // elegido para el formato o exigido por él.
+  | "TIPO_ARCHIVO_NO_COINCIDE"
+  // De `FORMATO_EXCEL_ACTUALIZADO`: separador CSV incoherente con el tipo de archivo del formato.
+  | "SEPARADOR_INVALIDO"
+  | "SEPARADOR_CON_CARGAS_PENDIENTES";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -214,6 +220,9 @@ export type EventoAuditoria = {
   // `CARGA_ARCHIVO_*`.
   formatoExcelId?: string | null;
   formatoExcelNombre?: string | null;
+  // Específicos de `FORMATO_EXCEL_CREADO`: tipo de archivo y separador CSV elegidos.
+  tipoArchivo?: string | null;
+  separadorCsv?: string | null;
   // Específicos de `CARGA_ARCHIVO_*`. Nunca se registra el contenido de las celdas ni el
   // binario, solo estos metadatos.
   cargaArchivoId?: string | null;

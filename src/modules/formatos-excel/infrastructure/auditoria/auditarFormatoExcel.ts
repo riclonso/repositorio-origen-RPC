@@ -16,6 +16,10 @@ export type DesenlaceAuditoriaFormatoExcel = {
   motivo?: MotivoAuditoria;
   formatoExcelId?: string | null;
   formatoExcelNombre?: string | null;
+  // Solo nombres de campos modificados, nunca sus valores (p. ej. `["separadorCsv"]`).
+  campos?: string[];
+  tipoArchivo?: string | null;
+  separadorCsv?: string | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí. La consulta ocurre fuera del
@@ -42,6 +46,9 @@ async function construirYRegistrar(
     usuarioObjetivoRut: null,
     formatoExcelId: desenlace.formatoExcelId ?? null,
     formatoExcelNombre: desenlace.formatoExcelNombre ?? null,
+    ...(desenlace.campos && desenlace.campos.length > 0 ? { campos: desenlace.campos } : {}),
+    ...(desenlace.tipoArchivo !== undefined ? { tipoArchivo: desenlace.tipoArchivo } : {}),
+    ...(desenlace.separadorCsv !== undefined ? { separadorCsv: desenlace.separadorCsv } : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

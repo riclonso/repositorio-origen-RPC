@@ -18,8 +18,9 @@ export type ColumnaEditable = {
   agregadaManualmente?: boolean;
 };
 
-// Las ocho opciones fijas del enum `TipoDatoColumna` (`prisma/schema.prisma`), en el orden en el
-// que tiene sentido presentarlas a quien configura el formato. RUT y EMAIL se agregaron en RF-14.
+// Las siete opciones fijas del enum `TipoDatoColumna` (`prisma/schema.prisma`), en el orden en el
+// que tiene sentido presentarlas a quien configura el formato. El RUT ya no es un tipo de dato:
+// se valida con la regla "Validar RUT" (`EditorReglasValidacionFormatoExcel`).
 const OPCIONES_TIPO_DATO: OpcionSelect[] = [
   { valor: "TEXTO", etiqueta: "Texto" },
   { valor: "ENTERO", etiqueta: "Entero" },
@@ -27,7 +28,6 @@ const OPCIONES_TIPO_DATO: OpcionSelect[] = [
   { valor: "BOOLEANO", etiqueta: "Booleano" },
   { valor: "FECHA", etiqueta: "Fecha" },
   { valor: "FECHA_HORA", etiqueta: "Fecha y hora" },
-  { valor: "RUT", etiqueta: "RUT" },
   { valor: "EMAIL", etiqueta: "Email" },
 ];
 
