@@ -30,6 +30,9 @@
   /* Verde oscurecido (~5.6:1 sobre blanco) para requisitos cumplidos. Los verdes vivos
      habituales rondan 2:1 y no alcanzan el mínimo AA para texto. */
   --color-gob-success: #146c43;
+  /* Fondo ámbar claro para avisos de advertencia. Solo como fondo: el texto encima sigue siendo
+     gob-danger (~7:1) o gob-gray-a (~8:1), ambos sobre el mínimo AA. */
+  --color-gob-warning-fondo: #fff4d6;
 }
 
 /* Tema bloqueado en claro a proposito. Las superficies del panel (blanco, gob-neutral) y la

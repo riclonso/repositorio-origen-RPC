@@ -117,6 +117,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       cantidadColumnas: registro._count.columnas,
       cantidadReglas: registro._count.reglasValidacion,
       cantidadUsuariosAsignados: registro._count.usuariosAsignados,
+      cantidadVentanasCarga: registro._count.ventanasCarga,
       puedeEliminar: registro._count.ventanasCarga === 0,
     }));
   },
@@ -188,6 +189,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       cantidadColumnas: formatoExcel._count.columnas,
       cantidadReglas: formatoExcel._count.reglasValidacion,
       cantidadUsuariosAsignados: formatoExcel._count.usuariosAsignados,
+      cantidadVentanasCarga: 0,
       // Esta vista alimenta el selector del notificador, no el mantenedor; no se consulta la
       // relación de ventanas para mantenerla liviana y nunca ofrece acciones de eliminación.
       puedeEliminar: false,

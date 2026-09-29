@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
+import { ModalHistorialRechazos } from "@/shared/components/ModalHistorialRechazos";
 import type { FilaCargaExitosaVista, GrupoCargaExitosaVista } from "@/shared/components/mis-cargas-exitosas";
 
 // Opciones sintéticas que representan "sin filtro" en los `<select>` del buscador: no son un
@@ -73,84 +74,73 @@ function BuscadorMisCargasExitosas({
   );
 }
 
-// Historial de reemplazadas de un grupo, anidado dentro de su fila vigente (`<details>/<summary>`,
-// mismo patrón accesible ya usado en `app/dashboard/logs/page.tsx`): colapsable sin JavaScript y
-// operable por teclado.
-function HistorialReemplazadas({ reemplazadas }: { reemplazadas: FilaCargaExitosaVista[] }) {
-  if (reemplazadas.length === 0) return null;
+// Enlace "Detalle" de la columna Detalle: abre el historial de rechazos y reemplazos del grupo en
+// un modal. Botón (no `<a>`) porque abre un diálogo en vez de navegar; se estiliza como enlace.
+function DetalleHistorialRechazos({ titulo, cargas }: { titulo: string; cargas: FilaCargaExitosaVista[] }) {
+  const [abierto, setAbierto] = useState(false);
+
+  if (cargas.length === 0) return null;
 
   return (
-    <details className="mt-2">
-      <summary className="cursor-pointer text-xs font-medium text-gob-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
-        {reemplazadas.length} {reemplazadas.length === 1 ? "reemplazada" : "reemplazadas"}
-      </summary>
-
-      <div className="mt-2 overflow-x-auto rounded-md border border-gob-accent">
-        <table className="w-full min-w-md border-collapse text-left text-sm">
-          <caption className="sr-only">Cargas reemplazadas de esta combinación de formato y ventana</caption>
-          <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
-            <tr>
-              <th scope="col" className="px-3 py-2 font-semibold">Archivo</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Fecha de Rechazo</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Detalle</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gob-accent/60">
-            {reemplazadas.map((carga) => (
-              <tr key={carga.id} className="align-middle">
-                <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
-                  {carga.nombreArchivoOriginal}
-                </th>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
-                  {carga.desactivadaEl ?? "—"}
-                </td>
-                <td className="min-w-56 px-3 py-2 text-gob-gray-a">
-                  {carga.motivo ? (
-                    <p>
-                      <span className="font-medium text-gob-black">
-                        {carga.motivoTipo === "RECHAZO" ? "Rechazada" : "Reemplazada"}:
-                      </span>{" "}
-                      {carga.motivo}
-                    </p>
-                  ) : null}
-                  <a
-                    href={`/api/notificador/cargas/${carga.id}/archivo`}
-                    className="mt-1 inline-block text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
-                  >
-                    Ver archivo
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        aria-haspopup="dialog"
+        className="mt-1 block w-full text-right text-sm font-medium text-gob-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+      >
+        Historial rechazos ({cargas.length})
+      </button>
+      <ModalHistorialRechazos abierto={abierto} titulo={titulo} cargas={cargas} onCerrar={() => setAbierto(false)} />
+    </>
   );
 }
 
+// La fila principal de un grupo puede ser una carga RECHAZADA todavía sin sucesora aprobada (ver
+// `FilaCargaExitosaVista`): se distingue con estado propio y fondo rojo claro para que no se lea
+// como exitosa, y no muestra su fecha de aprobación original.
 function FilaGrupoCargaExitosa({ grupo }: { grupo: GrupoCargaExitosaVista }) {
+  const rechazada = grupo.vigente.motivoTipo === "RECHAZO";
+  // Todos los rechazos/reemplazos del grupo, incluido el de la fila principal si está rechazada.
+  const historial = (rechazada ? [grupo.vigente, ...grupo.reemplazadas] : grupo.reemplazadas).toSorted((a, b) =>
+    (b.desactivadaEnIso ?? "").localeCompare(a.desactivadaEnIso ?? ""),
+  );
+
   return (
-    <tr className="align-top transition-colors hover:bg-gob-neutral/50">
+    <tr
+      className={`align-top transition-colors ${
+        rechazada ? "bg-gob-danger/10 hover:bg-gob-danger/15" : "hover:bg-gob-neutral/50"
+      }`}
+    >
       <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
         {grupo.vigente.nombreArchivoOriginal}
-        {grupo.vigente.motivoTipo === "RECHAZO" ? (
-          <span className="mt-1 block rounded-md border border-gob-danger bg-white px-2 py-1 text-xs font-medium text-gob-danger">
-            Rechazada: {grupo.vigente.motivo}
-          </span>
-        ) : null}
-        <HistorialReemplazadas reemplazadas={grupo.reemplazadas} />
       </th>
+      <td className="px-3 py-2">
+        {rechazada ? (
+          <span className="inline-flex flex-col gap-0.5">
+            <span className="w-fit rounded-full border border-gob-danger bg-white px-2 py-0.5 text-xs font-semibold text-gob-danger">
+              Rechazada
+            </span>
+          </span>
+        ) : (
+          <span className="rounded-full border border-gob-success bg-white px-2 py-0.5 text-xs font-semibold text-gob-success">
+            Aprobada
+          </span>
+        )}
+      </td>
       <td className="px-3 py-2 text-gob-gray-a">{grupo.formatoExcelNombre}</td>
       <td className="px-3 py-2 tabular-nums text-gob-gray-a">{grupo.anio}</td>
-      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">{grupo.vigente.vistoBuenoEl}</td>
+      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
+        {rechazada ? "—" : grupo.vigente.vistoBuenoEl}
+      </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
         <a
           href={`/api/notificador/cargas/${grupo.vigente.id}/archivo`}
           className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
         >
-          Ver archivo
+          
         </a>
+        <DetalleHistorialRechazos titulo={`${grupo.formatoExcelNombre} · ${grupo.anio}`} cargas={historial} />
       </td>
     </tr>
   );
@@ -212,6 +202,7 @@ export function TablaMisCargasExitosas({ grupos }: TablaMisCargasExitosasProps) 
             <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
               <tr>
                 <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
+                <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Formato</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Año</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Aprobada el</th>

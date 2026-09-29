@@ -29,6 +29,10 @@ export type FilaCargaExitosaVista = {
   // `vistoBuenoEl`: esa columna debe decir cuándo dejó de ser vigente, no cuándo se había aprobado
   // originalmente.
   desactivadaEl: string | null;
+  // Mismo instante en ISO, solo para ordenar el historial (el texto formateado no ordena bien).
+  desactivadaEnIso: string | null;
+  // Revisor que rechazó la carga. `null` en un reemplazo (no hay rechazo registrado).
+  rechazadoPor: string | null;
 };
 
 // Un grupo por `ventanaCargaId`: la vigente es la fila principal, las reemplazadas quedan como
@@ -50,6 +54,8 @@ function aFilaCargaExitosaVista(carga: CargaArchivoResumenPropia): FilaCargaExit
     motivo: carga.motivoDesactivacion,
     motivoTipo: carga.motivoDesactivacionTipo,
     desactivadaEl: carga.desactivadaEn ? formatearFechaHora(carga.desactivadaEn) : null,
+    desactivadaEnIso: carga.desactivadaEn ? carga.desactivadaEn.toISOString() : null,
+    rechazadoPor: carga.rechazo?.rechazadoPorNombre ?? null,
   };
 }
 

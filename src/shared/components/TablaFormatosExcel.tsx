@@ -104,6 +104,7 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
               <th scope="col" className="px-3 py-3 font-semibold">Columnas</th>
               <th scope="col" className="px-3 py-3 font-semibold">Reglas</th>
               <th scope="col" className="px-3 py-3 font-semibold">Usuarios asignados</th>
+              <th scope="col" className="px-3 py-3 font-semibold">Ventanas asignadas</th>
               <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                 Acciones
               </th>
@@ -124,6 +125,7 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
                 <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadColumnas}</td>
                 <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadReglas}</td>
                 <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadUsuariosAsignados}</td>
+                <td className="px-3 py-2 tabular-nums text-gob-gray-a">{fila.cantidadVentanasCarga}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex items-center justify-end gap-3">
                     <BotonIcono

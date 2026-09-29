@@ -53,7 +53,7 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
         <div
           key={reapertura.ventanaCargaId}
           role="alert"
-          className="rounded-lg border border-gob-danger bg-white p-4 shadow-sm"
+          className="rounded-lg border-2 border-gob-danger bg-gob-warning-fondo p-4 shadow-sm"
         >
           <p className="text-sm font-semibold text-gob-danger">
             Tu carga de {reapertura.formatoExcelNombre} ({reapertura.anio}) fue rechazada
@@ -61,7 +61,7 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
           <p className="mt-1 text-sm text-gob-gray-a">Motivo: {reapertura.motivo}</p>
           <p className="mt-1 text-sm text-gob-gray-a">
             Puedes volver a subir un archivo para esta combinación hasta el{" "}
-            <strong>{formatearFechaHora(new Date(reapertura.fechaLimite))}</strong>.
+            <strong>{formatearFechaHora(new Date(reapertura.fechaLimite))}</strong>
           </p>
           <a
             href={`#${idTarjetaVentana(reapertura.ventanaCargaId)}`}

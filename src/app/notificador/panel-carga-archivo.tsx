@@ -131,9 +131,17 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
   if (intentos.length === 0) return null;
 
   return (
-    <div className="mt-4 flex flex-col gap-2 border-t border-gob-accent pt-4">
-      <h4 className="text-sm font-semibold text-gob-black">Intentos fallidos</h4>
-      <div className="overflow-x-auto rounded-lg border border-gob-accent bg-white">
+    <details className="group mt-4 border-t border-gob-accent pt-4">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-2 rounded-lg border border-gob-primary/30 bg-gob-primary/5 px-2 py-1 text-sm font-semibold text-gob-primary shadow-sm transition-colors hover:border-gob-primary/60 hover:bg-gob-primary/10 hover:text-gob-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary [&::-webkit-details-marker]:hidden">
+        <span aria-hidden="true" className="inline-block transition-transform group-open:rotate-90">
+          ▸
+        </span>
+        Intentos fallidos
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gob-danger px-1.5 text-xs font-bold text-white shadow-sm">
+          {intentos.length}
+        </span>
+      </summary>
+      <div className="mt-2 overflow-x-auto rounded-lg border border-gob-accent bg-white">
         <table className="w-full min-w-xl border-collapse text-left text-sm">
           <caption className="sr-only">Intentos fallidos de esta combinación de formato y ventana</caption>
           <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
@@ -148,7 +156,7 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
           </thead>
           <tbody className="divide-y divide-gob-accent/60">
             {intentos.map((intento) => (
-              <tr key={intento.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
+              <tr key={intento.id} className="bg-gob-danger/10 align-middle transition-colors hover:bg-gob-danger/15">
                 <th scope="row" className="min-w-40 break-all px-3 py-2 font-medium text-gob-black">
                   {intento.nombreArchivoOriginal}
                 </th>
@@ -171,7 +179,7 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   );
 }
 
