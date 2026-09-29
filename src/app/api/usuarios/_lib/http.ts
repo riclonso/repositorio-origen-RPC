@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import type { CampoUnico, Usuario } from "@/modules/usuarios/domain/entities/Usuario";
+import type {
+  CampoUnico,
+  Usuario,
+  UsuarioListado,
+} from "@/modules/usuarios/domain/entities/Usuario";
 import {
   exigirAdmin,
   exigirAdminORevisor,
@@ -29,10 +33,12 @@ export const MENSAJE_DATOS_INVALIDOS = "Los datos enviados no son válidos";
 export const idUsuarioSchema = idRutaSchema;
 
 // `perfilCodigo` identifica y `perfilNombre` se muestra: el cliente no arma etiquetas.
-export type UsuarioDTO = Omit<Usuario, "createdAt"> & { createdAt: string };
+// `tieneHistorial` (RF-25) solo viene en las filas del listado (`UsuarioListado`); el detalle y
+// las respuestas de escritura no lo calculan.
+export type UsuarioDTO = Omit<Usuario, "createdAt"> & { createdAt: string; tieneHistorial?: boolean };
 
 // Ninguna respuesta incluye `contrasenaHash`: el tipo `Usuario` ya no lo contiene.
-export function aUsuarioDTO(usuario: Usuario): UsuarioDTO {
+export function aUsuarioDTO(usuario: Usuario | UsuarioListado): UsuarioDTO {
   return { ...usuario, createdAt: usuario.createdAt.toISOString() };
 }
 

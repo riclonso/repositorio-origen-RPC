@@ -11,14 +11,18 @@ import {
   aFormatoExcelDTO,
   exigirAdminORevisor,
   idFormatoExcelSchema,
+  respuestaConflictoConcurrente,
   respuestaError,
+  respuestaFormatoUnicoDeNotificadores,
   respuestaSinAcceso,
 } from "@/app/api/formatos-excel/_lib/http";
 
 const ACCION = "FORMATO_EXCEL_ESTADO_CAMBIADO" as const;
 
-// No bloquea si el formato tiene usuarios asignados (mismo criterio que `Perfil.activo`): los
-// usuarios que ya lo tienen lo conservan, solo deja de poder asignarse a usuarios nuevos.
+// Desactivar QUITA el formato a todos los usuarios que lo tienen asignado, en la misma transacción.
+// Se bloquea con 409 `FORMATO_UNICO_DE_NOTIFICADORES` si es el único formato de algún
+// NOTIFICADOR_RPC (activo o inactivo). Desactivar un formato ya inactivo no toca sus asignaciones
+// heredadas (`SIN_EFECTO`). Activar no restaura asignaciones.
 export async function PATCH(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
@@ -57,23 +61,49 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
     });
 
     if (!resultado.ok) {
+      if (resultado.motivo === "FORMATO_UNICO_DE_NOTIFICADORES") {
+        auditarFormatoExcel(acceso.sesion, request, {
+          accion: ACCION,
+          resultado: "RECHAZADO",
+          motivo: "FORMATO_UNICO_DE_NOTIFICADORES",
+          formatoExcelId: idValido.data,
+          formatoExcelNombre: resultado.nombre,
+          activo: datos.data.activo,
+          usuariosBloqueantesIds: resultado.bloqueo.usuariosIds,
+        });
+        return respuestaFormatoUnicoDeNotificadores(resultado.bloqueo, "desactivar");
+      }
+
       auditarFormatoExcel(acceso.sesion, request, {
         accion: ACCION,
         resultado: "RECHAZADO",
-        motivo: "NO_ENCONTRADO",
+        motivo: resultado.motivo,
         formatoExcelId: idValido.data,
+        activo: datos.data.activo,
       });
-      return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+
+      return resultado.motivo === "CONFLICTO_CONCURRENTE"
+        ? respuestaConflictoConcurrente()
+        : respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
+
+    const cantidadAsignacionesEliminadas = resultado.asignacionesEliminadasUsuarioIds.length;
 
     auditarFormatoExcel(acceso.sesion, request, {
       accion: ACCION,
-      resultado: "EXITO",
+      resultado: resultado.cambio === "SIN_CAMBIO" ? "SIN_EFECTO" : "EXITO",
       formatoExcelId: resultado.formato.id,
       formatoExcelNombre: resultado.formato.nombre,
+      activo: resultado.formato.activo,
+      ...(resultado.cambio === "DESACTIVADO"
+        ? {
+            cantidadAsignacionesEliminadas,
+            asignacionesEliminadasUsuarioIds: resultado.asignacionesEliminadasUsuarioIds,
+          }
+        : {}),
     });
 
-    return NextResponse.json({ formato: aFormatoExcelDTO(resultado.formato) });
+    return NextResponse.json({ formato: aFormatoExcelDTO(resultado.formato), cantidadAsignacionesEliminadas });
   } catch (error) {
     logger.error("Error al cambiar el estado de un formato de archivo", {
       error: error instanceof Error ? error.message : String(error),

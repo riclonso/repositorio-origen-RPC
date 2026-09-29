@@ -84,8 +84,14 @@ export type FiltroListadoUsuarios = {
   tamano: number;
 };
 
+// Fila del listado del mantenedor. `tieneHistorial` NO se agrega a `Usuario`: solo el listado lo
+// calcula (un EXISTS por relación de historial, en la misma consulta de la página) para decidir si
+// ofrecer la eliminación física. `obtenerPorId` y el resto de los casos de uso no lo necesitan, y
+// declararlo en `Usuario` obligaría a calcularlo en cada lectura.
+export type UsuarioListado = Usuario & { tieneHistorial: boolean };
+
 export type PaginaUsuarios = {
-  filas: Usuario[];
+  filas: UsuarioListado[];
   total: number;
 };
 

@@ -30,6 +30,7 @@ import {
   UploadSimple,
   User,
   UserSwitch,
+  UsersThree,
   WarningCircle,
   X,
   type Icon,
@@ -104,6 +105,8 @@ export const IconoConfiguracion = crearIcono(Gear, TAMANO_CAMPO);
 export const IconoDesbloquear = crearIcono(LockOpen, TAMANO_ACCION);
 // Descarga de la plantilla vinculada a un formato de archivo.
 export const IconoDescargar = crearIcono(DownloadSimple, TAMANO_ACCION);
+// Asignación masiva de un formato de archivo a varios notificadores a la vez.
+export const IconoAsignarUsuarios = crearIcono(UsersThree, TAMANO_ACCION);
 // Acción exclusiva del administrador para abrir una sesión delegada de una persona desde el
 // mantenedor. `UserSwitch` comunica el cambio de contexto, no una edición de su perfil.
 export const IconoIngresarComoUsuario = crearIcono(UserSwitch, TAMANO_ACCION);

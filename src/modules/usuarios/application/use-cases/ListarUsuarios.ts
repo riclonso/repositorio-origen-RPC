@@ -1,6 +1,6 @@
 import type {
   FiltroListadoUsuarios,
-  Usuario,
+  UsuarioListado,
 } from "@/modules/usuarios/domain/entities/Usuario";
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 
@@ -13,7 +13,7 @@ export type PaginacionUsuarios = {
 
 export type ResultadoListarUsuarios = {
   ok: true;
-  filas: Usuario[];
+  filas: UsuarioListado[];
   paginacion: PaginacionUsuarios;
 };
 

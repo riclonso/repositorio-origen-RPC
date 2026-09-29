@@ -5,6 +5,12 @@ import type {
   FormatoExcelResumen,
   PlantillaFormatoExcel,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type {
+  CandidatoAsignacionFormato,
+  ResultadoAsignacionMasivaRepositorio,
+  ResultadoDesactivacionFormato,
+  ResultadoEliminacionFormato,
+} from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 
 export interface FormatoExcelRepository {
   listar(): Promise<FormatoExcelResumen[]>;
@@ -16,7 +22,8 @@ export interface FormatoExcelRepository {
   // no trae columnas ni reglas, solo lo necesario para poblar un `<select>`.
   listarAsignadosAUsuario(usuarioId: string): Promise<FormatoExcelResumen[]>;
   obtenerPorId(id: string): Promise<FormatoExcel | null>;
-  existeActivo(id: string): Promise<boolean>;  // Resuelve en UNA sola consulta (`WHERE id IN (...) AND activo = true`) cuáles de los ids
+  existeActivo(id: string): Promise<boolean>;
+  // Resuelve en UNA sola consulta (`WHERE id IN (...) AND activo = true`) cuáles de los ids
   // recibidos corresponden a un formato existente y vigente. Evita el N+1 de comprobar cada id
   // por separado al validar el arreglo de formatos asignados a un usuario.
   obtenerActivosEntre(ids: string[]): Promise<string[]>;
@@ -27,7 +34,26 @@ export interface FormatoExcelRepository {
   // anteriores, inserta las nuevas) en la misma operación que actualiza `nombre`/`descripcion`.
   actualizar(id: string, datos: DatosEdicionFormatoExcel): Promise<FormatoExcel>;
   cambiarEstado(id: string, activo: boolean): Promise<FormatoExcel>;
-  eliminar(id: string): Promise<"ELIMINADO" | "NO_ENCONTRADO" | "CON_VENTANAS_ACTIVAS">;
+  // Transaccional (`Serializable`): desactiva el formato y borra TODAS sus filas de
+  // `usuario_formato_excel` en la misma operación. Si el formato ya estaba inactivo no toca nada
+  // (`SIN_CAMBIO`, no limpia asignaciones heredadas). Si es el único formato de algún
+  // NOTIFICADOR_RPC (activo o inactivo), devuelve `BLOQUEADO` sin escribir. Lanza
+  // `ConflictoConcurrenteError` si la transacción se aborta por una escritura concurrente.
+  desactivarQuitandoAsignaciones(id: string): Promise<ResultadoDesactivacionFormato>;
+  // Transaccional (`Serializable`). Bloquea con `BLOQUEADO` si el formato es el único de algún
+  // NOTIFICADOR_RPC (mismo criterio que la desactivación). Lanza `ConflictoConcurrenteError`.
+  eliminar(id: string): Promise<ResultadoEliminacionFormato>;
+  // NOTIFICADOR_RPC activos con su relación a este formato, para el modal de asignación masiva.
+  // Una sola consulta de usuarios (sin N+1). `null` si el formato no existe.
+  listarCandidatosAsignacion(id: string): Promise<CandidatoAsignacionFormato[] | null>;
+  // Transaccional (`Serializable`): re-comprueba que el formato siga activo, lee el estado de los
+  // usuarios del lote en una consulta, los clasifica con `clasificarCambiosAsignacion` y aplica
+  // solo lo aplicable (`createMany` + `deleteMany`). Lanza `ConflictoConcurrenteError`.
+  aplicarAsignacionesMasivas(
+    id: string,
+    agregarIds: string[],
+    quitarIds: string[],
+  ): Promise<ResultadoAsignacionMasivaRepositorio>;
   buscarPorNombre(nombre: string): Promise<FormatoExcel | null>;
   // Única operación que trae el binario de la plantilla. La usa exclusivamente el endpoint de
   // descarga.

@@ -97,6 +97,17 @@ model Usuario {
   alertasRecibidas  AlertaNotificacionVentana[] @relation("AlertasNotificacionRecibidasPor")
   alertasDisparadas AlertaNotificacionVentana[] @relation("AlertasNotificacionDisparadasPor")
 
+  // Política de eliminación FÍSICA (RF-25): una cuenta solo puede borrarse si no tiene historial.
+  //  - Las 10 relaciones con `onDelete: Restrict` (cargas, vistos buenos, publicaciones,
+  //    solicitudes de reemplazo solicitadas/revisadas, rechazos, ventanas creadas/eliminadas,
+  //    alertas recibidas/disparadas) SON historial: una sola fila impide eliminar, y la FK Restrict
+  //    es la defensa final de la base.
+  //  - Las 2 con `onDelete: Cascade` (`tokensRecuperacion`, `formatosAsignados`) son descartables y
+  //    caen con la cuenta.
+  // La clasificación vive en `modules/usuarios/infrastructure/repositories/
+  // relacionesHistorialUsuario.ts` (fuente única). Una relación nueva hacia `Usuario` DEBE
+  // clasificarse ahí: `tests/relaciones-usuario.guard.unit.ts` falla si no.
+
   @@map("usuario")
 }
 
@@ -235,8 +246,9 @@ model UsuarioFormatoExcel {
   usuario        Usuario      @relation(fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Cascade)
   formatoExcelId String
   // `Restrict` y no `Cascade`: protege contra el borrado físico de un formato con usuarios
-  // asignados. Hoy no hay borrado físico de nada (baja lógica vía `activo`), la protección queda
-  // como defensa en profundidad, igual que el resto del proyecto.
+  // asignados (la eliminación de formatos quita antes las asignaciones de forma explícita). Del
+  // lado del usuario es `Cascade`: al eliminar físicamente una cuenta sin historial (RF-25) sus
+  // asignaciones caen con ella, y sus ids quedan en la auditoría como `formatosQuitados`.
   formatoExcel   FormatoExcel @relation(fields: [formatoExcelId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   createdAt      DateTime     @default(now())
 
@@ -391,6 +403,9 @@ model CargaArchivo {
   // notificador subió un archivo nuevo dentro del plazo habilitado por `CargaArchivoRechazo`).
   reaperturaGenerada CargaArchivoRechazo? @relation("ReaperturaConsumidaPorCarga")
 
+  // PostgreSQL no indexa las FK automáticamente. Sirve al EXISTS de historial del listado de
+  // usuarios (RF-25) y a la verificación de la FK Restrict al eliminar una cuenta.
+  @@index([usuarioId])
   @@map("carga_archivo")
 }
 
@@ -671,6 +686,8 @@ model AlertaNotificacionVentana {
   fechaProgramada DateTime?                   @db.Timestamp(3)
   createdAt       DateTime                    @default(now())
 
+  // Mismo motivo que `CargaArchivo.@@index([usuarioId])` (RF-25): tabla que crece con cada envío.
+  @@index([usuarioId])
   @@map("alerta_notificacion_ventana")
 }
 

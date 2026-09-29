@@ -181,6 +181,8 @@ Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no 
   por una referencia directa a un formato concreto) y `CargaArchivo.ventanaCargaId` (FK a
   `VentanaCarga`, `ON DELETE RESTRICT`).
   `usuario.perfilCodigo` es FK a `perfil.codigo` (`ON UPDATE CASCADE`, `ON DELETE RESTRICT`).
+  Desde RF-25, índices `@@index([usuarioId])` en `carga_archivo` y `alerta_notificacion_ventana`
+  (ver "Eliminación física solo sin historial").
 
 ## Agentes de desarrollo
 
@@ -192,6 +194,33 @@ Ver [.claude/agents/](../.claude/agents/) (`architecto`, `desarrollador`, `revis
 ## Decisiones de diseño de RF-06 (mantenedor de usuarios)
 
 Registradas aquí porque condicionan cómo se construyen los módulos siguientes.
+
+### Eliminación física solo sin historial (RF-25)
+
+El borrado físico estaba fuera de alcance por trazabilidad; RF-25 lo permite solo cuando no hay
+nada que trazar. De las 12 relaciones que referencian a `Usuario`, 10 son `ON DELETE RESTRICT` y
+representan historial (bloquean) y 2 son `CASCADE` y se descartan con la cuenta (tokens de
+recuperación y asignaciones de formato; la traza de estas queda en `formatosQuitados` de la
+auditoría). La clasificación vive en **una sola fuente**
+(`modules/usuarios/infrastructure/repositories/relacionesHistorialUsuario.ts`, fragmentos
+`Prisma.sql` con `EXISTS`), que usan tanto el listado como la eliminación; un test de guardia sin BD
+(`tests/relaciones-usuario.guard.unit.ts`) compara esa lista con las relaciones del `model Usuario`
+y falla si aparece una sin clasificar (la guardia compara nombres, no el SQL de cada `EXISTS`).
+
+**Por qué el indicador va en el SQL crudo y no en `_count`:** el listado usa `$queryRaw` (por
+`unaccent`), así que `tieneHistorial` se calcula como una columna más del mismo `SELECT` (una
+consulta por página, sin N+1). Para que esas subconsultas no escaneen tablas grandes se agregaron
+`@@index([usuarioId])` en `carga_archivo` y `alerta_notificacion_ventana`, los primeros índices
+explícitos del esquema.
+
+**Atomicidad:** `eliminar(id, actorEsAdmin)` abre una transacción `Serializable` y bloquea la fila
+(`SELECT … FOR UPDATE`); sobre esa fila revalida el perfil ADMIN restringido (un REVISOR no puede
+borrar a alguien ascendido a ADMIN entre la lectura previa y el borrado), el último ADMIN activo y
+el historial. La FK `Restrict` es la defensa final (P2003 → `CON_HISTORIAL`). Con
+`@prisma/adapter-pg`, el SQLSTATE 40001 llega como `P2034` en operaciones del cliente pero como
+`P2010` (con `meta.driverAdapterError.cause.originalCode = "40001"`) dentro de `$queryRaw`; el
+repositorio reconoce ambos. Si tras el conflicto la fila ya no existe, responde 404 en vez de pedir
+reintentar.
 
 ### El guard de API vive en el Route Handler, no en el proxy
 
@@ -534,6 +563,36 @@ el proyecto evita). Se aplica dos veces por defensa en profundidad: `usuario.sch
 sola consulta** (`FormatoExcelRepository.obtenerActivosEntre(ids)`), nunca un loop por id. En
 edición, los formatos que la persona ya tenía se conservan aunque hayan sido dados de baja (mismo
 criterio que "conserva su perfil actual" de RF-09); solo los ids nuevos deben estar vigentes.
+
+Desde RF-24 ese caso solo lo producen **datos heredados**: desactivar un formato ahora borra todas
+sus asignaciones (ver abajo), así que un formato dado de baja después de RF-24 ya no queda asignado
+a nadie. Los formatos que ya estaban inactivos antes de RF-24 conservan sus asignaciones (sin
+migración).
+
+La regla se aplica también en dos caminos de `formatos-excel/` que quitan asignaciones:
+desactivar/eliminar un formato (se **bloquea** con 409 `FORMATO_UNICO_DE_NOTIFICADORES`) y el retiro
+masivo (se **excluye** al afectado e informa). "Único formato" es estructural: todas las filas del
+notificador en `usuario_formato_excel` son ese formato, sin importar si el notificador o sus otros
+formatos están activos — una sola consulta con `some` + `every`. Se cuentan los notificadores
+inactivos porque reactivar una cuenta no pasa por el schema de usuario y volvería sin formatos.
+
+### Asignación masiva de formatos (RF-24): procesamiento parcial dentro de una transacción `Serializable`
+
+`POST /api/formatos-excel/[id]/asignaciones` no es todo-o-nada (decisión explícita del usuario): los
+ids no elegibles se omiten e informan, igual que los excluidos por último formato. La clasificación
+vive en la función pura de dominio `clasificarCambiosAsignacion` (`domain/entities/AsignacionFormato.ts`)
+y se evalúa sobre el estado leído **dentro** de la transacción del repositorio
+(`aplicarAsignacionesMasivas`), no antes en `application/`, para que no se desincronice por carrera.
+Se audita **un evento por lote** (`FORMATO_EXCEL_ASIGNACION_MASIVA`, solo ids), no uno por usuario,
+mismo criterio que `VENTANA_CARGA_ALERTA_MASIVA_ENVIADA`.
+
+Las escrituras que dependen de filas de otros formatos (asignación masiva, desactivar, eliminar)
+usan `isolationLevel: Serializable`. `@prisma/adapter-pg` traduce el SQLSTATE 40001 a P2034, que el
+repositorio convierte en `ConflictoConcurrenteError` (409 `CONFLICTO_CONCURRENTE`, "vuelve a
+intentarlo"; sin reintento automático). **Límite de la garantía:** solo se detectan entre sí las
+transacciones `Serializable`; `PrismaUsuarioRepository` escribe en Read Committed, así que frente a
+una edición de ficha solo queda cubierto el conflicto escritura-escritura sobre la misma fila de
+`usuario_formato_excel` (ver deuda técnica en `docs/requerimientos.md`).
 
 ### Reemplazo de un conjunto de filas hijas como una sola escritura atómica
 

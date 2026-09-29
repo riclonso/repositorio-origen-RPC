@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
 import { actualizarUsuario } from "@/modules/usuarios/application/use-cases/ActualizarUsuario";
+import { eliminarUsuario } from "@/modules/usuarios/application/use-cases/EliminarUsuario";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
@@ -24,6 +25,16 @@ import {
 const MENSAJES_CONFLICTO = {
   AUTO_OPERACION: "No puedes quitarte a ti mismo el perfil de administrador",
   ULTIMO_ADMIN: "No puedes quitar el perfil al último administrador activo",
+} as const;
+
+// RF-25. Ninguno enumera qué historial tiene la cuenta: ese detalle solo va a la auditoría.
+const MENSAJES_CONFLICTO_ELIMINACION = {
+  AUTO_OPERACION: "No puedes eliminar tu propia cuenta",
+  ULTIMO_ADMIN: "No puedes eliminar al último administrador activo",
+  CON_HISTORIAL:
+    "La cuenta tiene historial registrado y no puede eliminarse. Puedes desactivarla.",
+  CONFLICTO_CONCURRENTE:
+    "Otro cambio sobre esta cuenta se aplicó al mismo tiempo. Vuelve a intentarlo.",
 } as const;
 
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
@@ -134,6 +145,88 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
     return NextResponse.json({ usuario: aUsuarioDTO(resultado.usuario) });
   } catch (error) {
     logger.error("Error al actualizar usuario", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return respuestaError(MENSAJE_ERROR_INTERNO, 500);
+  }
+}
+
+// RF-25: eliminación FÍSICA de una cuenta sin historial. Sin cuerpo. Mismo esqueleto que el PATCH de
+// `estado/route.ts`: guard primero, id como UUID (404 si no lo es), reglas en `application/` y
+// auditoría de éxitos y rechazos desde aquí (la fila ya no existe cuando se audita el éxito, por eso
+// el RUT, el perfil y los formatos salen del resultado del caso de uso).
+export async function DELETE(request: Request, contexto: { params: Promise<{ id: string }> }) {
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
+
+  if (!acceso.ok) {
+    if (acceso.estado === 403) {
+      auditarUsuario(acceso.sesion, request, {
+        accion: "USUARIO_ELIMINADO",
+        resultado: "RECHAZADO",
+        motivo: "SIN_PERMISO",
+        usuarioObjetivoId: id,
+      });
+    }
+
+    return respuestaSinAcceso(acceso.estado);
+  }
+
+  const idValido = idUsuarioSchema.safeParse(id);
+
+  if (!idValido.success) {
+    return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+  }
+
+  try {
+    const resultado = await eliminarUsuario(idValido.data, acceso.sesion.sub, acceso.sesion.perfil, {
+      repositorio: prismaUsuarioRepository,
+    });
+
+    if (!resultado.ok) {
+      if (resultado.motivo === "NO_ENCONTRADO") {
+        auditarUsuario(acceso.sesion, request, {
+          accion: "USUARIO_ELIMINADO",
+          resultado: "RECHAZADO",
+          motivo: "NO_ENCONTRADO",
+          usuarioObjetivoId: idValido.data,
+        });
+
+        return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+      }
+
+      auditarUsuario(acceso.sesion, request, {
+        accion: "USUARIO_ELIMINADO",
+        resultado: "RECHAZADO",
+        motivo: resultado.motivo,
+        usuarioObjetivoId: idValido.data,
+        usuarioObjetivoRut: resultado.rut,
+        ...(resultado.motivo === "CON_HISTORIAL"
+          ? { relacionesBloqueantes: resultado.relacionesBloqueantes }
+          : {}),
+      });
+
+      // 403, no un 409: es un rechazo de autorización, no un conflicto de negocio.
+      if (resultado.motivo === "PERFIL_ADMIN_RESTRINGIDO") {
+        return respuestaPerfilAdminRestringido();
+      }
+
+      return respuestaError(MENSAJES_CONFLICTO_ELIMINACION[resultado.motivo], 409, {
+        codigo: resultado.motivo,
+      });
+    }
+
+    auditarUsuario(acceso.sesion, request, {
+      accion: "USUARIO_ELIMINADO",
+      resultado: "EXITO",
+      usuarioObjetivoId: idValido.data,
+      usuarioObjetivoRut: resultado.rut,
+      perfilAnterior: resultado.perfilCodigo,
+      formatosQuitados: resultado.formatosQuitadosIds,
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    logger.error("Error al eliminar usuario", {
       error: error instanceof Error ? error.message : String(error),
     });
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);

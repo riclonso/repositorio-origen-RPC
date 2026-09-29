@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   estaBloqueada,
   type FiltroListadoUsuarios,
-  type Usuario,
+  type UsuarioListado,
 } from "@/modules/usuarios/domain/entities/Usuario";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
@@ -36,7 +36,7 @@ const CLASES_ENLACE_VACIO =
 // `ahora` se calcula una sola vez en `ListadoUsuarios` y se reutiliza para las 20-100 filas de la
 // página (nunca `new Date()` por fila): mismo criterio de "un solo reloj de pared por petición"
 // que el resto del proyecto (RF-10, RF-15).
-function aFilaVista(usuario: Usuario, ahora: Date): FilaUsuarioVista {
+function aFilaVista(usuario: UsuarioListado, ahora: Date): FilaUsuarioVista {
   return {
     id: usuario.id,
     nombres: usuario.nombres,
@@ -52,6 +52,7 @@ function aFilaVista(usuario: Usuario, ahora: Date): FilaUsuarioVista {
     bloqueada: estaBloqueada(usuario, ahora),
     vecesBloqueada: usuario.vecesBloqueada,
     bloqueadaHastaTexto: usuario.bloqueadaHasta ? formateadorFechaHora.format(usuario.bloqueadaHasta) : null,
+    tieneHistorial: usuario.tieneHistorial,
   };
 }
 

@@ -5,6 +5,7 @@ import {
   TIPOS_DATO_COLUMNA,
   TIPOS_REGLA_VALIDACION,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { MAXIMO_CAMBIOS_ASIGNACION_MASIVA } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 
 export const tipoDatoColumnaSchema = z.enum(TIPOS_DATO_COLUMNA);
 export const tipoReglaValidacionSchema = z.enum(TIPOS_REGLA_VALIDACION);
@@ -242,3 +243,39 @@ export type EditarFormatoExcelInput = z.infer<typeof editarFormatoExcelSchema>;
 
 export const cambiarEstadoFormatoExcelSchema = z.object({ activo: z.boolean() });
 export type CambiarEstadoFormatoExcelInput = z.infer<typeof cambiarEstadoFormatoExcelSchema>;
+
+function sinRepetidos(ids: string[]): boolean {
+  return new Set(ids).size === ids.length;
+}
+
+const idsUsuariosLoteSchema = z
+  .array(z.uuid("Identificador de usuario inválido"))
+  .default([])
+  .refine(sinRepetidos, "No repitas un usuario dentro del mismo lote");
+
+// Asignación masiva de un formato: solo la DIFERENCIA respecto del estado mostrado. Compartido
+// entre el Route Handler y el modal (`ModalAsignarFormatoUsuarios`), que lo usa para no enviar un
+// lote que el servidor rechazaría.
+export const asignacionMasivaFormatoSchema = z
+  .object({ agregarIds: idsUsuariosLoteSchema, quitarIds: idsUsuariosLoteSchema })
+  .superRefine((datos, contexto) => {
+    const agregar = new Set(datos.agregarIds);
+    if (datos.quitarIds.some((id) => agregar.has(id))) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["quitarIds"],
+        message: "Un mismo usuario no puede agregarse y quitarse en el mismo lote",
+      });
+    }
+
+    const total = datos.agregarIds.length + datos.quitarIds.length;
+    if (total === 0) {
+      contexto.addIssue({ code: "custom", message: "No hay cambios que guardar" });
+    } else if (total > MAXIMO_CAMBIOS_ASIGNACION_MASIVA) {
+      contexto.addIssue({
+        code: "custom",
+        message: `Se permiten como máximo ${MAXIMO_CAMBIOS_ASIGNACION_MASIVA} cambios por lote`,
+      });
+    }
+  });
+export type AsignacionMasivaFormatoInput = z.infer<typeof asignacionMasivaFormatoSchema>;

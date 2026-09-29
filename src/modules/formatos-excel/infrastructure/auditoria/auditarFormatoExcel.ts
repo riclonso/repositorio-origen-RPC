@@ -20,6 +20,14 @@ export type DesenlaceAuditoriaFormatoExcel = {
   campos?: string[];
   tipoArchivo?: string | null;
   separadorCsv?: string | null;
+  activo?: boolean;
+  cantidadAsignacionesEliminadas?: number;
+  asignacionesEliminadasUsuarioIds?: string[];
+  usuariosBloqueantesIds?: string[];
+  usuariosAgregadosIds?: string[];
+  usuariosQuitadosIds?: string[];
+  usuariosNoElegiblesIds?: string[];
+  usuariosExcluidosUltimoFormatoIds?: string[];
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí. La consulta ocurre fuera del
@@ -49,6 +57,25 @@ async function construirYRegistrar(
     ...(desenlace.campos && desenlace.campos.length > 0 ? { campos: desenlace.campos } : {}),
     ...(desenlace.tipoArchivo !== undefined ? { tipoArchivo: desenlace.tipoArchivo } : {}),
     ...(desenlace.separadorCsv !== undefined ? { separadorCsv: desenlace.separadorCsv } : {}),
+    ...(desenlace.activo !== undefined ? { activo: desenlace.activo } : {}),
+    ...(desenlace.cantidadAsignacionesEliminadas !== undefined
+      ? { cantidadAsignacionesEliminadas: desenlace.cantidadAsignacionesEliminadas }
+      : {}),
+    ...(desenlace.asignacionesEliminadasUsuarioIds
+      ? { asignacionesEliminadasUsuarioIds: desenlace.asignacionesEliminadasUsuarioIds }
+      : {}),
+    ...(desenlace.usuariosBloqueantesIds
+      ? {
+          usuariosBloqueantesIds: desenlace.usuariosBloqueantesIds,
+          cantidadUsuariosBloqueantes: desenlace.usuariosBloqueantesIds.length,
+        }
+      : {}),
+    ...(desenlace.usuariosAgregadosIds ? { usuariosAgregadosIds: desenlace.usuariosAgregadosIds } : {}),
+    ...(desenlace.usuariosQuitadosIds ? { usuariosQuitadosIds: desenlace.usuariosQuitadosIds } : {}),
+    ...(desenlace.usuariosNoElegiblesIds ? { usuariosNoElegiblesIds: desenlace.usuariosNoElegiblesIds } : {}),
+    ...(desenlace.usuariosExcluidosUltimoFormatoIds
+      ? { usuariosExcluidosUltimoFormatoIds: desenlace.usuariosExcluidosUltimoFormatoIds }
+      : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

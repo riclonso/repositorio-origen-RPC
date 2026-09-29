@@ -4,6 +4,7 @@ import type {
   FormatoExcelResumen,
   TipoArchivo,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type { BloqueoFormatoUnico } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 import {
   exigirAdminORevisor,
   idRutaSchema,
@@ -97,6 +98,41 @@ export type FormatoExcelResumenDTO = Omit<FormatoExcelResumen, "createdAt"> & { 
 
 export function aFormatoExcelResumenDTO(formato: FormatoExcelResumen): FormatoExcelResumenDTO {
   return { ...formato, createdAt: formato.createdAt.toISOString() };
+}
+
+function pluralizar(cantidad: number, singular: string, plural: string): string {
+  return `${cantidad} ${cantidad === 1 ? singular : plural}`;
+}
+
+// 409 cuando el formato es el único de uno o más NOTIFICADOR_RPC. El mensaje ya viene listo para
+// mostrarse; el desglose numérico viaja aparte para quien quiera usarlo. Nunca ids ni RUT.
+export function respuestaFormatoUnicoDeNotificadores(
+  bloqueo: BloqueoFormatoUnico,
+  operacion: "desactivar" | "eliminar",
+): NextResponse {
+  const cantidadNotificadores = bloqueo.usuariosIds.length;
+  const sufijo = operacion === "desactivar" ? "desactivarlo" : "eliminarlo";
+  const mensaje =
+    `No se puede ${operacion}: es el único formato de ${pluralizar(cantidadNotificadores, "notificador", "notificadores")} ` +
+    `(${pluralizar(bloqueo.cantidadActivos, "activo", "activos")}, ${pluralizar(bloqueo.cantidadInactivos, "inactivo", "inactivos")}). ` +
+    `Asígnales otro formato antes de ${sufijo}.`;
+
+  return NextResponse.json(
+    {
+      error: mensaje,
+      codigo: "FORMATO_UNICO_DE_NOTIFICADORES",
+      cantidadNotificadores,
+      cantidadActivos: bloqueo.cantidadActivos,
+      cantidadInactivos: bloqueo.cantidadInactivos,
+    },
+    { status: 409 },
+  );
+}
+
+export function respuestaConflictoConcurrente(): NextResponse {
+  return respuestaError("Otro cambio se aplicó al mismo tiempo; vuelve a intentarlo.", 409, {
+    codigo: "CONFLICTO_CONCURRENTE",
+  });
 }
 
 export function respuestaDuplicado(nombre: string): NextResponse {

@@ -6,11 +6,30 @@ import type { FormatoExcelResumen } from "@/modules/formatos-excel/domain/entiti
 import { ETIQUETA_SEPARADOR_CSV, ETIQUETA_TIPO_ARCHIVO } from "@/shared/components/opciones-formato-excel";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoDescargar, IconoEditar, IconoEliminar } from "@/shared/components/iconos";
+import { IconoAsignarUsuarios, IconoDescargar, IconoEditar, IconoEliminar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
+import { ModalAsignarFormatoUsuarios } from "@/shared/components/ModalAsignarFormatoUsuarios";
+import {
+  prepararAsignacionFormato,
+  type FormatoObjetivoAsignacion,
+} from "@/shared/components/asignacion-formato";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del formato. Intenta nuevamente.";
 const MENSAJE_ERROR_ELIMINACION = "No se pudo eliminar el formato. Intenta nuevamente.";
+
+// Desactivar quita el formato a todos sus usuarios (el servidor lo bloquea si es el único formato
+// de algún notificador). `cantidadUsuariosAsignados` es la del listado cargado: indicativa.
+function descripcionDesactivacion(formato: FormatoExcelResumen): string {
+  const cantidad = formato.cantidadUsuariosAsignados;
+
+  if (cantidad === 0) {
+    return `"${formato.nombre}" dejará de poder asignarse. No tiene usuarios asignados.`;
+  }
+
+  const destinatarios =
+    cantidad === 1 ? "al usuario que lo tiene asignado" : `a los ${cantidad} usuarios que lo tienen asignado`;
+  return `Se quitará "${formato.nombre}" ${destinatarios}. Si vuelves a activarlo, esas asignaciones no se restaurarán.`;
+}
 
 type TablaFormatosExcelProps = {
   filas: FormatoExcelResumen[];
@@ -28,6 +47,12 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
   const [objetivoEliminacion, setObjetivoEliminacion] = useState<FormatoExcelResumen | null>(null);
   const [eliminando, setEliminando] = useState(false);
   const [errorEliminacion, setErrorEliminacion] = useState<string | null>(null);
+  const [objetivoAsignacion, setObjetivoAsignacion] = useState<FormatoObjetivoAsignacion | null>(null);
+
+  function cerrarAsignacion(huboCambios: boolean) {
+    setObjetivoAsignacion(null);
+    if (huboCambios) router.refresh();
+  }
 
   function cerrarDialogo() {
     if (procesando) return;
@@ -48,6 +73,8 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
         body: JSON.stringify({ activo: !objetivo.activo }),
       });
 
+      // Un 409 `FORMATO_UNICO_DE_NOTIFICADORES` trae en `error` el mensaje listo (cuántos
+      // notificadores, activos e inactivos); el diálogo sigue abierto mostrándolo.
       if (!respuesta.ok) {
         const datos = await respuesta.json().catch(() => null);
         setProcesando(false);
@@ -138,6 +165,13 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
                       Icono={IconoEditar}
                       href={`${rutaBase}/${fila.id}/editar`}
                     />
+                    <BotonIcono
+                      etiqueta={`Asignar ${fila.nombre} a usuarios`}
+                      Icono={IconoAsignarUsuarios}
+                      onClick={() => setObjetivoAsignacion(prepararAsignacionFormato(fila.id, fila.nombre))}
+                      deshabilitado={!fila.activo}
+                      motivoDeshabilitado="Activa el formato para poder asignarlo a usuarios"
+                    />
                     <button
                       type="button"
                       disabled={!fila.puedeEliminar}
@@ -177,7 +211,7 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
         descripcion={
           objetivo
             ? objetivo.activo
-              ? `"${objetivo.nombre}" dejará de poder asignarse a nuevos usuarios. Quienes ya lo tienen asignado lo conservan.`
+              ? descripcionDesactivacion(objetivo)
               : `"${objetivo.nombre}" quedará disponible para asignarse a usuarios.`
             : ""
         }
@@ -206,6 +240,8 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
         onConfirmar={confirmarEliminacion}
         onCancelar={cerrarDialogoEliminacion}
       />
+
+      <ModalAsignarFormatoUsuarios formato={objetivoAsignacion} onCerrar={cerrarAsignacion} />
     </>
   );
 }

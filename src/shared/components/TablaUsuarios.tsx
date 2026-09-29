@@ -6,10 +6,12 @@ import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
+import { Tooltip } from "@/shared/components/Tooltip";
 import {
   IconoContrasena,
   IconoDesbloquear,
   IconoEditar,
+  IconoEliminar,
   IconoIngresarComoUsuario,
 } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
@@ -35,9 +37,15 @@ export type FilaUsuarioVista = {
   bloqueada: boolean;
   vecesBloqueada: number;
   bloqueadaHastaTexto: string | null;
+  // RF-25: `true` si la cuenta tiene cualquier historial en el sistema (calculado en el servidor).
+  // Solo deshabilita el botón de eliminar; la regla real vive en `application/` y en la BD.
+  tieneHistorial: boolean;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del usuario. Intenta nuevamente.";
+const MENSAJE_ERROR_ELIMINACION = "No se pudo eliminar el usuario. Intenta nuevamente.";
+const MOTIVO_ELIMINACION_BLOQUEADA =
+  "No se puede eliminar: la cuenta tiene historial en el sistema. Puedes desactivarla.";
 const MENSAJE_ERROR_DESBLOQUEO = "No se pudo desbloquear la cuenta. Intenta nuevamente.";
 const MENSAJE_ERROR_DELEGACION = "No se pudo iniciar la sesión del usuario. Intenta nuevamente.";
 
@@ -88,11 +96,13 @@ function ControlEstadoCuenta({
 
   return (
     <span className="flex w-28 items-center gap-2">
-      <Interruptor
-        activado={fila.activo}
-        etiqueta={`Cuenta de ${persona} activa`}
-        onCambiar={onCambiarEstado}
-      />
+      <Tooltip texto={fila.activo ? `Desactivar a ${persona}` : `Activar a ${persona}`}>
+        <Interruptor
+          activado={fila.activo}
+          etiqueta={`Cuenta de ${persona} activa`}
+          onCambiar={onCambiarEstado}
+        />
+      </Tooltip>
       <span className="w-16 text-sm text-gob-gray-a">{etiquetaEstado}</span>
     </span>
   );
@@ -106,6 +116,7 @@ type AccionesFilaProps = {
   onCambiarEstado: () => void;
   onDesbloquear: () => void;
   onDelegarSesion: () => void;
+  onEliminar: () => void;
 };
 
 function AccionesFila({
@@ -116,6 +127,7 @@ function AccionesFila({
   onCambiarEstado,
   onDesbloquear,
   onDelegarSesion,
+  onEliminar,
 }: AccionesFilaProps) {
   const persona = nombreCompleto(fila);
 
@@ -164,6 +176,24 @@ function AccionesFila({
         />
       ) : null}
 
+      {/* RF-25: mismo criterio de visibilidad que el interruptor (oculto en la fila propia y sin
+          permiso sobre la cuenta). Con historial se muestra DESHABILITADO con el motivo, para que
+          quien administra sepa que la vía es desactivar. */}
+      {puedeGestionarCuenta && !esPropia ? (
+        <BotonIcono
+          etiqueta={`Eliminar a ${persona}`}
+          Icono={IconoEliminar}
+          tono="peligro"
+          onClick={onEliminar}
+          deshabilitado={fila.tieneHistorial}
+          motivoDeshabilitado={MOTIVO_ELIMINACION_BLOQUEADA}
+        />
+      ) : null}
+
+      {/* Conserva el ancho del botón en la fila propia, igual que `ControlEstadoCuenta`: sin él,
+          editar y contraseña se desplazan respecto de las demás filas. */}
+      {esPropia ? <span aria-hidden="true" className="h-8 w-8 shrink-0" /> : null}
+
       <ControlEstadoCuenta
         fila={fila}
         esPropia={esPropia}
@@ -194,11 +224,12 @@ function tituloChipBloqueada(fila: FilaUsuarioVista): string {
 
 function ChipBloqueada({ fila }: { fila: FilaUsuarioVista }) {
   return (
-    <span
-      title={tituloChipBloqueada(fila)}
-      className="mt-1 block w-fit rounded-full bg-gob-danger/10 px-2 py-0.5 text-xs font-semibold text-gob-danger"
-    >
-      Bloqueada
+    <span className="mt-1 block w-fit">
+      <Tooltip texto={tituloChipBloqueada(fila)}>
+        <span className="rounded-full bg-gob-danger/10 px-2 py-0.5 text-xs font-semibold text-gob-danger">
+          Bloqueada
+        </span>
+      </Tooltip>
     </span>
   );
 }
@@ -262,6 +293,10 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
   const [objetivoDelegacion, setObjetivoDelegacion] = useState<FilaUsuarioVista | null>(null);
   const [procesandoDelegacion, setProcesandoDelegacion] = useState(false);
   const [errorDelegacion, setErrorDelegacion] = useState<string | null>(null);
+
+  const [objetivoEliminacion, setObjetivoEliminacion] = useState<FilaUsuarioVista | null>(null);
+  const [procesandoEliminacion, setProcesandoEliminacion] = useState(false);
+  const [errorEliminacion, setErrorEliminacion] = useState<string | null>(null);
 
   function cerrarDialogo() {
     if (procesando) return;
@@ -365,6 +400,39 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
     }
   }
 
+  function cerrarDialogoEliminacion() {
+    if (procesandoEliminacion) return;
+    setObjetivoEliminacion(null);
+    setErrorEliminacion(null);
+  }
+
+  async function confirmarEliminacion() {
+    if (!objetivoEliminacion) return;
+
+    setProcesandoEliminacion(true);
+    setErrorEliminacion(null);
+
+    try {
+      const respuesta = await fetch(`/api/usuarios/${objetivoEliminacion.id}`, {
+        method: "DELETE",
+      });
+
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        setProcesandoEliminacion(false);
+        setErrorEliminacion(datos?.error ?? MENSAJE_ERROR_ELIMINACION);
+        return;
+      }
+
+      setProcesandoEliminacion(false);
+      setObjetivoEliminacion(null);
+      router.refresh();
+    } catch {
+      setProcesandoEliminacion(false);
+      setErrorEliminacion(MENSAJE_ERROR_ELIMINACION);
+    }
+  }
+
   return (
     <>
       <TablaPanel
@@ -382,6 +450,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
             onCambiarEstado={() => setObjetivo(fila)}
             onDesbloquear={() => setObjetivoDesbloqueo(fila)}
             onDelegarSesion={() => setObjetivoDelegacion(fila)}
+            onEliminar={() => setObjetivoEliminacion(fila)}
           />
         )}
         tarjeta={(fila) => (
@@ -403,6 +472,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
                 onCambiarEstado={() => setObjetivo(fila)}
                 onDesbloquear={() => setObjetivoDesbloqueo(fila)}
                 onDelegarSesion={() => setObjetivoDelegacion(fila)}
+                onEliminar={() => setObjetivoEliminacion(fila)}
               />
             </div>
           </>
@@ -460,6 +530,23 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
         error={errorDelegacion}
         onConfirmar={confirmarDelegacion}
         onCancelar={cerrarDialogoDelegacion}
+      />
+
+      <DialogoConfirmacion
+        abierto={objetivoEliminacion !== null}
+        titulo="Eliminar usuario"
+        descripcion={
+          objetivoEliminacion
+            ? `Se eliminará definitivamente la cuenta de ${nombreCompleto(objetivoEliminacion)} (RUT ${objetivoEliminacion.rut}). Esta acción es irreversible: la persona perderá el acceso al sistema y no podrá recuperarse. Si solo quieres impedir su ingreso, desactívala.`
+            : ""
+        }
+        textoConfirmar="Eliminar"
+        textoConfirmando="Eliminando..."
+        variante="peligro"
+        procesando={procesandoEliminacion}
+        error={errorEliminacion}
+        onConfirmar={confirmarEliminacion}
+        onCancelar={cerrarDialogoEliminacion}
       />
     </>
   );

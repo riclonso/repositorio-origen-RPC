@@ -21,6 +21,7 @@ export type DesenlaceAuditoria = {
   perfilNuevo?: string;
   formatosAgregados?: string[];
   formatosQuitados?: string[];
+  relacionesBloqueantes?: string[];
 };
 
 // El RUT del actor no viaja en el JWT (solo `sub` y `perfil`), así que se resuelve aquí. La
@@ -50,6 +51,11 @@ async function construirYRegistrar(
     ...(desenlace.perfilNuevo ? { perfilNuevo: desenlace.perfilNuevo } : {}),
     ...(desenlace.formatosAgregados?.length ? { formatosAgregados: desenlace.formatosAgregados } : {}),
     ...(desenlace.formatosQuitados?.length ? { formatosQuitados: desenlace.formatosQuitados } : {}),
+    // Se incluye aunque venga vacío: en un rechazo `CON_HISTORIAL` un arreglo vacío dice "la FK lo
+    // impidió sin precisar cuál", distinto de un evento que no trae el campo.
+    ...(desenlace.relacionesBloqueantes
+      ? { relacionesBloqueantes: desenlace.relacionesBloqueantes }
+      : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

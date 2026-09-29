@@ -126,7 +126,7 @@ src/
 │   ├── utils/              — rut.ts, peticion.ts (extraerIp)
 │   ├── schemas/            — contrasena.schema.ts (reglas de complejidad compartidas)
 │   ├── components/         — Boton, BotonIcono, CampoTexto, CampoSelect, CampoContrasena,
-│   │                         DialogoConfirmacion, Interruptor, EncabezadoPanel, NavegacionPanel,
+│   │                         DialogoConfirmacion, Interruptor, Tooltip, EncabezadoPanel, NavegacionPanel,
 │   │                         MarcoPublico, iconos.tsx (única puerta a @phosphor-icons/react)
 │   └── acciones/           — cerrarSesion.ts (Server Action compartida entre paneles)
 └── proxy.ts                — guard único de navegación (ver flujo de autenticación abajo)
@@ -149,8 +149,9 @@ convención en inglés de `auth/` a módulos nuevos sin que se pida explícitame
 ### `modules/usuarios/` (mantenedor de usuarios, RF-06)
 
 Módulo implementado. Cubre listar (con búsqueda y paginación en servidor), crear sin contraseña,
-editar, activar o desactivar, y definir la contraseña por dos vías (enviar un enlace o fijarla manualmente el propio admin, ver RF-16). Fuera de alcance por decisión explícita: borrado físico (la baja
-lógica con `activo=false` preserva la trazabilidad) y edición de `rut` / `username` (el RUT es la
+editar, activar o desactivar, definir la contraseña por dos vías (enviar un enlace o fijarla manualmente el propio admin, ver RF-16) y **eliminar físicamente solo cuentas sin historial** (RF-25).
+Una cuenta con cualquier historial solo se desactiva (`activo=false`), que preserva la
+trazabilidad. Fuera de alcance por decisión explícita: edición de `rut` / `username` (el RUT es la
 credencial de acceso; cambiarlo es cambiar la identidad de la persona en silencio).
 
 Puntos que hay que respetar al tocarlo:
@@ -169,6 +170,16 @@ Puntos que hay que respetar al tocarlo:
 * **El listado va por `prisma.$queryRaw`**, a diferencia del resto del repositorio, porque Prisma
   Client no soporta `unaccent()`. El término del usuario va parametrizado por la plantilla etiquetada
   de Prisma y los comodines LIKE se escapan: nunca concatenar el término en el SQL.
+* **Qué es "historial" tiene una sola fuente.** `infrastructure/repositories/relacionesHistorialUsuario.ts`
+  lista las 10 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
+  publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas) y las 2 `Cascade` que se
+  descartan (tokens de recuperación, asignaciones de formato). La usan `listar()` (columna
+  `tieneHistorial`) y `eliminar()`. Al agregar una relación nueva a `Usuario` hay que clasificarla
+  ahí; `tests/relaciones-usuario.guard.unit.ts` falla si no. `eliminar()` corre en una transacción
+  `Serializable` con `SELECT … FOR UPDATE` que revalida perfil ADMIN restringido, último ADMIN e
+  historial; la FK `Restrict` (P2003) es la defensa final. Con `@prisma/adapter-pg`, un fallo de
+  serialización dentro de `$queryRaw` llega como `P2010` (código original en
+  `meta.driverAdapterError.cause.originalCode`), no como `P2034`: reconocer ambos.
 * **`contrasenaHash` no sale nunca.** El tipo `Usuario` de `domain/entities/` no lo declara, así que el
   compilador impide filtrarlo; el mapper del repositorio lo descarta explícitamente.
 
@@ -269,7 +280,8 @@ Cada entrada debe incluir el mensaje del error y el contexto donde ocurrió; nun
 #### 3. Log de auditoría — `logs/auditoria.txt`
 
 Registra **quién le hizo qué a quién** en el mantenedor de usuarios: creación, actualización,
-activación, desactivación y emisión de enlaces de contraseña. Es distinto de `accesos.txt` (que responde
+activación, desactivación, eliminación (`USUARIO_ELIMINADO`, sin nombre ni correo del eliminado) y
+emisión de enlaces de contraseña. Es distinto de `accesos.txt` (que responde
 "quién intentó entrar") y de `errores.txt` (fallas técnicas).
 
 Se escribe con `loggerAuditoria` a través de `registrarAuditoria()`

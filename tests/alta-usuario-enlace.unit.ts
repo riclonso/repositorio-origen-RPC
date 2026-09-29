@@ -73,6 +73,9 @@ async function probarAltaSinContrasena() {
         desbloquear: async () => {
           throw new Error("No esperado");
         },
+        eliminar: async () => {
+          throw new Error("No esperado");
+        },
       },
       repositorioFormatosExcel: {
         listar: async () => [],
@@ -91,6 +94,13 @@ async function probarAltaSinContrasena() {
           throw new Error("No esperado");
         },
         eliminar: async () => {
+          throw new Error("No esperado");
+        },
+        desactivarQuitandoAsignaciones: async () => {
+          throw new Error("No esperado");
+        },
+        listarCandidatosAsignacion: async () => null,
+        aplicarAsignacionesMasivas: async () => {
           throw new Error("No esperado");
         },
         buscarPorNombre: async () => null,

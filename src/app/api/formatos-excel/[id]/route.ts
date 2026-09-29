@@ -13,8 +13,10 @@ import {
   aFormatoExcelDTO,
   exigirAdminORevisor,
   idFormatoExcelSchema,
+  respuestaConflictoConcurrente,
   respuestaDuplicado,
   respuestaError,
+  respuestaFormatoUnicoDeNotificadores,
   respuestaSinAcceso,
 } from "@/app/api/formatos-excel/_lib/http";
 
@@ -141,16 +143,31 @@ export async function DELETE(_request: Request, contexto: { params: Promise<{ id
   try {
     const resultado = await eliminarFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository });
     if (!resultado.ok) {
+      if (resultado.motivo === "FORMATO_UNICO_DE_NOTIFICADORES") {
+        auditarFormatoExcel(acceso.sesion, _request, {
+          accion: "FORMATO_EXCEL_ELIMINADO",
+          resultado: "RECHAZADO",
+          motivo: "FORMATO_UNICO_DE_NOTIFICADORES",
+          formatoExcelId: idValido.data,
+          formatoExcelNombre: resultado.nombre,
+          usuariosBloqueantesIds: resultado.bloqueo.usuariosIds,
+        });
+        return respuestaFormatoUnicoDeNotificadores(resultado.bloqueo, "eliminar");
+      }
+
       auditarFormatoExcel(acceso.sesion, _request, {
         accion: "FORMATO_EXCEL_ELIMINADO",
         resultado: "RECHAZADO",
-        motivo: resultado.motivo === "CON_VENTANAS_ACTIVAS" ? "FORMATO_CON_VENTANAS" : "NO_ENCONTRADO",
+        motivo: resultado.motivo === "CON_VENTANAS_ACTIVAS" ? "FORMATO_CON_VENTANAS" : resultado.motivo,
         formatoExcelId: idValido.data,
         formatoExcelNombre: resultado.nombre,
       });
-      return resultado.motivo === "NO_ENCONTRADO"
-        ? respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" })
-        : respuestaError("No puedes eliminar un formato con ventanas de carga asociadas.", 409);
+
+      if (resultado.motivo === "NO_ENCONTRADO") {
+        return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+      }
+      if (resultado.motivo === "CONFLICTO_CONCURRENTE") return respuestaConflictoConcurrente();
+      return respuestaError("No puedes eliminar un formato con ventanas de carga asociadas.", 409);
     }
 
     auditarFormatoExcel(acceso.sesion, _request, {

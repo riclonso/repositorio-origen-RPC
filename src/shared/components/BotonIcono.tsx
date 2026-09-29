@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
+import { Tooltip } from "@/shared/components/Tooltip";
 
 type PropsIcono = { className?: string };
 
@@ -14,6 +15,10 @@ type BotonIconoProps = {
   href?: string;
   onClick?: () => void;
   tono?: "neutro" | "peligro";
+  // Solo aplica a la variante botón (sin `href`). `motivoDeshabilitado` reemplaza al `title`
+  // mientras está deshabilitado, para explicar al puntero por qué no está disponible.
+  deshabilitado?: boolean;
+  motivoDeshabilitado?: string;
 };
 
 const CLASES_BASE =
@@ -26,27 +31,43 @@ const CLASES_TONO = {
     "border-gob-accent bg-white text-gob-danger hover:border-gob-danger hover:bg-gob-danger/10 focus-visible:outline-gob-danger",
 } as const;
 
+// Mismo trato visual que el botón de eliminar deshabilitado de `TablaFormatosExcel`.
+const CLASES_DESHABILITADO =
+  "disabled:cursor-not-allowed disabled:border-gob-accent disabled:text-gob-gray-a disabled:hover:bg-transparent disabled:active:translate-y-0";
+
 export function BotonIcono({
   etiqueta,
   Icono,
   href,
   onClick,
   tono = "neutro",
+  deshabilitado = false,
+  motivoDeshabilitado,
 }: BotonIconoProps): ReactNode {
   const clases = `${CLASES_BASE} ${CLASES_TONO[tono]}`;
 
-  // `title` da la misma información al puntero que `aria-label` al lector de pantalla.
+  // El tooltip da la misma información al puntero que `aria-label` al lector de pantalla.
   if (href) {
     return (
-      <Link href={href} aria-label={etiqueta} title={etiqueta} className={clases}>
-        <Icono />
-      </Link>
+      <Tooltip texto={etiqueta}>
+        <Link href={href} aria-label={etiqueta} className={clases}>
+          <Icono />
+        </Link>
+      </Tooltip>
     );
   }
 
   return (
-    <button type="button" onClick={onClick} aria-label={etiqueta} title={etiqueta} className={clases}>
-      <Icono />
-    </button>
+    <Tooltip texto={deshabilitado && motivoDeshabilitado ? motivoDeshabilitado : etiqueta}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={deshabilitado}
+        aria-label={etiqueta}
+        className={`${clases} ${CLASES_DESHABILITADO}`}
+      >
+        <Icono />
+      </button>
+    </Tooltip>
   );
 }

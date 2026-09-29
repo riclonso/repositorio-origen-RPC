@@ -1,17 +1,26 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
-import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
+import type {
+  ResultadoEliminacionUsuario,
+  UsuarioRepository,
+} from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type {
   CampoUnico,
   CredencialUsuario,
   FiltroListadoUsuarios,
   FormatoExcelAsignado,
   Usuario,
+  UsuarioListado,
 } from "@/modules/usuarios/domain/entities/Usuario";
 import { CODIGO_PERFIL_ADMIN } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
+import { ConflictoConcurrenteError } from "@/modules/usuarios/domain/errors/ConflictoConcurrenteError";
+import {
+  EXPRESION_RELACIONES_BLOQUEANTES,
+  EXPRESION_TIENE_HISTORIAL,
+} from "@/modules/usuarios/infrastructure/repositories/relacionesHistorialUsuario";
 
 // Selección explícita. Se trae `contrasenaHash` SOLO para derivar `tieneContrasena`: el hash se
 // reduce a un booleano en el mapper y NO se copia al objeto de dominio, así que sigue sin salir del
@@ -78,6 +87,16 @@ function aUsuario(registro: RegistroUsuario): Usuario {
 
 const CODIGO_UNIQUE_VIOLADO = "P2002";
 const CODIGO_FK_VIOLADA = "P2003";
+// Registro a borrar/actualizar que ya no existe.
+const CODIGO_REGISTRO_INEXISTENTE = "P2025";
+// Con `@prisma/adapter-pg`, el SQLSTATE 40001 (serialization_failure) de PostgreSQL llega como
+// P2034 (`TransactionWriteConflict`) en las operaciones del cliente, PERO dentro de `$queryRaw`
+// llega como P2010 ("raw query failed") con la causa del adaptador en `meta.driverAdapterError
+// .cause` (`originalCode: "40001"`, `kind: "TransactionWriteConflict"`). Comprobado en RF-25 con
+// dos eliminaciones concurrentes del mismo usuario: el SELECT ... FOR UPDATE de la segunda falla así.
+const CODIGO_CONFLICTO_TRANSACCION = "P2034";
+const CODIGO_CONSULTA_CRUDA_FALLIDA = "P2010";
+const SQLSTATE_SERIALIZACION = "40001";
 const MAXIMO_TOKENS_BUSQUEDA = 5;
 
 function campoDesdeConflicto(error: Prisma.PrismaClientKnownRequestError): CampoUnico {
@@ -179,13 +198,15 @@ type FilaListado = {
   createdAt: Date;
   bloqueadaHasta: Date | null;
   vecesBloqueada: number;
+  // RF-25: calculado por el motor con `EXPRESION_TIENE_HISTORIAL` (un EXISTS por relación).
+  tieneHistorial: boolean;
 };
 
 // El listado NO pasa por `aUsuario` porque el hash no sale del motor: aquí `tieneContrasena` ya
 // viene resuelto por el SQL, así que se arma el objeto de dominio directamente. Tampoco trae los
 // formatos asignados (`formatosExcel: []`): la tabla no los muestra y traerlos sería una consulta
 // más por página (o un JOIN que multiplicaría filas); `obtenerPorId` sí los trae para el detalle.
-function aUsuarioDesdeFila(fila: FilaListado): Usuario {
+function aUsuarioDesdeFila(fila: FilaListado): UsuarioListado {
   return {
     id: String(fila.id),
     nombres: String(fila.nombres),
@@ -206,7 +227,38 @@ function aUsuarioDesdeFila(fila: FilaListado): Usuario {
           ? fila.bloqueadaHasta
           : new Date(fila.bloqueadaHasta),
     vecesBloqueada: Number(fila.vecesBloqueada),
+    tieneHistorial: Boolean(fila.tieneHistorial),
   };
+}
+
+// Fila leída (y bloqueada con FOR UPDATE) al inicio de `eliminar()`.
+type FilaEliminacion = {
+  rut: string;
+  perfilCodigo: string;
+  activo: boolean;
+  relacionesBloqueantes: string[];
+};
+
+function codigoErrorPrisma(error: unknown): string | null {
+  return error instanceof Prisma.PrismaClientKnownRequestError ? error.code : null;
+}
+
+// SQLSTATE original que el adaptador pg adjunta a un error de consulta cruda, si lo hay.
+function sqlstateOriginal(error: Prisma.PrismaClientKnownRequestError): string | null {
+  const errorAdaptador = error.meta?.driverAdapterError;
+  if (typeof errorAdaptador !== "object" || errorAdaptador === null || !("cause" in errorAdaptador)) {
+    return null;
+  }
+
+  const causa = errorAdaptador.cause;
+  if (typeof causa !== "object" || causa === null || !("originalCode" in causa)) return null;
+  return String(causa.originalCode);
+}
+
+function esConflictoSerializacion(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code === CODIGO_CONFLICTO_TRANSACCION) return true;
+  return error.code === CODIGO_CONSULTA_CRUDA_FALLIDA && sqlstateOriginal(error) === SQLSTATE_SERIALIZACION;
 }
 
 export const prismaUsuarioRepository: UsuarioRepository = {
@@ -225,7 +277,8 @@ export const prismaUsuarioRepository: UsuarioRepository = {
         SELECT u."id", u."nombres", u."apellidos", u."rut", u."email", u."username",
                (u."contrasenaHash" IS NOT NULL) AS "tieneContrasena",
                u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt",
-               u."bloqueadaHasta", u."vecesBloqueada"
+               u."bloqueadaHasta", u."vecesBloqueada",
+               ${EXPRESION_TIENE_HISTORIAL} AS "tieneHistorial"
         FROM "usuario" u
         JOIN "perfil" p ON p."codigo" = u."perfilCodigo"
         WHERE ${predicado}
@@ -395,5 +448,88 @@ export const prismaUsuarioRepository: UsuarioRepository = {
       data: { intentosFallidos: 0, bloqueadaHasta: null },
       select: { id: true },
     });
+  },
+
+  // RF-25. Transacción interactiva `Serializable` (precedente: `PrismaFormatoExcelRepository
+  // .eliminar`) con la fila del usuario bloqueada (FOR UPDATE): la regla del último ADMIN, la
+  // comprobación de historial y el DELETE ven el mismo estado. Una escritura concurrente que agregue
+  // historial entre la comprobación y el DELETE choca con la FK `Restrict` (P2003) o aborta la
+  // transacción (40001, ver `esConflictoSerializacion`); ambos casos se traducen abajo. Tokens y asignaciones caen en cascada.
+  async eliminar(id, actorEsAdmin): Promise<ResultadoEliminacionUsuario> {
+    // Capturado dentro de la transacción para poder informar el RUT si la FK aborta el DELETE.
+    let rutLeido = "";
+
+    try {
+      return await prisma.$transaction(
+        async (tx): Promise<ResultadoEliminacionUsuario> => {
+          const [fila] = await tx.$queryRaw<FilaEliminacion[]>`
+            SELECT u."rut", u."perfilCodigo", u."activo",
+                   ${EXPRESION_RELACIONES_BLOQUEANTES} AS "relacionesBloqueantes"
+            FROM "usuario" u
+            WHERE u."id" = ${id}
+            FOR UPDATE
+          `;
+
+          if (!fila) return { estado: "NO_ENCONTRADO" };
+          rutLeido = fila.rut;
+
+          // Revalidación sobre la fila bloqueada: el caso de uso ya lo comprobó con una lectura
+          // previa, pero la cuenta pudo ser ascendida a ADMIN entre esa lectura y este bloqueo.
+          if (!actorEsAdmin && fila.perfilCodigo === CODIGO_PERFIL_ADMIN) {
+            return { estado: "PERFIL_ADMIN_RESTRINGIDO", rut: fila.rut };
+          }
+
+          if (fila.activo && fila.perfilCodigo === CODIGO_PERFIL_ADMIN) {
+            const adminsActivos = await tx.usuario.count({
+              where: { perfilCodigo: CODIGO_PERFIL_ADMIN, activo: true },
+            });
+            if (adminsActivos <= 1) return { estado: "ULTIMO_ADMIN", rut: fila.rut };
+          }
+
+          if (fila.relacionesBloqueantes.length > 0) {
+            return {
+              estado: "CON_HISTORIAL",
+              rut: fila.rut,
+              relacionesBloqueantes: fila.relacionesBloqueantes,
+            };
+          }
+
+          // Se leen antes del DELETE: la cascada las borra y la auditoría conserva sus ids.
+          const asignaciones = await tx.usuarioFormatoExcel.findMany({
+            where: { usuarioId: id },
+            select: { formatoExcelId: true },
+          });
+
+          await tx.usuario.delete({ where: { id }, select: { id: true } });
+
+          return {
+            estado: "ELIMINADO",
+            rut: fila.rut,
+            perfilCodigo: fila.perfilCodigo,
+            formatosQuitadosIds: asignaciones.map((asignacion) => asignacion.formatoExcelId),
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      const codigo = codigoErrorPrisma(error);
+
+      // Historial insertado entre la comprobación y el DELETE: la FK Restrict lo impide. No se sabe
+      // con certeza qué relación fue, así que no se inventa un nombre.
+      if (codigo === CODIGO_FK_VIOLADA) {
+        return { estado: "CON_HISTORIAL", rut: rutLeido, relacionesBloqueantes: [] };
+      }
+      if (codigo === CODIGO_REGISTRO_INEXISTENTE) return { estado: "NO_ENCONTRADO" };
+
+      if (esConflictoSerializacion(error)) {
+        // Doble eliminación concurrente: la otra transacción ya borró la fila. Es un 404, no un
+        // "vuelve a intentarlo" (reintentar daría igualmente NO_ENCONTRADO).
+        const sigueExistiendo = await prisma.usuario.count({ where: { id } });
+        if (sigueExistiendo === 0) return { estado: "NO_ENCONTRADO" };
+        throw new ConflictoConcurrenteError();
+      }
+
+      throw error;
+    }
   },
 };

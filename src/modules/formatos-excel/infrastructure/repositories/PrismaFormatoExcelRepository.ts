@@ -11,6 +11,14 @@ import type {
   ReglaValidacionFormatoExcel,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { FormatoDuplicadoError } from "@/modules/formatos-excel/domain/errors/FormatoDuplicadoError";
+import { ConflictoConcurrenteError } from "@/modules/formatos-excel/domain/errors/ConflictoConcurrenteError";
+import {
+  clasificarCambiosAsignacion,
+  type BloqueoFormatoUnico,
+  type ResultadoAsignacionMasivaRepositorio,
+  type ResultadoDesactivacionFormato,
+  type ResultadoEliminacionFormato,
+} from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 
 // Selección explícita: `contenidoPlantilla` NUNCA sale de aquí. La única función de este archivo
 // que sí la trae es `obtenerPlantilla`, con su propio `select` acotado a esas tres columnas.
@@ -88,6 +96,49 @@ function traducirConflicto(error: unknown, nombre: string): never {
   }
 
   throw error;
+}
+
+// `@prisma/adapter-pg` traduce el SQLSTATE 40001 de PostgreSQL (fallo de serialización) a
+// `TransactionWriteConflict`, que Prisma expone como P2034. Se traduce a un error de dominio para
+// que `application/` responda "vuelve a intentarlo" sin conocer los códigos del ORM.
+const CODIGO_CONFLICTO_TRANSACCION = "P2034";
+
+function esConflictoSerializacion(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === CODIGO_CONFLICTO_TRANSACCION;
+}
+
+// `Serializable` en las escrituras que dependen de filas de OTROS formatos (la regla "único
+// formato" mira todas las asignaciones del usuario). Protege frente a otras transacciones
+// Serializable de este repositorio. Frente a las escrituras de `PrismaUsuarioRepository` (Read
+// Committed) solo cubre el conflicto escritura-escritura sobre la misma fila de
+// `usuario_formato_excel` (40001 → P2034); un cambio concurrente de perfil/activo del usuario no
+// se detecta.
+const OPCIONES_SERIALIZABLE = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable } as const;
+
+type ClienteTransaccion = Prisma.TransactionClient;
+
+// Notificadores (activos e inactivos) cuyas asignaciones son TODAS de este formato. Una sola
+// consulta: `some` asegura que lo tienen y `every` que no tienen ningún otro.
+async function buscarBloqueoFormatoUnico(
+  tx: ClienteTransaccion,
+  formatoExcelId: string,
+): Promise<BloqueoFormatoUnico | null> {
+  const notificadores = await tx.usuario.findMany({
+    where: {
+      perfilCodigo: CODIGO_PERFIL_NOTIFICADOR,
+      formatosAsignados: { some: { formatoExcelId }, every: { formatoExcelId } },
+    },
+    select: { id: true, activo: true },
+  });
+
+  if (notificadores.length === 0) return null;
+
+  const cantidadActivos = notificadores.filter((notificador) => notificador.activo).length;
+  return {
+    usuariosIds: notificadores.map((notificador) => notificador.id),
+    cantidadActivos,
+    cantidadInactivos: notificadores.length - cantidadActivos,
+  };
 }
 
 export const prismaFormatoExcelRepository: FormatoExcelRepository = {
@@ -287,26 +338,157 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     return aFormatoExcel(registro);
   },
 
-  async eliminar(id) {
+  async desactivarQuitandoAsignaciones(id): Promise<ResultadoDesactivacionFormato> {
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx): Promise<ResultadoDesactivacionFormato> => {
+        const actual = await tx.formatoExcel.findUnique({ where: { id }, select: SELECCION_DETALLE });
+        if (!actual) return { estado: "NO_ENCONTRADO" };
+
+        // Ya inactivo: no se limpian asignaciones heredadas de antes de esta regla.
+        if (!actual.activo) return { estado: "SIN_CAMBIO", formato: aFormatoExcel(actual) };
+
+        const bloqueo = await buscarBloqueoFormatoUnico(tx, id);
+        if (bloqueo) return { estado: "BLOQUEADO", nombre: actual.nombre, bloqueo };
+
+        // Se leen los ids solo para la auditoría; las asignaciones de usuarios que no son
+        // notificadores (heredadas) se borran igual, sin bloquear.
+        const asignaciones = await tx.usuarioFormatoExcel.findMany({
+          where: { formatoExcelId: id },
+          select: { usuarioId: true },
+        });
+
+        await tx.usuarioFormatoExcel.deleteMany({ where: { formatoExcelId: id } });
+        const registro = await tx.formatoExcel.update({
+          where: { id },
+          data: { activo: false },
+          select: SELECCION_DETALLE,
+        });
+
+        return {
+          estado: "DESACTIVADO",
+          formato: aFormatoExcel(registro),
+          asignacionesEliminadasUsuarioIds: asignaciones.map((asignacion) => asignacion.usuarioId),
+        };
+      }, OPCIONES_SERIALIZABLE);
+    } catch (error) {
+      if (esConflictoSerializacion(error)) throw new ConflictoConcurrenteError();
+      throw error;
+    }
+  },
+
+  async eliminar(id): Promise<ResultadoEliminacionFormato> {
+    try {
+      return await prisma.$transaction(async (tx): Promise<ResultadoEliminacionFormato> => {
         const formato = await tx.formatoExcel.findUnique({ where: { id }, select: { id: true } });
-        if (!formato) return "NO_ENCONTRADO" as const;
+        if (!formato) return { estado: "NO_ENCONTRADO" };
 
         // Se considera activa cualquier ventana vinculada: aunque sus fechas ya hayan pasado o
         // esté archivada, sigue siendo parte del historial y el FK RESTRICT impide borrarla.
         const cantidadVentanas = await tx.ventanaCarga.count({ where: { formatoExcelId: id } });
-        if (cantidadVentanas > 0) return "CON_VENTANAS_ACTIVAS" as const;
+        if (cantidadVentanas > 0) return { estado: "CON_VENTANAS_ACTIVAS" };
+
+        const bloqueo = await buscarBloqueoFormatoUnico(tx, id);
+        if (bloqueo) return { estado: "BLOQUEADO", bloqueo };
 
         await tx.usuarioFormatoExcel.deleteMany({ where: { formatoExcelId: id } });
         await tx.formatoExcel.delete({ where: { id } });
-        return "ELIMINADO" as const;
-      });
+        return { estado: "ELIMINADO" };
+      }, OPCIONES_SERIALIZABLE);
     } catch (error) {
       // Una ventana creada entre la comprobación y el DELETE queda protegida por la base de datos.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
-        return "CON_VENTANAS_ACTIVAS" as const;
+        return { estado: "CON_VENTANAS_ACTIVAS" };
       }
+      if (esConflictoSerializacion(error)) throw new ConflictoConcurrenteError();
+      throw error;
+    }
+  },
+
+  async listarCandidatosAsignacion(id) {
+    const formato = await prisma.formatoExcel.findUnique({ where: { id }, select: { id: true } });
+    if (!formato) return null;
+
+    // Una sola consulta: la relación con ESTE formato (a lo más una fila, por el `@@unique`) y el
+    // total de asignaciones del usuario viajan anidados en la misma lectura, sin N+1. Selección
+    // explícita: nunca email ni `contrasenaHash`.
+    const usuarios = await prisma.usuario.findMany({
+      where: { perfilCodigo: CODIGO_PERFIL_NOTIFICADOR, activo: true },
+      select: {
+        id: true,
+        nombres: true,
+        apellidos: true,
+        rut: true,
+        formatosAsignados: { where: { formatoExcelId: id }, select: { id: true } },
+        _count: { select: { formatosAsignados: true } },
+      },
+      orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
+    });
+
+    return usuarios.map((usuario) => {
+      const yaAsignado = usuario.formatosAsignados.length > 0;
+      return {
+        id: usuario.id,
+        nombres: usuario.nombres,
+        apellidos: usuario.apellidos,
+        rut: usuario.rut,
+        yaAsignado,
+        esUnicoFormato: yaAsignado && usuario._count.formatosAsignados === 1,
+      };
+    });
+  },
+
+  async aplicarAsignacionesMasivas(id, agregarIds, quitarIds): Promise<ResultadoAsignacionMasivaRepositorio> {
+    const idsLote = [...new Set([...agregarIds, ...quitarIds])];
+
+    try {
+      return await prisma.$transaction(async (tx): Promise<ResultadoAsignacionMasivaRepositorio> => {
+        const formato = await tx.formatoExcel.findUnique({
+          where: { id },
+          select: { nombre: true, activo: true },
+        });
+        if (!formato) return { estado: "NO_ENCONTRADO" };
+        if (!formato.activo) return { estado: "FORMATO_INACTIVO", nombre: formato.nombre };
+
+        const usuarios = await tx.usuario.findMany({
+          where: { id: { in: idsLote } },
+          select: {
+            id: true,
+            perfilCodigo: true,
+            activo: true,
+            formatosAsignados: { where: { formatoExcelId: id }, select: { id: true } },
+            _count: { select: { formatosAsignados: true } },
+          },
+        });
+
+        const clasificacion = clasificarCambiosAsignacion(
+          agregarIds,
+          quitarIds,
+          usuarios.map((usuario) => ({
+            id: usuario.id,
+            perfilCodigo: usuario.perfilCodigo,
+            activo: usuario.activo,
+            tieneFormato: usuario.formatosAsignados.length > 0,
+            cantidadAsignaciones: usuario._count.formatosAsignados,
+          })),
+        );
+
+        if (clasificacion.aAgregar.length > 0) {
+          await tx.usuarioFormatoExcel.createMany({
+            data: clasificacion.aAgregar.map((usuarioId) => ({ usuarioId, formatoExcelId: id })),
+            skipDuplicates: true,
+          });
+        }
+
+        if (clasificacion.aQuitar.length > 0) {
+          await tx.usuarioFormatoExcel.deleteMany({
+            where: { formatoExcelId: id, usuarioId: { in: clasificacion.aQuitar } },
+          });
+        }
+
+        return { estado: "APLICADO", nombre: formato.nombre, clasificacion };
+      }, OPCIONES_SERIALIZABLE);
+    } catch (error) {
+      if (esConflictoSerializacion(error)) throw new ConflictoConcurrenteError();
       throw error;
     }
   },

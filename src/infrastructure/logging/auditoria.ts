@@ -5,6 +5,10 @@ export type AccionAuditoria =
   | "USUARIO_ACTUALIZADO"
   | "USUARIO_ACTIVADO"
   | "USUARIO_DESACTIVADO"
+  // RF-25: eliminación FÍSICA de una cuenta sin historial (`DELETE /api/usuarios/[id]`). La fila ya
+  // no existe al auditar: el RUT, el perfil y los formatos quitados salen del resultado del caso de
+  // uso. Nunca se registran nombre ni correo de la persona eliminada.
+  | "USUARIO_ELIMINADO"
   // El administrador emitió un enlace de contraseña (al crear, al restablecer o al reenviar).
   | "ENLACE_CONTRASENA_ENVIADO"
   // El administrador fija MANUALMENTE la contraseña de un tercero (RF-16, segunda opción junto a
@@ -31,6 +35,9 @@ export type AccionAuditoria =
   | "FORMATO_EXCEL_ACTUALIZADO"
   | "FORMATO_EXCEL_ESTADO_CAMBIADO"
   | "FORMATO_EXCEL_ELIMINADO"
+  // Asignación masiva de un formato a varios NOTIFICADOR_RPC (agregar y quitar en un mismo lote).
+  // Un solo evento por lote, con los ids afectados y omitidos en `usuarios*Ids`.
+  | "FORMATO_EXCEL_ASIGNACION_MASIVA"
   | "CARGA_ARCHIVO_REGISTRADA"
   // Se conserva SOLO para poder leer el histórico anterior a la corrección que elimina la
   // autoaprobación del notificador (era el notificador dueño de la carga aprobándose a sí mismo).
@@ -189,7 +196,16 @@ export type MotivoAuditoria =
   // De `CARGA_ARCHIVO_REGISTRADA`: el notificador subió algo que no es Excel.
   | "ARCHIVO_NO_EXCEL"
   // De `FORMATO_EXCEL_ACTUALIZADO`: separador CSV incoherente con el tipo de archivo del formato.
-  | "SEPARADOR_INVALIDO";
+  | "SEPARADOR_INVALIDO"
+  // De `FORMATO_EXCEL_ESTADO_CAMBIADO` (desactivar) y `FORMATO_EXCEL_ELIMINADO`: el formato es el
+  // único asignado a uno o más NOTIFICADOR_RPC (activos o inactivos). Ids en
+  // `usuariosBloqueantesIds`.
+  | "FORMATO_UNICO_DE_NOTIFICADORES"
+  // Una transacción `Serializable` se abortó por una escritura concurrente (P2034).
+  | "CONFLICTO_CONCURRENTE"
+  // De `USUARIO_ELIMINADO` (RF-25): la cuenta tiene historial en el sistema y solo puede
+  // desactivarse. Los nombres de las relaciones que bloquean van en `relacionesBloqueantes`.
+  | "CON_HISTORIAL";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -216,6 +232,10 @@ export type EventoAuditoria = {
   // Ids de `formato_excel` agregados/quitados en una edición de usuario (RF de formatos-excel).
   formatosAgregados?: string[];
   formatosQuitados?: string[];
+  // Específico del rechazo `CON_HISTORIAL` de `USUARIO_ELIMINADO` (RF-25): NOMBRES de las
+  // relaciones de historial con filas (p. ej. "cargasArchivo"), nunca ids ni contenido. Vacío si
+  // la FK de la base cortó el DELETE por una escritura concurrente sin poder precisar cuál.
+  relacionesBloqueantes?: string[];
   // Identifica al formato de archivo cuando la acción es una de `FORMATO_EXCEL_*` o
   // `CARGA_ARCHIVO_*`.
   formatoExcelId?: string | null;
@@ -223,6 +243,19 @@ export type EventoAuditoria = {
   // Específicos de `FORMATO_EXCEL_CREADO`: tipo de archivo y separador CSV elegidos.
   tipoArchivo?: string | null;
   separadorCsv?: string | null;
+  // Específico de `FORMATO_EXCEL_ESTADO_CAMBIADO`: estado resultante (o pedido, en un rechazo).
+  activo?: boolean | null;
+  // Específicos de la desactivación exitosa de un formato: a quiénes se les quitó.
+  cantidadAsignacionesEliminadas?: number | null;
+  asignacionesEliminadasUsuarioIds?: string[];
+  // Específicos del rechazo `FORMATO_UNICO_DE_NOTIFICADORES`.
+  usuariosBloqueantesIds?: string[];
+  cantidadUsuariosBloqueantes?: number | null;
+  // Específicos de `FORMATO_EXCEL_ASIGNACION_MASIVA`. Solo ids: nunca RUT ni correos.
+  usuariosAgregadosIds?: string[];
+  usuariosQuitadosIds?: string[];
+  usuariosNoElegiblesIds?: string[];
+  usuariosExcluidosUltimoFormatoIds?: string[];
   // Específicos de `CARGA_ARCHIVO_*`. Nunca se registra el contenido de las celdas ni el
   // binario, solo estos metadatos.
   cargaArchivoId?: string | null;
