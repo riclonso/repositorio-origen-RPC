@@ -84,49 +84,55 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
   const hayFiltro = desde !== undefined || hasta !== undefined;
 
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-gob-black">Registros del sistema</h1>
-            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-gob-primary px-2.5 text-xs font-bold text-white">
-              {total}
-            </span>
+    <div className="mx-auto w-full max-w-7xl pb-6">
+      <header className="relative overflow-hidden rounded-2xl border border-[#dbe6f0] bg-white px-5 py-5 shadow-[0_14px_32px_rgba(23,59,105,0.06)] sm:px-7 sm:py-6">
+        <div className="absolute inset-y-0 left-0 w-1.5 bg-gob-primary" aria-hidden="true" />
+        <div className="flex flex-wrap items-start justify-between gap-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-[0.14em] text-gob-primary">ADMINISTRACIÓN · MONITOREO</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <h1 className="text-balance text-2xl font-semibold tracking-tight text-gob-tertiary">Registros del sistema</h1>
+              <span className="inline-flex items-center rounded-md bg-gob-tertiary px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-white">
+                {total} {total === 1 ? "registro" : "registros"}
+              </span>
+            </div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-gob-gray-a">{activa.descripcion}</p>
           </div>
-          <p className="mt-2 max-w-prose text-sm text-gob-gray-a">{activa.descripcion}</p>
+          <BotonActualizar />
         </div>
-        <BotonActualizar />
-      </div>
+      </header>
 
-      <div role="tablist" aria-label="Tipo de registro" className="mt-6 flex flex-wrap gap-1 border-b border-gob-accent">
-        {PESTANAS.map((pestana) => {
-          const seleccionada = pestana.tipo === tipo;
-          return (
-            <Link
-              key={pestana.tipo}
-              href={construirRutaLogs({ tipo: pestana.tipo, desde, hasta })}
-              role="tab"
-              aria-selected={seleccionada}
-              className={`-mb-px rounded-t-md border-b-2 px-4 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
-                seleccionada
-                  ? "border-gob-primary font-semibold text-gob-tertiary"
-                  : "border-transparent font-medium text-gob-gray-a hover:bg-gob-neutral"
-              }`}
-            >
-              {pestana.etiqueta}
-            </Link>
-          );
-        })}
-      </div>
+      <section aria-label="Controles del registro" className="mt-5 rounded-2xl border border-[#dbe6f0] bg-white p-3 shadow-[0_10px_26px_rgba(23,59,105,0.04)] sm:p-4">
+        <div role="tablist" aria-label="Tipo de registro" className="flex w-full flex-wrap gap-1 rounded-xl bg-[#eef4f8] p-1.5">
+          {PESTANAS.map((pestana) => {
+            const seleccionada = pestana.tipo === tipo;
+            return (
+              <Link
+                key={pestana.tipo}
+                href={construirRutaLogs({ tipo: pestana.tipo, desde, hasta })}
+                role="tab"
+                aria-selected={seleccionada}
+                className={`rounded-lg px-4 py-2 text-sm transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
+                  seleccionada
+                    ? "bg-white font-semibold text-gob-tertiary shadow-sm ring-1 ring-[#d5e1ec]"
+                    : "font-medium text-gob-gray-a hover:bg-white/70 hover:text-gob-tertiary"
+                }`}
+              >
+                {pestana.etiqueta}
+              </Link>
+            );
+          })}
+        </div>
 
-      {/* La `key` remonta el formulario cuando cambia el filtro o la pestaña, para que los
-          campos de fecha reflejen la URL vigente. */}
-      <FiltrosLogs
-        key={`${tipo}:${desde ?? ""}:${hasta ?? ""}`}
-        tipo={tipo}
-        desdeInicial={desde ?? ""}
-        hastaInicial={hasta ?? ""}
-      />
+        {/* La `key` remonta el formulario cuando cambia el filtro o la pestaña, para que los
+            campos de fecha reflejen la URL vigente. */}
+        <FiltrosLogs
+          key={`${tipo}:${desde ?? ""}:${hasta ?? ""}`}
+          tipo={tipo}
+          desdeInicial={desde ?? ""}
+          hastaInicial={hasta ?? ""}
+        />
+      </section>
 
       <p className="mt-4 sr-only" role="status" aria-live="polite">
         {total === 0
@@ -137,11 +143,14 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
       </p>
 
       {total === 0 ? (
-        <div className="card-sistema mt-4 p-8 text-center text-sm text-gob-gray-a">
-          {hayFiltro
-            ? "No hay registros en el rango de fechas seleccionado."
-            : "No hay registros para mostrar todavía."}
-        </div>
+        <section className="mt-5 rounded-2xl border border-dashed border-gob-accent bg-white px-6 py-12 text-center">
+          <p className="text-sm font-semibold text-gob-tertiary">No hay registros para mostrar</p>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-gob-gray-a">
+            {hayFiltro
+              ? "No hay registros en el rango de fechas seleccionado. Ajusta el período para ampliar la búsqueda."
+              : "Los registros aparecerán aquí cuando el sistema genere actividad."}
+          </p>
+        </section>
       ) : (
         <>
           <PaginacionLogs
@@ -154,7 +163,7 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
             totalPaginas={totalPaginas}
           />
 
-          <ul className="mt-4 flex flex-col gap-2">
+          <ul className="mt-4 flex flex-col gap-2.5" aria-label="Entradas de registro">
             {entradas.map((entrada) => (
               <li key={entrada.indice}>
                 <EntradaLogItem tipo={tipo} entrada={entrada} formatear={formatearFecha} />
@@ -195,34 +204,36 @@ function EntradaLogItem({
   const tieneDetalle = entrada.crudo !== null || Object.keys(entrada.campos).length > 0;
 
   return (
-    <div className="card-sistema overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+    <article className={`group overflow-hidden rounded-xl border bg-white shadow-[0_6px_18px_rgba(23,59,105,0.035)] transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-[0_12px_24px_rgba(23,59,105,0.08)] ${
+      esError ? "border-l-4 border-y-[#f0d0d0] border-r-[#f0d0d0] border-l-gob-danger" : "border-l-4 border-y-[#dbe6f0] border-r-[#dbe6f0] border-l-gob-primary"
+    }`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5">
         <span
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${
+          className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold tracking-wide ${
             esError
-              ? "border-gob-danger bg-white text-gob-danger"
-              : "border-gob-primary bg-white text-gob-primary"
+              ? "border-gob-danger/30 bg-gob-danger/5 text-gob-danger"
+              : "border-gob-primary/30 bg-gob-primary/5 text-gob-primary"
           }`}
         >
           {esError ? "Error" : etiquetaResultado(entrada.campos)}
         </span>
-        <span className="tabular-nums text-xs text-gob-gray-a">{formatear(entrada.timestamp)}</span>
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-gob-black">
+        <span className="rounded bg-[#f3f6f8] px-2 py-1 font-mono text-[11px] tabular-nums text-gob-gray-a">{formatear(entrada.timestamp)}</span>
+        <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-gob-tertiary sm:truncate">
           {resumen(tipo, entrada)}
         </p>
       </div>
 
       {tieneDetalle ? (
-        <details className="border-t border-gob-accent/60">
-          <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-gob-primary hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
-            Ver detalle
+        <details className="border-t border-[#e3ebf2]">
+          <summary className="cursor-pointer px-4 py-2.5 text-xs font-semibold text-gob-primary transition-colors hover:bg-[#f6f9fb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
+            Ver detalle técnico
           </summary>
-          <pre className="overflow-x-auto bg-gob-neutral px-4 py-3 font-mono text-xs leading-relaxed text-gob-black">
+          <pre className="overflow-x-auto bg-[#10223b] px-4 py-3 font-mono text-xs leading-relaxed text-[#e8f0f7]">
             {entrada.crudo ?? detalle}
           </pre>
         </details>
       ) : null}
-    </div>
+    </article>
   );
 }
 

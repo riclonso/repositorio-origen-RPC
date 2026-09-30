@@ -47,8 +47,12 @@ export function FiltrosLogs({ tipo, desdeInicial, hastaInicial }: FiltrosLogsPro
   return (
     <form
       onSubmit={manejarEnvio}
-      className="card-sistema mt-4 flex flex-wrap items-end gap-3 p-4"
+      className="mt-4 flex flex-wrap items-end gap-3 border-t border-[#e3ebf2] pt-4"
     >
+      <div className="mr-auto basis-full sm:basis-auto">
+        <p className="text-sm font-semibold text-gob-tertiary">Filtrar por período</p>
+        <p className="mt-0.5 text-xs text-gob-gray-a">El rango se aplica a los registros mostrados.</p>
+      </div>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="desde" className="text-sm font-medium text-gob-black">
           Desde
@@ -61,7 +65,7 @@ export function FiltrosLogs({ tipo, desdeInicial, hastaInicial }: FiltrosLogsPro
           id="desde"
           name="desde"
           defaultValue={desdeInicial}
-          className={CLASES_CAMPO_FECHA}
+          className={`${CLASES_CAMPO_FECHA} min-w-40`}
         />
       </div>
 
@@ -74,7 +78,7 @@ export function FiltrosLogs({ tipo, desdeInicial, hastaInicial }: FiltrosLogsPro
           id="hasta"
           name="hasta"
           defaultValue={hastaInicial}
-          className={CLASES_CAMPO_FECHA}
+          className={`${CLASES_CAMPO_FECHA} min-w-40`}
         />
       </div>
 
