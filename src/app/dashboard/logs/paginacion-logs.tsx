@@ -32,9 +32,9 @@ export function PaginacionLogs({
   const haySiguiente = pagina < totalPaginas;
 
   return (
-    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-5 flex flex-col gap-3 rounded-xl border border-[#dbe6f0] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-2 text-sm text-gob-gray-a">
-        <span>
+        <span className="font-medium text-gob-tertiary">
           Mostrando {desdeItem} a {hastaItem} de {total}
         </span>
         {/* Selector de tamaño: cambiar el tamaño reinicia a la página 1, porque el ítem que se
