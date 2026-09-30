@@ -183,7 +183,8 @@ Puntos que hay que respetar al tocarlo:
 * **Establecimiento del usuario (RF-30).** `usuario.establecimientoId` es nullable (FK `Restrict`) y
   solo es obligatorio para NOTIFICADOR_RPC. La regla vive en Zod y en
   `application/validarEstablecimientoUsuario.ts` (alta y edición): asignar uno exige que esté activo,
-  pero conservar el vigente siempre es válido aunque se haya dado de baja. El listado lo trae con
+  pero conservar el vigente siempre es válido aunque se haya dado de baja. El formulario solo muestra
+  el select al notificador; para otros perfiles se envía vacío (`null`). El listado lo trae con
   `LEFT JOIN`, nunca con un JOIN interno.
 * **`contrasenaHash` no sale nunca.** El tipo `Usuario` de `domain/entities/` no lo declara, así que el
   compilador impide filtrarlo; el mapper del repositorio lo descarta explícitamente.

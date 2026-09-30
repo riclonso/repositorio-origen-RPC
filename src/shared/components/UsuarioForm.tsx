@@ -27,9 +27,12 @@ export type ValoresUsuarioForm = {
   establecimientoId: string;
 };
 
-// RF-30: opción vacía siempre presente. Para NOTIFICADOR_RPC el esquema la rechaza; para el resto de
-// los perfiles es una elección válida (el establecimiento es opcional).
-const OPCION_SIN_ESTABLECIMIENTO: OpcionSelect = { valor: "", etiqueta: "Sin establecimiento" };
+// RF-30: opción vacía inicial del select, que solo ve el notificador. El esquema la rechaza, así que
+// dejarla elegida muestra "Selecciona un establecimiento".
+const OPCION_SIN_ESTABLECIMIENTO: OpcionSelect = {
+  valor: "",
+  etiqueta: "Selecciona un establecimiento",
+};
 
 type EstadoUsuarioForm = {
   errores: Record<string, string>;
@@ -259,28 +262,27 @@ export function UsuarioForm({
               // Cambiar a un perfil que no sea Notificador RPC limpia la selección: conservarla
               // en silencio dejaría formatos asignados a un perfil que el esquema los rechaza.
               formatosExcelIds: esPerfilNotificador(perfilCodigo) ? previos.formatosExcelIds : [],
+              // RF-30: mismo criterio para el establecimiento, que solo se pide al notificador.
+              establecimientoId: esPerfilNotificador(perfilCodigo) ? previos.establecimientoId : "",
             }));
           }}
           error={estado.errores.perfilCodigo}
         />
 
-        {/* RF-30: cambiar el perfil NO limpia el establecimiento: quien deja de ser notificador
-            puede conservarlo o quitarlo a mano. */}
-        <CampoSelect
-          id="establecimientoId"
-          name="establecimientoId"
-          etiqueta={
-            esPerfilNotificador(valores.perfilCodigo)
-              ? "Establecimiento (obligatorio)"
-              : "Establecimiento"
-          }
-          opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
-          value={valores.establecimientoId}
-          onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
-          aria-required={esPerfilNotificador(valores.perfilCodigo) || undefined}
-          ayuda="Obligatorio para perfil Notificador."
-          error={estado.errores.establecimientoId}
-        />
+        {/* RF-30: solo el notificador pertenece a un establecimiento. Para el resto de los
+            perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a `null`. */}
+        {esPerfilNotificador(valores.perfilCodigo) ? (
+          <CampoSelect
+            id="establecimientoId"
+            name="establecimientoId"
+            etiqueta="Establecimiento"
+            opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
+            value={valores.establecimientoId}
+            onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
+            aria-required
+            error={estado.errores.establecimientoId}
+          />
+        ) : null}
       </div>
 
       {esPerfilNotificador(valores.perfilCodigo) ? (
