@@ -2,10 +2,24 @@ import type { SelectHTMLAttributes } from "react";
 
 export type OpcionSelect = { valor: string; etiqueta: string };
 
+// Grupo de opciones, dibujado como `<optgroup label>`. Se puede mezclar con opciones planas en la
+// misma lista (p. ej. una opción "Todas" suelta seguida de grupos por región).
+export type GrupoOpcionesSelect = { grupo: string; opciones: OpcionSelect[] };
+
+export type ElementoSelect = OpcionSelect | GrupoOpcionesSelect;
+
+function esGrupo(elemento: ElementoSelect): elemento is GrupoOpcionesSelect {
+  return "grupo" in elemento;
+}
+
+function Opcion({ opcion }: { opcion: OpcionSelect }) {
+  return <option value={opcion.valor}>{opcion.etiqueta}</option>;
+}
+
 type CampoSelectProps = {
   id: string;
   etiqueta: string;
-  opciones: OpcionSelect[];
+  opciones: ElementoSelect[];
   ayuda?: string;
   error?: string | null;
 } & Omit<SelectHTMLAttributes<HTMLSelectElement>, "id">;
@@ -40,11 +54,17 @@ export function CampoSelect({
         } ${className}`}
         {...atributos}
       >
-        {opciones.map((opcion) => (
-          <option key={opcion.valor} value={opcion.valor}>
-            {opcion.etiqueta}
-          </option>
-        ))}
+        {opciones.map((elemento) =>
+          esGrupo(elemento) ? (
+            <optgroup key={`grupo:${elemento.grupo}`} label={elemento.grupo}>
+              {elemento.opciones.map((opcion) => (
+                <Opcion key={opcion.valor} opcion={opcion} />
+              ))}
+            </optgroup>
+          ) : (
+            <Opcion key={elemento.valor} opcion={elemento} />
+          ),
+        )}
       </select>
 
       {ayuda ? (

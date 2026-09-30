@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-23 (RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-09-30 (RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -69,6 +69,22 @@ src/
 │   │   ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/
 │   │   └── schemas/        — ventana-carga.schema.ts (anioVentanaCargaSchema reutilizado por
 │   │                         `reporte-excel/schemas/reporte-excel.schema.ts`, para no duplicar rango)
+│   ├── regiones/           — catálogo de Regiones (RF-26, implementado; solo ADMIN). Mismo patrón
+│   │                         de capas: entities/Region.ts, errors/ (RegionDuplicadaError con el
+│   │                         campo en conflicto, RegionEnUsoError), use-cases/ (Listar/Obtener/
+│   │                         Crear/Actualizar/Eliminar), PrismaRegionRepository.ts, auditoria/
+│   │                         auditarRegion.ts, schemas/region.schema.ts. `provincia` la referencia
+│   │                         con FK `Restrict` (P2003 → 409 REGION_EN_USO); `tieneProvincias()`
+│   │                         bloquea cambiar el código de una región con provincias
+│   ├── provincias/         — catálogo de Provincias por región (RF-27, solo ADMIN). Mismo patrón que
+│   │                         `regiones/`; los casos de uso de escritura reciben además la INTERFAZ
+│   │                         `RegionRepository` (validarRegionDeProvincia.ts: región existente y
+│   │                         prefijo del código = código de la región). `comuna` la referencia con
+│   │                         FK `Restrict`; `tieneComunas()` bloquea cambiar su código
+│   ├── comunas/            — catálogo de Comunas por provincia (RF-28, solo ADMIN). Mismo patrón;
+│   │                         escritura recibe la INTERFAZ `ProvinciaRepository`
+│   │                         (validarProvinciaDeComuna.ts). Sin `regionId` propio: la región se
+│   │                         deriva por la provincia en el `select` anidado del listado
 │   └── solicitudes-reemplazo/ — autoriza el reemplazo de una carga ya APROBADA (RF-19), ampliado
 │       │                     (RF-22) a también cubrir una carga PENDIENTE_VISTO_BUENO ya finalizada
 │       │                     y sin decidir (ver `origen` abajo)

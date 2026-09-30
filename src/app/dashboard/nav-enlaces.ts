@@ -11,6 +11,9 @@ export const ENLACES_ADMIN: readonly EnlacePanel[] = [
     subenlaces: [
       { href: "/dashboard/establecimientos", etiqueta: "Establecimientos" },
       { href: "/dashboard/tipos-establecimiento", etiqueta: "Tipos de establecimiento" },
+      { href: "/dashboard/regiones", etiqueta: "Regiones" },
+      { href: "/dashboard/provincias", etiqueta: "Provincias" },
+      { href: "/dashboard/comunas", etiqueta: "Comunas" },
       { href: "/dashboard/logs", etiqueta: "Logs" },
     ],
   },

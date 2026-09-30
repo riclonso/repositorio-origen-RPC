@@ -293,6 +293,84 @@ model Establecimiento {
   @@map("establecimiento")
 }
 
+// Catálogo de regiones de Chile (RF-26). La migración que crea la tabla siembra las 16 regiones
+// oficiales; el mantenedor permite corregirlas o agregar nuevas sin desplegar. No tiene `activo`:
+// la baja es una eliminación física.
+model Region {
+  id                String   @id @default(uuid())
+  // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
+  nombre            String
+  // Clave de unicidad DERIVADA de `nombre` (sin tildes, minúsculas, espacios colapsados), igual
+  // que en `TipoEstablecimiento`: "Biobío" y "biobio" no coexisten.
+  nombreNormalizado String   @unique
+  // Código de dos dígitos con cero a la izquierda ("01".."16"). CHAR(2) por decisión explícita.
+  codigo            String   @unique @db.Char(2)
+  // Número de la región (1..99). El rango lo refuerza un CHECK agregado a mano en la migración.
+  numero            Int      @unique
+  createdAt         DateTime @default(now())
+
+  // Relación inversa (RF-27). Solo existe para que Prisma declare la FK de `Provincia`: NO usarla
+  // con `include` en listados de regiones (arrastraría todas las provincias por fila). Para saber
+  // si una región tiene provincias se consulta `provincia` directamente (`tieneProvincias`).
+  provincias Provincia[]
+
+  @@map("region")
+}
+
+// Catálogo de provincias de Chile (RF-27). Cada provincia pertenece a una región. La migración
+// que crea la tabla siembra las 3 provincias de la región del Biobío (08). Sin `activo`: la baja
+// es una eliminación física.
+model Provincia {
+  id                String   @id @default(uuid())
+  // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
+  nombre            String
+  // Clave de unicidad DERIVADA de `nombre` (`normalizarNombre()`), única POR REGIÓN: dos regiones
+  // pueden tener provincias homónimas.
+  nombreNormalizado String
+  // Código INE de tres dígitos ("081"); los dos primeros son el código de la región (lo exige el
+  // caso de uso). Único global. El formato lo refuerza un CHECK agregado a mano en la migración.
+  codigo            String   @unique @db.Char(3)
+  // ON DELETE RESTRICT: una región con provincias no puede eliminarse (P2003 → RegionEnUsoError).
+  regionId          String
+  region            Region   @relation(fields: [regionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt         DateTime @default(now())
+
+  // Relación inversa (RF-28). Solo existe para que Prisma declare la FK de `Comuna`: NO usarla
+  // con `include` en listados de provincias (arrastraría todas las comunas por fila). Para saber
+  // si una provincia tiene comunas se consulta `comuna` directamente (`tieneComunas`).
+  comunas Comuna[]
+
+  // Además de la unicidad del nombre por región, su primera columna indexa la FK y el filtro por
+  // región del listado: no hace falta un índice aparte sobre `regionId`.
+  @@unique([regionId, nombreNormalizado])
+  @@map("provincia")
+}
+
+// Catálogo de comunas de Chile (RF-28). Cada comuna pertenece a una provincia; la región se deriva
+// de la provincia (no se guarda `regionId`). La migración que crea la tabla siembra las 12 comunas
+// de la provincia de Concepción (081). Sin `activo`: la baja es una eliminación física.
+model Comuna {
+  id                String    @id @default(uuid())
+  // Dato visible: conserva mayúsculas y tildes tal como los escribió el operador.
+  nombre            String
+  // Clave de unicidad DERIVADA de `nombre` (`normalizarNombre()`), única POR PROVINCIA: dos
+  // provincias pueden tener comunas homónimas.
+  nombreNormalizado String
+  // Código INE de cinco dígitos ("08101"); los tres primeros son el código de la provincia (lo
+  // exige el caso de uso). Único global. El formato lo refuerza un CHECK agregado a mano en la
+  // migración.
+  codigo            String    @unique @db.Char(5)
+  // ON DELETE RESTRICT: una provincia con comunas no puede eliminarse (P2003 → ProvinciaEnUsoError).
+  provinciaId       String
+  provincia         Provincia @relation(fields: [provinciaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt         DateTime  @default(now())
+
+  // Además de la unicidad del nombre por provincia, su primera columna indexa la FK y el filtro por
+  // provincia del listado: no hace falta un índice aparte sobre `provinciaId`.
+  @@unique([provinciaId, nombreNormalizado])
+  @@map("comuna")
+}
+
 // Tokens de recuperación de contraseña (RF-10). En la base vive únicamente el SHA-256
 // hexadecimal del token: el valor en claro existe solo en memoria durante la petición que lo
 // emite y dentro del correo enviado.

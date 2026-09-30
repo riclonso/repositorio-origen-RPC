@@ -75,7 +75,19 @@ export type AccionAuditoria =
   // Rechazo unilateral (sin solicitud previa) de una carga ya `APROBADA` por un
   // ADMIN/REVISOR_REPOSITORIO. Habilita una reapertura para que el notificador afectado vuelva a
   // subir un archivo para esa combinación (formato, ventana).
-  | "CARGA_ARCHIVO_RECHAZADA";
+  | "CARGA_ARCHIVO_RECHAZADA"
+  // RF-26: mantenedor de regiones. La eliminación es física (la región no tiene `activo`).
+  | "REGION_CREADA"
+  | "REGION_ACTUALIZADA"
+  | "REGION_ELIMINADA"
+  // RF-27: mantenedor de provincias. La eliminación es física (la provincia no tiene `activo`).
+  | "PROVINCIA_CREADA"
+  | "PROVINCIA_ACTUALIZADA"
+  | "PROVINCIA_ELIMINADA"
+  // RF-28: mantenedor de comunas. La eliminación es física (la comuna no tiene `activo`).
+  | "COMUNA_CREADA"
+  | "COMUNA_ACTUALIZADA"
+  | "COMUNA_ELIMINADA";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -205,7 +217,19 @@ export type MotivoAuditoria =
   | "CONFLICTO_CONCURRENTE"
   // De `USUARIO_ELIMINADO` (RF-25): la cuenta tiene historial en el sistema y solo puede
   // desactivarse. Los nombres de las relaciones que bloquean van en `relacionesBloqueantes`.
-  | "CON_HISTORIAL";
+  | "CON_HISTORIAL"
+  // De `REGION_ELIMINADA` (RF-26): otra tabla referencia a la región y la FK cortó el DELETE.
+  | "REGION_EN_USO"
+  // De `PROVINCIA_ELIMINADA` (RF-27): otra tabla referencia a la provincia y la FK cortó el DELETE.
+  | "PROVINCIA_EN_USO"
+  // De `REGION_ACTUALIZADA` (RF-27): se intentó cambiar el código de una región que tiene
+  // provincias (sus códigos empiezan con el de la región y quedarían incoherentes).
+  | "CODIGO_REGION_CON_PROVINCIAS"
+  // De `COMUNA_ELIMINADA` (RF-28): otra tabla referencia a la comuna y la FK cortó el DELETE.
+  | "COMUNA_EN_USO"
+  // De `PROVINCIA_ACTUALIZADA` (RF-28): se intentó cambiar el código de una provincia que tiene
+  // comunas (sus códigos empiezan con el de la provincia y quedarían incoherentes).
+  | "CODIGO_PROVINCIA_CON_COMUNAS";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -302,6 +326,22 @@ export type EventoAuditoria = {
   // contenido de celdas ni contraseñas: solo metadatos estructurados.
   solicitudReemplazoId?: string | null;
   estadoSolicitud?: "APROBADA" | "RECHAZADA" | null;
+  // Específico de `REGION_*` (RF-26): id de la región afectada. En los rechazos por duplicado
+  // `campos` lleva el NOMBRE del campo en conflicto, nunca el valor ni datos de la otra región.
+  regionId?: string | null;
+  // Específico de `PROVINCIA_*` (RF-27): id de la provincia afectada. En esos eventos `regionId`
+  // es la región de la provincia (en una edición, la región nueva; en una eliminación, desde RF-28,
+  // la que tenía).
+  provinciaId?: string | null;
+  // Específico de `PROVINCIA_ACTUALIZADA` (RF-28): región que tenía la provincia antes de moverla.
+  // Solo viene si la edición la cambió de región.
+  regionAnteriorId?: string | null;
+  // Específico de `COMUNA_*` (RF-28): id de la comuna afectada. En esos eventos `provinciaId` es la
+  // provincia de la comuna (en una edición, la nueva; en una eliminación, la que tenía).
+  comunaId?: string | null;
+  // Específico de `COMUNA_ACTUALIZADA` (RF-28): provincia que tenía la comuna antes de moverla.
+  // Solo viene si la edición la cambió de provincia.
+  provinciaAnteriorId?: string | null;
   ip: string | null;
   userAgent: string | null;
 };
