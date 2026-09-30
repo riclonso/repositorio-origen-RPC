@@ -20,6 +20,7 @@ import {
 } from "@/shared/components/BannerReaperturaCarga";
 import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
+import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
@@ -631,12 +632,16 @@ export function PanelCargaArchivo({
     return () => document.removeEventListener("visibilitychange", alVolverALaPestana);
   }, [router]);
 
+  const [cargaExitosa, setCargaExitosa] = useState<CargaDetalleVista | null>(null);
   const [objetivoFinalizar, setObjetivoFinalizar] = useState<CargaResumenVista | null>(null);
   const [procesandoFinalizar, setProcesandoFinalizar] = useState(false);
   const [errorFinalizar, setErrorFinalizar] = useState<string | null>(null);
 
   function registrarResultado(clave: string, carga: CargaDetalleVista) {
     setResultados((actual) => ({ ...actual, [clave]: carga }));
+    if (carga.cantidadErrores === 0 && carga.errores.length === 0 && carga.estado === "PENDIENTE_VISTO_BUENO") {
+      setCargaExitosa(carga);
+    }
     void obtenerMisCargas().then((actualizadas) => {
       if (actualizadas) setMisCargas(actualizadas);
     });
@@ -767,6 +772,12 @@ export function PanelCargaArchivo({
           );
         })
       )}
+
+      <ModalCargaExitosa
+        abierto={cargaExitosa !== null}
+        nombreArchivo={cargaExitosa?.nombreArchivoOriginal ?? ""}
+        onCerrar={() => setCargaExitosa(null)}
+      />
 
       <DialogoConfirmacion
         abierto={objetivoFinalizar !== null}
