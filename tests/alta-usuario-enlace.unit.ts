@@ -108,7 +108,6 @@ async function probarAltaSinContrasena() {
           throw new Error("No esperado");
         },
         buscarPorNombre: async () => null,
-        obtenerPlantilla: async () => null,
         contarNotificadoresAsignadosActivosPorFormato: async () => ({}),
       },
       // RF-30: el perfil NOTIFICADOR_RPC exige un establecimiento activo.

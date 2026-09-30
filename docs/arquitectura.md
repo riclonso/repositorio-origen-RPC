@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-30 (RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-09-30 (plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -571,14 +571,25 @@ los reutilice; la constante fija `RUTA_FORMATOS_EXCEL` se reemplazó por una pro
 que cada página (`/dashboard/formatos-excel` o `/revisor/formatos-excel`) resuelve, ya que el mismo
 componente ahora sirve a dos rutas distintas.
 
-### `contenidoPlantilla` nunca sale del repositorio salvo en `obtenerPlantilla()`
+### `contenidoPlantilla` nunca sale del repositorio
 
 Mismo patrón que `contrasenaHash` en `Usuario`: el tipo de dominio `FormatoExcel` no tiene el
 campo, y todos los `select` de Prisma en `PrismaFormatoExcelRepository` lo excluyen
-explícitamente. Solo `obtenerPlantilla(id)` (usado exclusivamente por
-`GET /api/formatos-excel/[id]/plantilla`) hace un `select` que sí lo trae, con su propio tipo
-`PlantillaFormatoExcel` separado. Esto hace estructuralmente imposible que un listado o un detalle
-filtre el binario por descuido.
+explícitamente. Desde que la plantilla descargable se genera desde la BD (sección siguiente), ninguna
+lectura lo trae: solo se escribe al crear. Se eliminaron `obtenerPlantilla()`, el caso de uso
+`ObtenerPlantillaFormatoExcel` y el tipo `PlantillaFormatoExcel`.
+
+### La plantilla descargable se genera desde la BD, no es el archivo subido
+
+`GET /api/formatos-excel/[id]/plantilla` (NOTIFICADOR_RPC asignado, ADMIN y REVISOR_REPOSITORIO)
+entrega un archivo **nuevo** armado por `GeneradorPlantillaExcelJs`
+(`formatos-excel/infrastructure/escritura-plantilla/`) a partir de las columnas configuradas, en su
+orden, con el tipo de archivo y el separador del formato: una sola hoja ("Datos") con una sola fila de
+encabezados (en XLSX, en negrita, fija y con ancho mínimo; en CSV, UTF-8 con BOM). Motivo: el archivo
+subido puede traer filas de ejemplo con datos reales, otras hojas, comentarios o metadatos de su
+autor. El nombre de descarga es el del formato (`<nombre>.xlsx|csv`), no el del archivo original.
+`SincronizadorCabeceraPlantillaExcelJs` sigue usándose solo al crear el formato, sobre el binario que
+se persiste.
 
 ### El tipo de contenido lo decide el servidor, en dos capas — nunca el `Content-Type` del cliente
 

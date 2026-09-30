@@ -3,7 +3,6 @@ import type {
   DatosNuevoFormatoExcel,
   FormatoExcel,
   FormatoExcelResumen,
-  PlantillaFormatoExcel,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type {
   CandidatoAsignacionFormato,
@@ -55,9 +54,6 @@ export interface FormatoExcelRepository {
     quitarIds: string[],
   ): Promise<ResultadoAsignacionMasivaRepositorio>;
   buscarPorNombre(nombre: string): Promise<FormatoExcel | null>;
-  // Única operación que trae el binario de la plantilla. La usa exclusivamente el endpoint de
-  // descarga.
-  obtenerPlantilla(id: string): Promise<PlantillaFormatoExcel | null>;
   // RF-16 (tablero de seguimiento): cuántos usuarios NOTIFICADOR_RPC ACTIVOS tienen cada formato
   // asignado ("deben reportar"). Cuenta ESTRUCTURAL: no filtra por `FormatoExcel.activo` — si el
   // formato de una ventana ya vigente fue dado de baja después de crearla, los notificadores

@@ -1,7 +1,7 @@
 // `FormatoExcel` no incluye `contenidoPlantilla` a propósito, mismo motivo que `Usuario` nunca
 // incluye `contrasenaHash`: al ser el tipo que viaja hasta la respuesta HTTP, dejar el binario
-// fuera hace imposible filtrarlo por descuido. El único lugar que sí lo necesita usa
-// `PlantillaFormatoExcel`, más abajo.
+// fuera hace imposible filtrarlo por descuido. Solo se escribe al crear (`DatosNuevoFormatoExcel`);
+// ninguna lectura lo trae, porque la plantilla descargable se genera desde las columnas.
 
 export const TIPOS_DATO_COLUMNA = [
   "TEXTO",
@@ -162,12 +162,4 @@ export type DatosEdicionFormatoExcel = {
   separadorCsv: SeparadorCsv | null;
   columnas: DatosColumnaNueva[];
   reglasValidacion: DatosReglaValidacionNueva[];
-};
-
-// Único tipo que SÍ carga el binario. Lo usa exclusivamente el endpoint de descarga.
-export type PlantillaFormatoExcel = {
-  nombreArchivoPlantilla: string;
-  tipoContenidoPlantilla: string;
-  separadorCsv: SeparadorCsv | null;
-  contenidoPlantilla: Buffer;
 };

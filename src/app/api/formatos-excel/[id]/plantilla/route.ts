@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
-import { obtenerPlantillaFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ObtenerPlantillaFormatoExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { obtenerFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ObtenerFormatoExcel";
-import { sincronizarCabeceraPlantillaExcelJs } from "@/modules/formatos-excel/infrastructure/escritura-plantilla/SincronizadorCabeceraPlantillaExcelJs";
+import { generarPlantillaDesdeColumnasExcelJs } from "@/modules/formatos-excel/infrastructure/escritura-plantilla/GeneradorPlantillaExcelJs";
 import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
@@ -36,7 +35,15 @@ function encabezadoDescarga(nombreArchivo: string): string {
   return `attachment; filename="${nombreAscii}"; filename*=UTF-8''${nombreCodificado}`;
 }
 
-// Único endpoint de todo el módulo que consulta `contenidoPlantilla`.
+// Nombre de la plantilla generada: el del formato, sin los caracteres que Windows no admite en un
+// nombre de archivo (el nombre del archivo original no se expone).
+function nombreArchivoDesdeFormato(nombreFormato: string): string {
+  return nombreFormato.replace(/[\\/:*?"<>|]/g, "_").trim() || "plantilla";
+}
+
+// La plantilla se genera desde la configuración vigente del formato en la BD (solo encabezados),
+// para todos los perfiles. El archivo que se subió al crear el formato (`contenidoPlantilla`) no
+// se lee ni se entrega: puede traer filas de ejemplo con datos reales, otras hojas o metadatos.
 export async function GET(_request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso] = await Promise.all([contexto.params, exigirSesion()]);
 
@@ -60,37 +67,34 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
   }
 
   try {
-    // La plantilla original no se reemplaza al editar, pero sus encabezados sí deben reflejar las
-    // columnas vigentes. Por eso se leen en paralelo el binario y la configuración actual, y se
-    // sincroniza la primera fila justo antes de descargar.
-    const [plantilla, formato] = await Promise.all([
-      obtenerPlantillaFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository }),
-      obtenerFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository }),
-    ]);
+    const formato = await obtenerFormatoExcel(idValido.data, {
+      repositorio: prismaFormatoExcelRepository,
+    });
 
-    if (!plantilla || !formato) {
+    if (!formato) {
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
 
-    const contenidoPlantilla = await sincronizarCabeceraPlantillaExcelJs(
-      plantilla.contenidoPlantilla,
-      plantilla.tipoContenidoPlantilla,
+    const plantilla = await generarPlantillaDesdeColumnasExcelJs(
       formato.columnas.map((columna) => columna.nombre),
-      plantilla.separadorCsv,
+      formato.tipoArchivo,
+      formato.separadorCsv,
     );
 
-    // CSV: UTF-8 con BOM (lo escribe el sincronizador) y `charset` explícito, para que la "ñ" y
-    // las tildes no se vean rotas al abrirlo.
+    // CSV: UTF-8 con BOM (lo escribe el generador) y `charset` explícito, para que la "ñ" y las
+    // tildes no se vean rotas al abrirlo.
     const tipoContenido =
-      plantilla.tipoContenidoPlantilla === TIPO_CONTENIDO_CSV
+      plantilla.tipoContenido === TIPO_CONTENIDO_CSV
         ? `${TIPO_CONTENIDO_CSV}; charset=utf-8`
-        : plantilla.tipoContenidoPlantilla;
+        : plantilla.tipoContenido;
 
-    return new NextResponse(new Uint8Array(contenidoPlantilla), {
+    return new NextResponse(new Uint8Array(plantilla.contenido), {
       status: 200,
       headers: {
         "Content-Type": tipoContenido,
-        "Content-Disposition": encabezadoDescarga(plantilla.nombreArchivoPlantilla),
+        "Content-Disposition": encabezadoDescarga(
+          `${nombreArchivoDesdeFormato(formato.nombre)}.${plantilla.extension}`,
+        ),
       },
     });
   } catch (error) {

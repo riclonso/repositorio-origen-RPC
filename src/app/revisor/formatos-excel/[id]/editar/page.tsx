@@ -41,7 +41,7 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
         href={`/api/formatos-excel/${formato.id}/plantilla`}
         className="mt-4 inline-block text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
       >
-        Descargar plantilla original ({formato.nombreArchivoPlantilla})
+        Descargar plantilla
       </a>
 
       {/* `key={formato.id}` fuerza el remonte del formulario al navegar entre ediciones de

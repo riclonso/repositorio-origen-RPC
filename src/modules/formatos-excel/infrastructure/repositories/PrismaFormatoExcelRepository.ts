@@ -20,8 +20,8 @@ import {
   type ResultadoEliminacionFormato,
 } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 
-// Selección explícita: `contenidoPlantilla` NUNCA sale de aquí. La única función de este archivo
-// que sí la trae es `obtenerPlantilla`, con su propio `select` acotado a esas tres columnas.
+// Selección explícita: `contenidoPlantilla` NUNCA sale de aquí. Ninguna lectura lo trae: la
+// plantilla que se descarga se genera desde las columnas configuradas, no desde ese binario.
 const SELECCION_COLUMNA = {
   id: true,
   orden: true,
@@ -514,27 +514,5 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
     });
 
     return Object.fromEntries(grupos.map((grupo) => [grupo.formatoExcelId, grupo._count]));
-  },
-
-  async obtenerPlantilla(id) {
-    // Única consulta de todo el módulo que trae `contenidoPlantilla`.
-    const registro = await prisma.formatoExcel.findUnique({
-      where: { id },
-      select: {
-        nombreArchivoPlantilla: true,
-        tipoContenidoPlantilla: true,
-        separadorCsv: true,
-        contenidoPlantilla: true,
-      },
-    });
-
-    if (!registro) return null;
-
-    return {
-      nombreArchivoPlantilla: registro.nombreArchivoPlantilla,
-      tipoContenidoPlantilla: registro.tipoContenidoPlantilla,
-      separadorCsv: registro.separadorCsv,
-      contenidoPlantilla: Buffer.from(registro.contenidoPlantilla),
-    };
   },
 };
