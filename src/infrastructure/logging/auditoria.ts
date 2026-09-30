@@ -87,7 +87,11 @@ export type AccionAuditoria =
   // RF-28: mantenedor de comunas. La eliminación es física (la comuna no tiene `activo`).
   | "COMUNA_CREADA"
   | "COMUNA_ACTUALIZADA"
-  | "COMUNA_ELIMINADA";
+  | "COMUNA_ELIMINADA"
+  // RF-29: eliminación FÍSICA de un tipo de establecimiento sin uso. Es la única acción auditada del
+  // mantenedor de tipos (crear, editar y activar/desactivar no se auditan, por decisión explícita).
+  // No se registra el nombre del tipo, solo su id.
+  | "TIPO_ESTABLECIMIENTO_ELIMINADO";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -229,7 +233,10 @@ export type MotivoAuditoria =
   | "COMUNA_EN_USO"
   // De `PROVINCIA_ACTUALIZADA` (RF-28): se intentó cambiar el código de una provincia que tiene
   // comunas (sus códigos empiezan con el de la provincia y quedarían incoherentes).
-  | "CODIGO_PROVINCIA_CON_COMUNAS";
+  | "CODIGO_PROVINCIA_CON_COMUNAS"
+  // De `TIPO_ESTABLECIMIENTO_ELIMINADO` (RF-29): al menos un establecimiento (activo o inactivo)
+  // referencia al tipo y la FK cortó el DELETE. El tipo solo puede desactivarse.
+  | "TIPO_ESTABLECIMIENTO_EN_USO";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -342,6 +349,9 @@ export type EventoAuditoria = {
   // Específico de `COMUNA_ACTUALIZADA` (RF-28): provincia que tenía la comuna antes de moverla.
   // Solo viene si la edición la cambió de provincia.
   provinciaAnteriorId?: string | null;
+  // Específico de `TIPO_ESTABLECIMIENTO_ELIMINADO` (RF-29): id del tipo afectado. Null si el id de la
+  // ruta no era un UUID válido (no identifica a ningún tipo).
+  tipoEstablecimientoId?: string | null;
   ip: string | null;
   userAgent: string | null;
 };

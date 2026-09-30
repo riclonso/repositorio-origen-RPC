@@ -39,6 +39,13 @@ model Usuario {
   activo         Boolean  @default(true)
   createdAt      DateTime @default(now())
 
+  // RF-30: establecimiento al que pertenece la persona. Nullable a propósito: solo es obligatorio
+  // para el perfil NOTIFICADOR_RPC (regla en `application/` y en el esquema Zod, no en la BD), y
+  // las cuentas previas a RF-30 no lo tienen. `Restrict`: un establecimiento con usuarios no puede
+  // borrarse físicamente (hoy solo se desactiva; los usuarios lo conservan).
+  establecimientoId String?
+  establecimiento   Establecimiento? @relation(fields: [establecimientoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
   // Invalidación de sesión: se incrementa cada vez que cambia `contrasenaHash` (fijado manual por
   // el admin, autoservicio propio, o consumo de un enlace de contraseña), en las tres transacciones
   // que escriben el hash. El JWT emitido en el login lleva un claim `sesionVersion` con el valor
@@ -107,7 +114,10 @@ model Usuario {
   // La clasificación vive en `modules/usuarios/infrastructure/repositories/
   // relacionesHistorialUsuario.ts` (fuente única). Una relación nueva hacia `Usuario` DEBE
   // clasificarse ahí: `tests/relaciones-usuario.guard.unit.ts` falla si no.
+  // Las relaciones de IDA (con `fields:`, como `perfil` o `establecimiento` de RF-30) NO se
+  // clasifican: es `usuario` quien apunta a otra tabla, y borrar la cuenta no las toca.
 
+  @@index([establecimientoId])
   @@map("usuario")
 }
 
@@ -286,9 +296,16 @@ model Establecimiento {
   nombre    String
   direccion String
   tipoId    String
+  // RF-29: el DELETE de un tipo es válido solo si ningún establecimiento (activo o inactivo) lo
+  // usa. La FK `Restrict` es la defensa final: corta el DELETE de un tipo en uso (P2003), que el
+  // repositorio traduce a `TipoEstablecimientoEnUsoError`; ese tipo solo puede desactivarse.
   tipo      TipoEstablecimiento @relation(fields: [tipoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   activo    Boolean             @default(true)
   createdAt DateTime            @default(now())
+
+  // Relación inversa de RF-30, exigida por Prisma. NUNCA usarla con `include` en el listado de
+  // establecimientos: cargaría los usuarios de cada fila (N+1). Mismo motivo que `Perfil.usuarios`.
+  usuarios Usuario[]
 
   @@map("establecimiento")
 }

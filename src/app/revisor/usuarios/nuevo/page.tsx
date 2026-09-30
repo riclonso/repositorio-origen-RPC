@@ -5,9 +5,12 @@ import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/reposi
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
+import { listarEstablecimientosParaSelect } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientosParaSelect";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
+import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
 import { UsuarioForm } from "@/shared/components/UsuarioForm";
 import { RUTA_USUARIOS_REVISOR } from "../ruta-usuarios";
 
@@ -27,10 +30,15 @@ export default async function NuevoUsuarioRevisorPage() {
   // compilar). `connection()` la ancla al momento de la petición.
   await connection();
 
-  // Solo perfiles vigentes: dar de alta a alguien en un perfil dado de baja no tiene sentido.
-  const [perfiles, formatosExcel] = await Promise.all([
+  // Solo perfiles y establecimientos vigentes: dar de alta a alguien en uno dado de baja no tiene
+  // sentido.
+  const [perfiles, formatosExcel, establecimientos] = await Promise.all([
     listarPerfiles({ soloActivos: true }, { repositorio: prismaPerfilRepository }),
     listarFormatosExcel({ repositorio: prismaFormatoExcelRepository }),
+    listarEstablecimientosParaSelect(
+      { soloActivos: true },
+      { repositorio: prismaEstablecimientoRepository },
+    ),
   ]);
 
   return (
@@ -53,6 +61,7 @@ export default async function NuevoUsuarioRevisorPage() {
           email: "",
           perfilCodigo: "",
           formatosExcelIds: [],
+          establecimientoId: "",
         }}
         opcionesPerfil={[
           OPCION_SIN_ELEGIR,
@@ -62,6 +71,7 @@ export default async function NuevoUsuarioRevisorPage() {
           ...aOpcionesPerfil(perfiles.filter((perfil) => !esPerfilAdministrador(perfil.codigo))),
         ]}
         opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel)}
+        opcionesEstablecimiento={aOpcionesEstablecimiento(establecimientos)}
       />
     </div>
   );

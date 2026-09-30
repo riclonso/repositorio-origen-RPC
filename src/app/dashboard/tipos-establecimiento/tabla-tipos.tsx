@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Interruptor } from "@/shared/components/Interruptor";
-import { IconoEditar } from "@/shared/components/iconos";
+import { IconoEditar, IconoEliminar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
+import { useAccionConfirmable } from "@/shared/hooks/useAccionConfirmable";
 import { RUTA_TIPOS } from "./ruta-tipos";
 
 export type FilaTipoVista = {
@@ -14,22 +15,45 @@ export type FilaTipoVista = {
   nombre: string;
   activo: boolean;
   creadoEl: string;
+  // RF-29: establecimientos (activos e inactivos) que usan el tipo. Si es mayor que cero, el tipo
+  // no puede eliminarse, solo desactivarse. Es una ayuda visual: la API revalida con la FK.
+  cantidadEstablecimientos: number;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo actualizar el estado del tipo. Intenta nuevamente.";
 
+function motivoNoEliminable(cantidadEstablecimientos: number): string {
+  const asociados =
+    cantidadEstablecimientos === 1
+      ? "1 establecimiento"
+      : `${cantidadEstablecimientos} establecimientos`;
+
+  return `No se puede eliminar: el tipo está asociado a ${asociados}. Puedes desactivarlo.`;
+}
+
 type AccionesFilaProps = {
   fila: FilaTipoVista;
   onCambiarEstado: () => void;
+  onEliminar: () => void;
 };
 
-function AccionesFila({ fila, onCambiarEstado }: AccionesFilaProps) {
+function AccionesFila({ fila, onCambiarEstado, onEliminar }: AccionesFilaProps) {
+  const enUso = fila.cantidadEstablecimientos > 0;
+
   return (
     <div className="flex items-center justify-end gap-2">
       <BotonIcono
         etiqueta={`Editar ${fila.nombre}`}
         Icono={IconoEditar}
         href={`${RUTA_TIPOS}/${fila.id}/editar`}
+      />
+      <BotonIcono
+        etiqueta={`Eliminar ${fila.nombre}`}
+        Icono={IconoEliminar}
+        tono="peligro"
+        onClick={onEliminar}
+        deshabilitado={enUso}
+        motivoDeshabilitado={enUso ? motivoNoEliminable(fila.cantidadEstablecimientos) : undefined}
       />
 
       <span className="flex items-center gap-2">
@@ -60,6 +84,12 @@ const COLUMNAS: ColumnaTabla<FilaTipoVista>[] = [
   },
 ];
 
+// El 409 (tipo en uso, p. ej. asignado a un establecimiento después de cargar la página) o el 404
+// (ya eliminado por otra persona) llegan como mensaje de la API y se muestran dentro del diálogo.
+function eliminarTipoEnApi(fila: FilaTipoVista): Promise<Response> {
+  return fetch(`/api/tipos-establecimiento/${fila.id}`, { method: "DELETE" });
+}
+
 type TablaTiposProps = {
   filas: FilaTipoVista[];
   descripcion: string;
@@ -67,6 +97,8 @@ type TablaTiposProps = {
 
 export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
   const router = useRouter();
+  const refrescar = useCallback(() => router.refresh(), [router]);
+  const eliminacion = useAccionConfirmable(eliminarTipoEnApi, refrescar);
   const [objetivo, setObjetivo] = useState<FilaTipoVista | null>(null);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,14 +147,22 @@ export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
         claveFila={(fila) => fila.id}
         anchoMinimo="min-w-2xl"
         acciones={(fila) => (
-          <AccionesFila fila={fila} onCambiarEstado={() => setObjetivo(fila)} />
+          <AccionesFila
+            fila={fila}
+            onCambiarEstado={() => setObjetivo(fila)}
+            onEliminar={() => eliminacion.solicitar(fila)}
+          />
         )}
         tarjeta={(fila) => (
           <>
             <p className="font-semibold text-gob-black">{fila.nombre}</p>
             <p className="mt-1">Creado el {fila.creadoEl}</p>
             <div className="mt-3">
-              <AccionesFila fila={fila} onCambiarEstado={() => setObjetivo(fila)} />
+              <AccionesFila
+                fila={fila}
+                onCambiarEstado={() => setObjetivo(fila)}
+                onEliminar={() => eliminacion.solicitar(fila)}
+              />
             </div>
           </>
         )}
@@ -145,6 +185,23 @@ export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
         error={error}
         onConfirmar={confirmarCambioEstado}
         onCancelar={cerrarDialogo}
+      />
+
+      <DialogoConfirmacion
+        abierto={eliminacion.objetivo !== null}
+        titulo="Eliminar tipo de establecimiento"
+        descripcion={
+          eliminacion.objetivo
+            ? `Se eliminará el tipo "${eliminacion.objetivo.nombre}". Esta acción es irreversible.`
+            : ""
+        }
+        textoConfirmar="Eliminar"
+        textoConfirmando="Eliminando..."
+        variante="peligro"
+        procesando={eliminacion.procesando}
+        error={eliminacion.error}
+        onConfirmar={eliminacion.confirmar}
+        onCancelar={eliminacion.cancelar}
       />
     </>
   );

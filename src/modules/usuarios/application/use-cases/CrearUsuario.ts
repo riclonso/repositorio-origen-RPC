@@ -2,10 +2,13 @@ import type { CampoUnico, Usuario } from "@/modules/usuarios/domain/entities/Usu
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type { PerfilRepository } from "@/modules/perfiles/domain/repositories/PerfilRepository";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
+import type { EstablecimientoRepository } from "@/modules/establecimiento/domain/repositories/EstablecimientoRepository";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
+import { EstablecimientoInvalidoError } from "@/modules/usuarios/domain/errors/EstablecimientoInvalidoError";
+import { validarEstablecimientoUsuario } from "@/modules/usuarios/application/validarEstablecimientoUsuario";
 import { derivarUsername } from "@/modules/usuarios/schemas/usuario.schema";
 
 // La creación ya NO recibe contraseña: la cuenta nace pendiente de activación y la persona fija
@@ -17,6 +20,8 @@ export type DatosCreacionUsuario = {
   email: string;
   perfilCodigo: string;
   formatosExcelIds: string[];
+  // RF-30: obligatorio para NOTIFICADOR_RPC, opcional (null) para el resto de los perfiles.
+  establecimientoId: string | null;
 };
 
 export type ResultadoCrearUsuario =
@@ -24,6 +29,8 @@ export type ResultadoCrearUsuario =
   | { ok: false; motivo: "DUPLICADO"; campo: CampoUnico; rut: string }
   | { ok: false; motivo: "PERFIL_INVALIDO" }
   | { ok: false; motivo: "FORMATO_INVALIDO" }
+  | { ok: false; motivo: "ESTABLECIMIENTO_REQUERIDO" }
+  | { ok: false; motivo: "ESTABLECIMIENTO_INVALIDO" }
   | { ok: false; motivo: "PERFIL_ADMIN_RESTRINGIDO" };
 
 export async function crearUsuario(
@@ -36,6 +43,7 @@ export async function crearUsuario(
     repositorio: UsuarioRepository;
     repositorioPerfiles: PerfilRepository;
     repositorioFormatosExcel: FormatoExcelRepository;
+    repositorioEstablecimientos: EstablecimientoRepository;
   },
 ): Promise<ResultadoCrearUsuario> {
   // El esquema solo valida la FORMA del código: que el perfil exista y esté vigente se
@@ -49,6 +57,19 @@ export async function crearUsuario(
   // pueda saltar llamando a la API directamente.
   if (!esPerfilAdministrador(actorPerfilCodigo) && esPerfilAdministrador(datos.perfilCodigo)) {
     return { ok: false, motivo: "PERFIL_ADMIN_RESTRINGIDO" };
+  }
+
+  // RF-30: notificador sin establecimiento, o establecimiento inexistente o dado de baja. En el
+  // alta no hay un establecimiento vigente que conservar.
+  const rechazoEstablecimiento = await validarEstablecimientoUsuario(
+    datos.perfilCodigo,
+    datos.establecimientoId,
+    null,
+    dependencias.repositorioEstablecimientos,
+  );
+
+  if (rechazoEstablecimiento) {
+    return { ok: false, motivo: rechazoEstablecimiento };
   }
 
   // Mismo criterio que el perfil: el esquema ya garantiza la FORMA (UUIDs, sin repetidos) y que
@@ -87,6 +108,7 @@ export async function crearUsuario(
       activo: true,
       contrasenaHash: null,
       formatosExcelIds: datos.formatosExcelIds,
+      establecimientoId: datos.establecimientoId,
     });
 
     return { ok: true, usuario };
@@ -105,6 +127,11 @@ export async function crearUsuario(
     // INSERT.
     if (error instanceof FormatoExcelInvalidoError) {
       return { ok: false, motivo: "FORMATO_INVALIDO" };
+    }
+
+    // Misma ventana, para el establecimiento: pudo eliminarse entre la comprobación y el INSERT.
+    if (error instanceof EstablecimientoInvalidoError) {
+      return { ok: false, motivo: "ESTABLECIMIENTO_INVALIDO" };
     }
 
     throw error;

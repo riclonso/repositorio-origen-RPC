@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listarTiposEstablecimiento } from "@/modules/tipoEstablecimiento/application/use-cases/ListarTiposEstablecimiento";
+import { listarTiposEstablecimientoConUso } from "@/modules/tipoEstablecimiento/application/use-cases/ListarTiposEstablecimientoConUso";
 import { prismaTipoEstablecimientoRepository } from "@/modules/tipoEstablecimiento/infrastructure/repositories/PrismaTipoEstablecimientoRepository";
-import type { TipoEstablecimiento } from "@/modules/tipoEstablecimiento/domain/entities/TipoEstablecimiento";
+import type { TipoEstablecimientoListado } from "@/modules/tipoEstablecimiento/domain/entities/TipoEstablecimiento";
 import { RUTA_TIPOS } from "./ruta-tipos";
 import { TablaTipos, type FilaTipoVista } from "./tabla-tipos";
 
@@ -26,12 +26,13 @@ const formateadorFecha = new Intl.DateTimeFormat("es-CL", {
 const CLASES_ENLACE_NUEVO =
   "inline-flex items-center justify-center rounded-md bg-gob-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gob-tertiary active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary";
 
-function aFilaVista(tipo: TipoEstablecimiento): FilaTipoVista {
+function aFilaVista(tipo: TipoEstablecimientoListado): FilaTipoVista {
   return {
     id: tipo.id,
     nombre: tipo.nombre,
     activo: tipo.activo,
     creadoEl: formateadorFecha.format(tipo.createdAt),
+    cantidadEstablecimientos: tipo.cantidadEstablecimientos,
   };
 }
 
@@ -39,10 +40,9 @@ export default async function TiposEstablecimientoPage({ searchParams }: TiposPa
   const parametros = await searchParams;
   const tipoCreado = parametros.creado === "1";
 
-  const tipos = await listarTiposEstablecimiento(
-    {},
-    { repositorio: prismaTipoEstablecimientoRepository },
-  );
+  const tipos = await listarTiposEstablecimientoConUso({
+    repositorio: prismaTipoEstablecimientoRepository,
+  });
 
   const conteo = tipos.length === 1 ? "1 tipo registrado" : `${tipos.length} tipos registrados`;
 

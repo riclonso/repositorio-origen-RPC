@@ -7,6 +7,12 @@ export type TipoEstablecimiento = {
   createdAt: Date;
 };
 
+// RF-29: fila del mantenedor. `cantidadEstablecimientos` cuenta TODOS los establecimientos que
+// referencian al tipo (activos e inactivos): cualquiera de ellos bloquea la eliminación física.
+export type TipoEstablecimientoListado = TipoEstablecimiento & {
+  cantidadEstablecimientos: number;
+};
+
 // Al crear, la entidad nace activa. `nombreNormalizado` se deriva del nombre en el caso de uso.
 export type DatosNuevoTipo = {
   nombre: string;

@@ -46,6 +46,7 @@ function aFilaVista(usuario: UsuarioListado, ahora: Date): FilaUsuarioVista {
     username: usuario.username,
     perfilCodigo: usuario.perfilCodigo,
     perfilNombre: usuario.perfilNombre,
+    establecimientoNombre: usuario.establecimientoNombre,
     activo: usuario.activo,
     tieneContrasena: usuario.tieneContrasena,
     creadoEl: formateadorFecha.format(usuario.createdAt),
@@ -54,6 +55,14 @@ function aFilaVista(usuario: UsuarioListado, ahora: Date): FilaUsuarioVista {
     bloqueadaHastaTexto: usuario.bloqueadaHasta ? formateadorFechaHora.format(usuario.bloqueadaHasta) : null,
     tieneHistorial: usuario.tieneHistorial,
   };
+}
+
+// Filtros que el operador puede aplicar desde la URL. `perfilesPermitidos` no cuenta: es una
+// restricción del servidor, no un filtro elegido.
+function tieneFiltrosAplicados(filtro: FiltroListadoUsuarios): boolean {
+  return [filtro.termino, filtro.perfil, filtro.establecimiento, filtro.activo].some(
+    (valor) => valor !== undefined,
+  );
 }
 
 function EstadoVacio({ titulo, detalle, accion }: { titulo: string; detalle: string; accion: React.ReactNode }) {
@@ -93,8 +102,7 @@ export async function ListadoUsuarios({
   const { filas, paginacion } = resultado;
   const ahora = new Date();
 
-  const hayFiltros =
-    filtro.termino !== undefined || filtro.perfil !== undefined || filtro.activo !== undefined;
+  const hayFiltros = tieneFiltrosAplicados(filtro);
 
   const conteo =
     paginacion.total === 1 ? "1 usuario encontrado" : `${paginacion.total} usuarios encontrados`;

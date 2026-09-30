@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-30 (RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-09-30 (RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -26,7 +26,10 @@ src/
 │   │   └── schemas/        — login.schema.ts, recuperacion.schema.ts (Zod)
 │   ├── perfiles/           — catálogo de perfiles (RF-09), solo lectura; mismo patrón de capas
 │   │   └── domain/entities/Perfil.ts — esPerfilAdministrador, esPerfilNotificador, CODIGO_PERFIL_*
-│   ├── usuarios/           — mismo patrón; mantenedor de usuarios (RF-06, implementado)
+│   ├── usuarios/           — mismo patrón; mantenedor de usuarios (RF-06, implementado). Desde
+│   │                         RF-30 los casos de uso de alta/edición reciben además la INTERFAZ
+│   │                         `EstablecimientoRepository` (application/validarEstablecimientoUsuario.ts,
+│   │                         errors/EstablecimientoInvalidoError.ts)
 │   ├── formatos-excel/     — mantenedor de formatos de archivo (RF-13, implementado; reglas de
 │   │                         validación por conjunto de columnas y `tipoArchivo` agregados como
 │   │                         extensión)
@@ -69,6 +72,10 @@ src/
 │   │   ├── infrastructure/ — repositories/PrismaVentanaCargaRepository.ts, auditoria/
 │   │   └── schemas/        — ventana-carga.schema.ts (anioVentanaCargaSchema reutilizado por
 │   │                         `reporte-excel/schemas/reporte-excel.schema.ts`, para no duplicar rango)
+│   ├── tipoEstablecimiento/ — catálogo de tipos de establecimiento (baja lógica con `activo`; desde
+│   │                         RF-29 también eliminación física si ningún establecimiento lo usa: la
+│   │                         decide la FK `Restrict`, P2003 → 409; `listarConUso()` con `_count` solo
+│   │                         para el mantenedor, `listar()` sigue sirviendo a los selects)
 │   ├── regiones/           — catálogo de Regiones (RF-26, implementado; solo ADMIN). Mismo patrón
 │   │                         de capas: entities/Region.ts, errors/ (RegionDuplicadaError con el
 │   │                         campo en conflicto, RegionEnUsoError), use-cases/ (Listar/Obtener/
@@ -199,6 +206,9 @@ Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no 
   `usuario.perfilCodigo` es FK a `perfil.codigo` (`ON UPDATE CASCADE`, `ON DELETE RESTRICT`).
   Desde RF-25, índices `@@index([usuarioId])` en `carga_archivo` y `alerta_notificacion_ventana`
   (ver "Eliminación física solo sin historial").
+  Desde RF-30, `usuario.establecimientoId` es FK nullable a `establecimiento.id` (`ON UPDATE CASCADE`,
+  `ON DELETE RESTRICT`, `@@index([establecimientoId])`); ver "El usuario pertenece a un
+  establecimiento (RF-30)".
 
 ## Agentes de desarrollo
 
@@ -237,6 +247,34 @@ el historial. La FK `Restrict` es la defensa final (P2003 → `CON_HISTORIAL`). 
 `P2010` (con `meta.driverAdapterError.cause.originalCode = "40001"`) dentro de `$queryRaw`; el
 repositorio reconoce ambos. Si tras el conflicto la fila ya no existe, responde 404 en vez de pedir
 reintentar.
+
+### El usuario pertenece a un establecimiento (RF-30)
+
+* **Obligatoriedad fuera de la BD.** La columna es nullable porque solo NOTIFICADOR_RPC la exige y
+  las cuentas previas no la tienen; la regla se aplica en Zod y se repite en `application/`
+  (`validarEstablecimientoUsuario.ts`, usada por alta y edición), mismo criterio que "todo
+  NOTIFICADOR_RPC tiene al menos un formato". Se evalúa después de las reglas de autorización y
+  anti-autobloqueo.
+* **Conservar lo vigente siempre es válido.** Asignar un establecimiento exige que exista y esté
+  activo (`existeActivo()`), salvo que sea el que la persona ya tiene: desactivar un establecimiento
+  no deja inválidas las cuentas que lo usan (mismo criterio que `conservaSuPerfil`). Por eso el
+  select de edición pide `listarOpciones({ soloActivos: true, incluirIds: [vigente] })` en una sola
+  consulta (`activo OR id IN …`); sin el vigente, el navegador elegiría otra opción y guardar lo
+  cambiaría en silencio. El filtro del listado usa `soloActivos: false`.
+* **Dependencia entre módulos por interfaz.** `usuarios/application/` recibe
+  `EstablecimientoRepository` (interfaz de `modules/establecimiento/domain/`), nunca su implementación
+  Prisma; el Route Handler inyecta `prismaEstablecimientoRepository`.
+* **Carrera cerrada por la FK.** Un P2003 contra `usuario_establecimientoId_fkey` se traduce a
+  `EstablecimientoInvalidoError` (400). Con `@prisma/adapter-pg` el nombre de la restricción no llega
+  en `meta.field_name`/`meta.constraint` sino en `meta.driverAdapterError.cause.constraint`
+  (`{ index }` o `{ fields }`); `restriccionFkViolada()` en `PrismaUsuarioRepository` lee ambas formas.
+  La rama del establecimiento va antes del fallback a `PerfilInvalidoError`.
+* **Listado.** `LEFT JOIN "establecimiento"` en el `$queryRaw` (un JOIN interno haría desaparecer las
+  cuentas sin establecimiento); el filtro compara `u."establecimientoId"` directamente, así que el
+  conteo no necesita el JOIN. La relación inversa `Establecimiento.usuarios` existe solo porque Prisma
+  la exige: nunca usarla con `include` en el listado de establecimientos (N+1).
+* **No es historial.** `establecimiento` es una relación de ida (`usuario` apunta a otra tabla), así
+  que no se clasifica en `relacionesHistorialUsuario.ts` y no bloquea la eliminación de la cuenta.
 
 ### El guard de API vive en el Route Handler, no en el proxy
 

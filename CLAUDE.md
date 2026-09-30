@@ -180,6 +180,11 @@ Puntos que hay que respetar al tocarlo:
   historial; la FK `Restrict` (P2003) es la defensa final. Con `@prisma/adapter-pg`, un fallo de
   serialización dentro de `$queryRaw` llega como `P2010` (código original en
   `meta.driverAdapterError.cause.originalCode`), no como `P2034`: reconocer ambos.
+* **Establecimiento del usuario (RF-30).** `usuario.establecimientoId` es nullable (FK `Restrict`) y
+  solo es obligatorio para NOTIFICADOR_RPC. La regla vive en Zod y en
+  `application/validarEstablecimientoUsuario.ts` (alta y edición): asignar uno exige que esté activo,
+  pero conservar el vigente siempre es válido aunque se haya dado de baja. El listado lo trae con
+  `LEFT JOIN`, nunca con un JOIN interno.
 * **`contrasenaHash` no sale nunca.** El tipo `Usuario` de `domain/entities/` no lo declara, así que el
   compilador impide filtrarlo; el mapper del repositorio lo descarta explícitamente.
 
@@ -281,7 +286,9 @@ Cada entrada debe incluir el mensaje del error y el contexto donde ocurrió; nun
 
 Registra **quién le hizo qué a quién** en el mantenedor de usuarios: creación, actualización,
 activación, desactivación, eliminación (`USUARIO_ELIMINADO`, sin nombre ni correo del eliminado) y
-emisión de enlaces de contraseña. Es distinto de `accesos.txt` (que responde
+emisión de enlaces de contraseña. Otros mantenedores escriben en el mismo log con su propio helper
+`infrastructure/auditoria/auditar<Entidad>.ts` (regiones, provincias, comunas, y en tipos de
+establecimiento solo la eliminación, `TIPO_ESTABLECIMIENTO_ELIMINADO`). Es distinto de `accesos.txt` (que responde
 "quién intentó entrar") y de `errores.txt` (fallas técnicas).
 
 Se escribe con `loggerAuditoria` a través de `registrarAuditoria()`

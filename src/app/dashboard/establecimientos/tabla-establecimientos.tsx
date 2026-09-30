@@ -157,7 +157,7 @@ export function TablaEstablecimientos({ filas, descripcion }: TablaEstablecimien
         descripcion={
           objetivo
             ? objetivo.activo
-              ? `"${objetivo.nombre}" quedará inactivo. Su historial se conserva.`
+              ? `"${objetivo.nombre}" quedará inactivo. Su historial se conserva. Los usuarios asociados conservan este establecimiento, pero no podrá asignarse a usuarios nuevos.`
               : `"${objetivo.nombre}" volverá a estar activo.`
             : ""
         }

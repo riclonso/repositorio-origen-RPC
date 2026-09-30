@@ -16,6 +16,7 @@ import { CODIGO_PERFIL_ADMIN } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
+import { EstablecimientoInvalidoError } from "@/modules/usuarios/domain/errors/EstablecimientoInvalidoError";
 import { ConflictoConcurrenteError } from "@/modules/usuarios/domain/errors/ConflictoConcurrenteError";
 import {
   EXPRESION_RELACIONES_BLOQUEANTES,
@@ -40,6 +41,8 @@ const SELECCION_USUARIO = {
   createdAt: true,
   bloqueadaHasta: true,
   vecesBloqueada: true,
+  establecimientoId: true,
+  establecimiento: { select: { nombre: true } },
   formatosAsignados: {
     select: { formatoExcel: { select: { id: true, nombre: true } } },
     orderBy: { formatoExcel: { nombre: "asc" } },
@@ -60,6 +63,8 @@ type RegistroUsuario = {
   createdAt: Date;
   bloqueadaHasta: Date | null;
   vecesBloqueada: number;
+  establecimientoId: string | null;
+  establecimiento: { nombre: string } | null;
   formatosAsignados: { formatoExcel: FormatoExcelAsignado }[];
 };
 
@@ -82,6 +87,8 @@ function aUsuario(registro: RegistroUsuario): Usuario {
     formatosExcel: registro.formatosAsignados.map((asignacion) => asignacion.formatoExcel),
     bloqueadaHasta: registro.bloqueadaHasta,
     vecesBloqueada: registro.vecesBloqueada,
+    establecimientoId: registro.establecimientoId,
+    establecimientoNombre: registro.establecimiento?.nombre ?? null,
   };
 }
 
@@ -108,10 +115,36 @@ function campoDesdeConflicto(error: Prisma.PrismaClientKnownRequestError): Campo
   return "rut";
 }
 
-// El perfil y los formatos enviados se validan antes de escribir, así que llegar aquí significa
-// que alguno desapareció entre la comprobación y el INSERT/UPDATE. Se traduce a un error de
-// dominio, distinguiendo cuál de las dos claves foráneas fue, para que el borde responda 400 y
-// no un 500 por violación de clave foránea.
+// Texto (en minúsculas) que identifica la FK violada en un P2003. Con `@prisma/adapter-pg` el
+// nombre NO llega en `meta.field_name` ni en `meta.constraint` (esos campos son del motor nativo):
+// llega en `meta.driverAdapterError.cause.constraint` como `{ index: "usuario_establecimientoId_fkey" }`
+// (o `{ fields: [...] }`). Comprobado en RF-30 contra PostgreSQL. Se leen ambas formas.
+function restriccionFkViolada(error: Prisma.PrismaClientKnownRequestError): string {
+  const partes: string[] = [String(error.meta?.field_name ?? ""), String(error.meta?.constraint ?? "")];
+  const errorAdaptador = error.meta?.driverAdapterError;
+
+  if (typeof errorAdaptador === "object" && errorAdaptador !== null && "cause" in errorAdaptador) {
+    const causa = errorAdaptador.cause;
+
+    if (typeof causa === "object" && causa !== null && "constraint" in causa) {
+      const restriccion = causa.constraint;
+
+      if (typeof restriccion === "object" && restriccion !== null) {
+        if ("index" in restriccion) partes.push(String(restriccion.index));
+        if ("fields" in restriccion && Array.isArray(restriccion.fields)) {
+          partes.push(restriccion.fields.map(String).join(","));
+        }
+      }
+    }
+  }
+
+  return partes.join(" ").toLowerCase();
+}
+
+// El perfil, los formatos y el establecimiento enviados se validan antes de escribir, así que
+// llegar aquí significa que alguno desapareció entre la comprobación y el INSERT/UPDATE. Se traduce
+// a un error de dominio, distinguiendo cuál de las claves foráneas fue, para que el borde responda
+// 400 y no un 500 por violación de clave foránea.
 function traducirConflicto(error: unknown, perfilCodigo: string): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === CODIGO_UNIQUE_VIOLADO) {
@@ -119,10 +152,16 @@ function traducirConflicto(error: unknown, perfilCodigo: string): never {
     }
 
     if (error.code === CODIGO_FK_VIOLADA) {
-      const campoFk = String(error.meta?.field_name ?? error.meta?.constraint ?? "").toLowerCase();
+      const campoFk = restriccionFkViolada(error);
 
       if (campoFk.includes("formatoexcelid")) {
         throw new FormatoExcelInvalidoError();
+      }
+
+      // RF-30. Va ANTES del fallback: sin esta rama, un establecimiento borrado entre la
+      // comprobación y la escritura se informaría como perfil inválido.
+      if (campoFk.includes("establecimientoid")) {
+        throw new EstablecimientoInvalidoError();
       }
 
       throw new PerfilInvalidoError(perfilCodigo);
@@ -155,6 +194,11 @@ function construirPredicado(filtro: FiltroListadoUsuarios): Prisma.Sql {
   // aunque cambie el nombre visible de un perfil.
   if (filtro.perfilesPermitidos?.length) {
     condiciones.push(Prisma.sql`u."perfilCodigo" IN (${Prisma.join(filtro.perfilesPermitidos)})`);
+  }
+
+  // RF-30: compara la FK en la propia tabla `usuario`, así que el conteo tampoco necesita el JOIN.
+  if (filtro.establecimiento) {
+    condiciones.push(Prisma.sql`u."establecimientoId" = ${filtro.establecimiento}`);
   }
 
   if (filtro.activo !== undefined) {
@@ -198,6 +242,9 @@ type FilaListado = {
   createdAt: Date;
   bloqueadaHasta: Date | null;
   vecesBloqueada: number;
+  // RF-30: `null` cuando la cuenta no tiene establecimiento (LEFT JOIN sin contraparte).
+  establecimientoId: string | null;
+  establecimientoNombre: string | null;
   // RF-25: calculado por el motor con `EXPRESION_TIENE_HISTORIAL` (un EXISTS por relación).
   tieneHistorial: boolean;
 };
@@ -227,6 +274,9 @@ function aUsuarioDesdeFila(fila: FilaListado): UsuarioListado {
           ? fila.bloqueadaHasta
           : new Date(fila.bloqueadaHasta),
     vecesBloqueada: Number(fila.vecesBloqueada),
+    establecimientoId: fila.establecimientoId === null ? null : String(fila.establecimientoId),
+    establecimientoNombre:
+      fila.establecimientoNombre === null ? null : String(fila.establecimientoNombre),
     tieneHistorial: Boolean(fila.tieneHistorial),
   };
 }
@@ -271,16 +321,20 @@ export const prismaUsuarioRepository: UsuarioRepository = {
     // El desempate por `id` es obligatorio: sin él, dos homónimos pueden repetirse o perderse
     // entre páginas. Ambas consultas van en la misma transacción para ver el mismo snapshot.
     // El JOIN con `perfil` es interno y no LEFT: la clave foránea NOT NULL garantiza contraparte,
-    // y un LEFT JOIN escondería una inconsistencia devolviendo un nombre vacío.
+    // y un LEFT JOIN escondería una inconsistencia devolviendo un nombre vacío. El de
+    // `establecimiento` (RF-30) SÍ es LEFT: la FK es nullable, y un JOIN interno haría desaparecer
+    // del listado a toda cuenta sin establecimiento.
     const [filas, conteo] = await prisma.$transaction([
       prisma.$queryRaw<FilaListado[]>`
         SELECT u."id", u."nombres", u."apellidos", u."rut", u."email", u."username",
                (u."contrasenaHash" IS NOT NULL) AS "tieneContrasena",
                u."perfilCodigo", p."nombre" AS "perfilNombre", u."activo", u."createdAt",
                u."bloqueadaHasta", u."vecesBloqueada",
+               u."establecimientoId", e."nombre" AS "establecimientoNombre",
                ${EXPRESION_TIENE_HISTORIAL} AS "tieneHistorial"
         FROM "usuario" u
         JOIN "perfil" p ON p."codigo" = u."perfilCodigo"
+        LEFT JOIN "establecimiento" e ON e."id" = u."establecimientoId"
         WHERE ${predicado}
         ORDER BY u."apellidos" ASC, u."nombres" ASC, u."id" ASC
         LIMIT ${filtro.tamano} OFFSET ${salto}
@@ -360,6 +414,7 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           username: datos.username,
           contrasenaHash: datos.contrasenaHash,
           perfilCodigo: datos.perfilCodigo,
+          establecimientoId: datos.establecimientoId,
           activo: datos.activo,
           formatosAsignados: {
             create: datos.formatosExcelIds.map((formatoExcelId) => ({ formatoExcelId })),
@@ -386,6 +441,8 @@ export const prismaUsuarioRepository: UsuarioRepository = {
           apellidos: datos.apellidos,
           email: datos.email,
           perfilCodigo: datos.perfilCodigo,
+          // `null` quita el establecimiento (permitido para perfiles distintos de notificador).
+          establecimientoId: datos.establecimientoId,
           formatosAsignados: {
             deleteMany: {},
             create: datos.formatosExcelIds.map((formatoExcelId) => ({ formatoExcelId })),

@@ -64,15 +64,52 @@ function validarFormatosExcelSegunPerfil(
   }
 }
 
+export const MENSAJE_ESTABLECIMIENTO_REQUERIDO = "Selecciona un establecimiento";
+
+// RF-30: el select envía "" para "Sin establecimiento", y un cliente puede omitir el campo o mandar
+// `null`: los tres significan "sin establecimiento" y se normalizan a `null`. Si viene un valor,
+// debe tener forma de UUID; que exista y esté activo lo comprueba el caso de uso.
+const establecimientoIdSchema = z
+  .string()
+  .trim()
+  .nullish()
+  .transform((valor) => (valor ? valor : null))
+  .pipe(z.uuid("Selecciona un establecimiento válido").nullable());
+
+// Regla cruzada perfil/establecimiento (RF-30), compartida entre alta y edición: NOTIFICADOR_RPC
+// debe pertenecer a un establecimiento; para el resto de los perfiles es opcional. El caso de uso la
+// repite (ESTABLECIMIENTO_REQUERIDO) para que no dependa solo de este esquema.
+function validarEstablecimientoSegunPerfil(
+  datos: { perfilCodigo: string; establecimientoId: string | null },
+  contexto: z.RefinementCtx,
+): void {
+  if (esPerfilNotificador(datos.perfilCodigo) && datos.establecimientoId === null) {
+    contexto.addIssue({
+      code: "custom",
+      path: ["establecimientoId"],
+      message: MENSAJE_ESTABLECIMIENTO_REQUERIDO,
+    });
+  }
+}
+
+function validarReglasSegunPerfil(
+  datos: { perfilCodigo: string; formatosExcelIds: string[]; establecimientoId: string | null },
+  contexto: z.RefinementCtx,
+): void {
+  validarFormatosExcelSegunPerfil(datos, contexto);
+  validarEstablecimientoSegunPerfil(datos, contexto);
+}
+
 // Al CREAR no se pide contraseña: la cuenta nace pendiente de activación y la persona la fija por
 // el enlace. Objeto "plano" (sin `superRefine`) para reutilizarlo; el perfil NOTIFICADOR_RPC sí
-// lleva sus formatos de archivo asignados.
+// lleva sus formatos de archivo asignados y su establecimiento.
 const crearUsuarioObjectSchema = usuarioSchema.extend({
   perfilCodigo: codigoPerfilSchema,
   formatosExcelIds: formatosExcelIdsSchema,
+  establecimientoId: establecimientoIdSchema,
 });
 
-export const crearUsuarioSchema = crearUsuarioObjectSchema.superRefine(validarFormatosExcelSegunPerfil);
+export const crearUsuarioSchema = crearUsuarioObjectSchema.superRefine(validarReglasSegunPerfil);
 
 export type CrearUsuarioInput = z.infer<typeof crearUsuarioSchema>;
 
@@ -84,8 +121,9 @@ export const editarUsuarioSchema = z
     email: emailSchema,
     perfilCodigo: codigoPerfilSchema,
     formatosExcelIds: formatosExcelIdsSchema,
+    establecimientoId: establecimientoIdSchema,
   })
-  .superRefine(validarFormatosExcelSegunPerfil);
+  .superRefine(validarReglasSegunPerfil);
 
 export type EditarUsuarioInput = z.infer<typeof editarUsuarioSchema>;
 

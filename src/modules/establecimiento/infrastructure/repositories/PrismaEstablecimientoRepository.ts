@@ -4,7 +4,9 @@ import type { EstablecimientoRepository } from "@/modules/establecimiento/domain
 import type {
   CampoUnico,
   Establecimiento,
+  EstablecimientoOpcion,
   FiltroListadoEstablecimientos,
+  FiltroOpcionesEstablecimiento,
 } from "@/modules/establecimiento/domain/entities/Establecimiento";
 import { EstablecimientoDuplicadoError } from "@/modules/establecimiento/domain/errors/EstablecimientoDuplicadoError";
 import { TipoInvalidoError } from "@/modules/establecimiento/domain/errors/TipoInvalidoError";
@@ -130,7 +132,39 @@ function aEstablecimientoDesdeFila(fila: FilaListado): Establecimiento {
   };
 }
 
+// Un solo predicado: los activos MÁS los ids pedidos explícitamente (mismo criterio que
+// `PrismaTipoEstablecimientoRepository`). Resolverlo con dos consultas y unir en memoria sería una
+// consulta de más por cada select que lo use.
+function construirFiltroOpciones(
+  filtro: FiltroOpcionesEstablecimiento,
+): Prisma.EstablecimientoWhereInput {
+  if (!filtro.soloActivos) {
+    return {};
+  }
+
+  const idsIncluidos = filtro.incluirIds?.filter((id) => id.length > 0) ?? [];
+
+  if (idsIncluidos.length === 0) {
+    return { activo: true };
+  }
+
+  return { OR: [{ activo: true }, { id: { in: idsIncluidos } }] };
+}
+
 export const prismaEstablecimientoRepository: EstablecimientoRepository = {
+  async listarOpciones(filtro): Promise<EstablecimientoOpcion[]> {
+    return prisma.establecimiento.findMany({
+      where: construirFiltroOpciones(filtro),
+      select: { id: true, nombre: true, rut: true, activo: true },
+      orderBy: [{ nombre: "asc" }, { id: "asc" }],
+    });
+  },
+
+  async existeActivo(id) {
+    const cantidad = await prisma.establecimiento.count({ where: { id, activo: true } });
+    return cantidad > 0;
+  },
+
   async listar(filtro) {
     // Un único predicado compartido por las filas y el conteo: duplicarlo es la causa clásica de
     // que el total y las filas dejen de coincidir.

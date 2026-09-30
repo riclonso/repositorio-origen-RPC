@@ -5,6 +5,7 @@ import { eliminarUsuario } from "@/modules/usuarios/application/use-cases/Elimin
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import { editarUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
 import {
@@ -16,6 +17,8 @@ import {
   idUsuarioSchema,
   respuestaDuplicado,
   respuestaError,
+  respuestaEstablecimientoInvalido,
+  respuestaEstablecimientoRequerido,
   respuestaFormatoExcelInvalido,
   respuestaPerfilAdminRestringido,
   respuestaPerfilInvalido,
@@ -81,18 +84,27 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
         repositorio: prismaUsuarioRepository,
         repositorioPerfiles: prismaPerfilRepository,
         repositorioFormatosExcel: prismaFormatoExcelRepository,
+        repositorioEstablecimientos: prismaEstablecimientoRepository,
       },
     );
 
     if (!resultado.ok) {
-      // Un perfil o un formato inválidos son errores de validación: no se auditan, como el
-      // resto de los 400.
+      // Un perfil, un formato o un establecimiento inválidos son errores de validación: no se
+      // auditan, como el resto de los 400.
       if (resultado.motivo === "PERFIL_INVALIDO") {
         return respuestaPerfilInvalido();
       }
 
       if (resultado.motivo === "FORMATO_INVALIDO") {
         return respuestaFormatoExcelInvalido();
+      }
+
+      if (resultado.motivo === "ESTABLECIMIENTO_REQUERIDO") {
+        return respuestaEstablecimientoRequerido();
+      }
+
+      if (resultado.motivo === "ESTABLECIMIENTO_INVALIDO") {
+        return respuestaEstablecimientoInvalido();
       }
 
       // 403, no un 409 de MENSAJES_CONFLICTO: es un rechazo de autorización, no un conflicto de

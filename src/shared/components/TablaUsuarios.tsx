@@ -28,6 +28,8 @@ export type FilaUsuarioVista = {
   username: string;
   perfilCodigo: string;
   perfilNombre: string;
+  // RF-30: `null` = sin establecimiento (se muestra "Sin establecimiento" en gris).
+  establecimientoNombre: string | null;
   activo: boolean;
   tieneContrasena: boolean;
   creadoEl: string;
@@ -234,6 +236,17 @@ function ChipBloqueada({ fila }: { fila: FilaUsuarioVista }) {
   );
 }
 
+// RF-30: misma presentación en la columna de escritorio y en la tarjeta móvil. "Sin establecimiento"
+// se distingue en cursiva y no con un gris más claro: `gob-gray-b` no alcanza el contraste AA en
+// texto pequeño.
+function EstablecimientoFila({ fila }: { fila: FilaUsuarioVista }) {
+  return fila.establecimientoNombre ? (
+    <>{fila.establecimientoNombre}</>
+  ) : (
+    <span className="italic text-gob-gray-a">Sin establecimiento</span>
+  );
+}
+
 const COLUMNAS: ColumnaTabla<FilaUsuarioVista>[] = [
   {
     encabezado: "Nombre",
@@ -261,6 +274,11 @@ const COLUMNAS: ColumnaTabla<FilaUsuarioVista>[] = [
     encabezado: "Perfil",
     className: "whitespace-nowrap px-3 py-2 text-gob-gray-a",
     contenido: (fila) => fila.perfilNombre,
+  },
+  {
+    encabezado: "Establecimiento",
+    className: "min-w-36 px-3 py-2 text-gob-gray-a",
+    contenido: (fila) => <EstablecimientoFila fila={fila} />,
   },
   {
     encabezado: "Creado",
@@ -440,7 +458,7 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
         columnas={COLUMNAS}
         filas={filas}
         claveFila={(fila) => fila.id}
-        anchoMinimo="min-w-3xl"
+        anchoMinimo="min-w-4xl"
         acciones={(fila) => (
           <AccionesFila
             fila={fila}
@@ -462,6 +480,9 @@ export function TablaUsuarios({ filas, actorId, descripcion, rutaBase, actorEsAd
             <p className="break-all">{fila.email}</p>
             <p className="mt-1">
               {fila.perfilNombre}, creado el {fila.creadoEl}
+            </p>
+            <p className="mt-1">
+              <EstablecimientoFila fila={fila} />
             </p>
             <div className="mt-3">
               <AccionesFila

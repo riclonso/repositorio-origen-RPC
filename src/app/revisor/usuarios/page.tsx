@@ -4,6 +4,8 @@ import Link from "next/link";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { listarEstablecimientosParaSelect } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientosParaSelect";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   FILTRO_LISTADO_POR_DEFECTO,
@@ -11,6 +13,7 @@ import {
 } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
 import {
   CODIGO_PERFIL_NOTIFICADOR,
   CODIGO_PERFIL_REVISOR_REPOSITORIO,
@@ -44,10 +47,15 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
     : { ...FILTRO_LISTADO_POR_DEFECTO };
 
   // Se ofrecen TODOS los perfiles, incluidos los dados de baja: un perfil desactivado que aún
-  // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse.
-  const [sesion, perfiles] = await Promise.all([
+  // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse. Mismo
+  // criterio para los establecimientos (RF-30).
+  const [sesion, perfiles, establecimientos] = await Promise.all([
     obtenerSesionActual(),
     listarPerfiles({}, { repositorio: prismaPerfilRepository }),
+    listarEstablecimientosParaSelect(
+      { soloActivos: false },
+      { repositorio: prismaEstablecimientoRepository },
+    ),
   ]);
 
   const actorId = sesion?.sub ?? "";
@@ -77,9 +85,11 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
         key={`filtros:${claveFiltro}`}
         terminoInicial={filtro.termino ?? ""}
         perfilInicial={filtro.perfil ?? ""}
+        establecimientoInicial={filtro.establecimiento ?? ""}
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
         opcionesPerfil={aOpcionesPerfil(perfiles.filter((perfil) => !esPerfilAdministrador(perfil.codigo)))}
+        opcionesEstablecimiento={aOpcionesEstablecimiento(establecimientos)}
         rutaBase={RUTA_USUARIOS_REVISOR}
       />
 

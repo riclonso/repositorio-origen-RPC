@@ -11,6 +11,13 @@ import { CampoTexto } from "@/shared/components/CampoTexto";
 // la página, que los lee de la base.
 const OPCION_TODOS_LOS_PERFILES: OpcionSelect = { valor: "", etiqueta: "Todos los perfiles" };
 
+// RF-30: igual que los perfiles, los establecimientos llegan por props (todos, incluidos los
+// inactivos marcados, para poder encontrar cuentas de un establecimiento dado de baja).
+const OPCION_TODOS_LOS_ESTABLECIMIENTOS: OpcionSelect = {
+  valor: "",
+  etiqueta: "Todos los establecimientos",
+};
+
 const OPCIONES_ESTADO = [
   { valor: "", etiqueta: "Todos los estados" },
   { valor: "true", etiqueta: "Activos" },
@@ -25,9 +32,11 @@ const OPCIONES_ESTADO = [
 type FiltrosUsuariosProps = {
   terminoInicial: string;
   perfilInicial: string;
+  establecimientoInicial: string;
   activoInicial: string;
   tamano: number;
   opcionesPerfil: OpcionSelect[];
+  opcionesEstablecimiento: OpcionSelect[];
   rutaBase: string;
 };
 
@@ -36,9 +45,11 @@ type FiltrosUsuariosProps = {
 export function FiltrosUsuarios({
   terminoInicial,
   perfilInicial,
+  establecimientoInicial,
   activoInicial,
   tamano,
   opcionesPerfil,
+  opcionesEstablecimiento,
   rutaBase,
 }: FiltrosUsuariosProps) {
   const router = useRouter();
@@ -53,11 +64,13 @@ export function FiltrosUsuarios({
     const datos = new FormData(evento.currentTarget);
     const termino = String(datos.get("q") ?? "").trim();
     const perfil = String(datos.get("perfil") ?? "");
+    const establecimiento = String(datos.get("establecimiento") ?? "");
     const activo = String(datos.get("activo") ?? "");
 
     const parametros = new URLSearchParams();
     if (termino) parametros.set("q", termino);
     if (perfil) parametros.set("perfil", perfil);
+    if (establecimiento) parametros.set("establecimiento", establecimiento);
     if (activo) parametros.set("activo", activo);
     if (tamano !== FILTRO_LISTADO_POR_DEFECTO.tamano) {
       parametros.set("tamano", String(tamano));
@@ -79,7 +92,7 @@ export function FiltrosUsuarios({
       aria-busy={buscando || undefined}
       className="card-sistema mt-6 p-4"
     >
-      <div className="grid gap-4 md:grid-cols-[2fr_1fr_1fr]">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr]">
         <CampoTexto
           id="filtro-q"
           name="q"
@@ -96,6 +109,14 @@ export function FiltrosUsuarios({
           etiqueta="Perfil"
           opciones={[OPCION_TODOS_LOS_PERFILES, ...opcionesPerfil]}
           defaultValue={perfilInicial}
+        />
+
+        <CampoSelect
+          id="filtro-establecimiento"
+          name="establecimiento"
+          etiqueta="Establecimiento"
+          opciones={[OPCION_TODOS_LOS_ESTABLECIMIENTOS, ...opcionesEstablecimiento]}
+          defaultValue={establecimientoInicial}
         />
 
         <CampoSelect

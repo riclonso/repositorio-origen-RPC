@@ -33,6 +33,11 @@ export type Usuario = {
   // en ninguna regla de `application/` de este módulo (la usa `modules/auth/` para decidir la
   // duración del próximo bloqueo).
   vecesBloqueada: number;
+  // RF-30: establecimiento al que pertenece la persona. Mismo patrón plano que el perfil:
+  // `establecimientoId` identifica, `establecimientoNombre` se muestra. Obligatorio solo para
+  // NOTIFICADOR_RPC; `null` en cuentas de otros perfiles sin establecimiento y en las previas a RF-30.
+  establecimientoId: string | null;
+  establecimientoNombre: string | null;
 };
 
 // Tipo DELIBERADAMENTE separado de `Usuario`: es el único punto de `modules/usuarios/` que expone
@@ -59,6 +64,7 @@ export type DatosNuevoUsuario = Omit<
   | "formatosExcel"
   | "bloqueadaHasta"
   | "vecesBloqueada"
+  | "establecimientoNombre"
 > & {
   contrasenaHash: string | null;
   formatosExcelIds: string[];
@@ -66,7 +72,7 @@ export type DatosNuevoUsuario = Omit<
 
 export type DatosEdicionUsuario = Pick<
   Usuario,
-  "nombres" | "apellidos" | "email" | "perfilCodigo"
+  "nombres" | "apellidos" | "email" | "perfilCodigo" | "establecimientoId"
 > & { formatosExcelIds: string[] };
 
 // Campos con restricción UNIQUE en la tabla `usuario`.
@@ -79,6 +85,9 @@ export type FiltroListadoUsuarios = {
   // expone en el formulario: limita a REVISOR_REPOSITORIO a los perfiles expresamente permitidos,
   // incluso si el catálogo suma perfiles nuevos en el futuro.
   perfilesPermitidos?: readonly string[];
+  // RF-30: id del establecimiento. Filtro de búsqueda: un id bien formado pero inexistente devuelve
+  // una lista vacía.
+  establecimiento?: string;
   activo?: boolean;
   pagina: number;
   tamano: number;

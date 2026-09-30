@@ -44,3 +44,23 @@ export type PaginaEstablecimientos = {
   filas: Establecimiento[];
   total: number;
 };
+
+// RF-30: opción de un select de establecimiento (alta/edición de usuarios y filtro del listado).
+// Proyección angosta: el select no necesita dirección ni tipo. `activo` viaja para que la etiqueta
+// marque "(inactivo)" a los que solo aparecen por `incluirIds` o en el filtro.
+export type EstablecimientoOpcion = {
+  id: string;
+  nombre: string;
+  rut: string;
+  activo: boolean;
+};
+
+export type FiltroOpcionesEstablecimiento = {
+  // `true`: solo activos (más `incluirIds`); `false`: todos, incluidos los inactivos (lo usa el
+  // filtro del listado de usuarios, para poder encontrar cuentas de un establecimiento dado de baja).
+  soloActivos: boolean;
+  // Ids que se incluyen aunque estén inactivos. Lo necesita la edición de usuario: si el
+  // establecimiento vigente fue dado de baja y no aparece en el select, el navegador elegiría otra
+  // opción y guardar lo cambiaría en silencio (mismo criterio que `OpcionesListadoTipos.incluirIds`).
+  incluirIds?: string[];
+};

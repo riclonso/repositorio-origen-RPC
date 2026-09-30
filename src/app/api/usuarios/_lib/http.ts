@@ -4,6 +4,7 @@ import type {
   Usuario,
   UsuarioListado,
 } from "@/modules/usuarios/domain/entities/Usuario";
+import { MENSAJE_ESTABLECIMIENTO_REQUERIDO } from "@/modules/usuarios/schemas/usuario.schema";
 import {
   exigirAdmin,
   exigirAdminORevisor,
@@ -67,6 +68,24 @@ export function respuestaFormatoExcelInvalido(): NextResponse {
   return respuestaError("Uno de los formatos de archivo seleccionados no está disponible", 400, {
     campo: "formatosExcelIds",
     codigo: "FORMATO_INVALIDO",
+  });
+}
+
+// RF-30: mismo criterio que `respuestaPerfilInvalido`, para un establecimiento inexistente o dado
+// de baja (distinto del que la persona ya tenía).
+export function respuestaEstablecimientoInvalido(): NextResponse {
+  return respuestaError("El establecimiento seleccionado no está disponible", 400, {
+    campo: "establecimientoId",
+    codigo: "ESTABLECIMIENTO_INVALIDO",
+  });
+}
+
+// RF-30: el perfil NOTIFICADOR_RPC exige establecimiento. Normalmente lo corta antes el esquema Zod;
+// esta respuesta cubre la misma regla repetida en `application/`.
+export function respuestaEstablecimientoRequerido(): NextResponse {
+  return respuestaError(MENSAJE_ESTABLECIMIENTO_REQUERIDO, 400, {
+    campo: "establecimientoId",
+    codigo: "ESTABLECIMIENTO_REQUERIDO",
   });
 }
 

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarPerfiles";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
+import { listarEstablecimientosParaSelect } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientosParaSelect";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   FILTRO_LISTADO_POR_DEFECTO,
@@ -11,6 +13,7 @@ import {
 } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
+import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
 import { FiltrosUsuarios } from "@/shared/components/FiltrosUsuarios";
 import { ListadoUsuarios } from "@/shared/components/ListadoUsuarios";
 import { RUTA_USUARIOS_DASHBOARD, construirRutaUsuariosDashboard } from "./ruta-usuarios";
@@ -37,10 +40,15 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
     : { ...FILTRO_LISTADO_POR_DEFECTO };
 
   // Se ofrecen TODOS los perfiles, incluidos los dados de baja: un perfil desactivado que aún
-  // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse.
-  const [sesion, perfiles] = await Promise.all([
+  // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse. Mismo
+  // criterio para los establecimientos (RF-30).
+  const [sesion, perfiles, establecimientos] = await Promise.all([
     obtenerSesionActual(),
     listarPerfiles({}, { repositorio: prismaPerfilRepository }),
+    listarEstablecimientosParaSelect(
+      { soloActivos: false },
+      { repositorio: prismaEstablecimientoRepository },
+    ),
   ]);
 
   const actorId = sesion?.sub ?? "";
@@ -68,9 +76,11 @@ export default async function UsuariosPage({ searchParams }: UsuariosPageProps) 
         key={`filtros:${claveFiltro}`}
         terminoInicial={filtro.termino ?? ""}
         perfilInicial={filtro.perfil ?? ""}
+        establecimientoInicial={filtro.establecimiento ?? ""}
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
         opcionesPerfil={aOpcionesPerfil(perfiles)}
+        opcionesEstablecimiento={aOpcionesEstablecimiento(establecimientos)}
         rutaBase={RUTA_USUARIOS_DASHBOARD}
       />
 

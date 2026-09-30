@@ -23,7 +23,13 @@ export type ValoresUsuarioForm = {
   email: string;
   perfilCodigo: string;
   formatosExcelIds: string[];
+  // RF-30: "" = sin establecimiento (el esquema lo normaliza a `null`).
+  establecimientoId: string;
 };
+
+// RF-30: opción vacía siempre presente. Para NOTIFICADOR_RPC el esquema la rechaza; para el resto de
+// los perfiles es una elección válida (el establecimiento es opcional).
+const OPCION_SIN_ESTABLECIMIENTO: OpcionSelect = { valor: "", etiqueta: "Sin establecimiento" };
 
 type EstadoUsuarioForm = {
   errores: Record<string, string>;
@@ -65,6 +71,9 @@ type UsuarioFormProps = {
   opcionesPerfil: OpcionSelect[];
   // Formatos activos + los que la persona ya tuviera asignados (ver `opciones-formato-excel.ts`).
   opcionesFormatoExcel: OpcionSeleccionMultiple[];
+  // RF-30: establecimientos activos + el vigente de la persona en edición (ver
+  // `opciones-establecimiento.ts`). La opción vacía la agrega este formulario.
+  opcionesEstablecimiento: OpcionSelect[];
 };
 
 export function UsuarioForm({
@@ -75,6 +84,7 @@ export function UsuarioForm({
   valoresIniciales,
   opcionesPerfil,
   opcionesFormatoExcel,
+  opcionesEstablecimiento,
 }: UsuarioFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
@@ -102,6 +112,7 @@ export function UsuarioForm({
         perfilCodigo: String(formData.get("perfilCodigo") ?? ""),
         rut: String(formData.get("rut") ?? ""),
         formatosExcelIds: valores.formatosExcelIds,
+        establecimientoId: String(formData.get("establecimientoId") ?? ""),
       };
 
       let cuerpo: Record<string, unknown>;
@@ -120,6 +131,7 @@ export function UsuarioForm({
           email: analisis.data.email,
           perfilCodigo: analisis.data.perfilCodigo,
           formatosExcelIds: analisis.data.formatosExcelIds,
+          establecimientoId: analisis.data.establecimientoId,
         };
       } else {
         const analisis = editarUsuarioSchema.safeParse(bruto);
@@ -250,6 +262,24 @@ export function UsuarioForm({
             }));
           }}
           error={estado.errores.perfilCodigo}
+        />
+
+        {/* RF-30: cambiar el perfil NO limpia el establecimiento: quien deja de ser notificador
+            puede conservarlo o quitarlo a mano. */}
+        <CampoSelect
+          id="establecimientoId"
+          name="establecimientoId"
+          etiqueta={
+            esPerfilNotificador(valores.perfilCodigo)
+              ? "Establecimiento (obligatorio)"
+              : "Establecimiento"
+          }
+          opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
+          value={valores.establecimientoId}
+          onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
+          aria-required={esPerfilNotificador(valores.perfilCodigo) || undefined}
+          ayuda="Obligatorio para perfil Notificador."
+          error={estado.errores.establecimientoId}
         />
       </div>
 

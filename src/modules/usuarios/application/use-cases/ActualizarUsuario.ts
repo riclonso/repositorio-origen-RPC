@@ -7,10 +7,13 @@ import {
 import type { UsuarioRepository } from "@/modules/usuarios/domain/repositories/UsuarioRepository";
 import type { PerfilRepository } from "@/modules/perfiles/domain/repositories/PerfilRepository";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
+import type { EstablecimientoRepository } from "@/modules/establecimiento/domain/repositories/EstablecimientoRepository";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { UsuarioDuplicadoError } from "@/modules/usuarios/domain/errors/UsuarioDuplicadoError";
 import { PerfilInvalidoError } from "@/modules/usuarios/domain/errors/PerfilInvalidoError";
 import { FormatoExcelInvalidoError } from "@/modules/usuarios/domain/errors/FormatoExcelInvalidoError";
+import { EstablecimientoInvalidoError } from "@/modules/usuarios/domain/errors/EstablecimientoInvalidoError";
+import { validarEstablecimientoUsuario } from "@/modules/usuarios/application/validarEstablecimientoUsuario";
 
 export type ResultadoActualizarUsuario =
   | {
@@ -27,10 +30,18 @@ export type ResultadoActualizarUsuario =
   | { ok: false; motivo: "NO_ENCONTRADO" }
   | { ok: false; motivo: "PERFIL_INVALIDO" }
   | { ok: false; motivo: "FORMATO_INVALIDO" }
+  | { ok: false; motivo: "ESTABLECIMIENTO_REQUERIDO" }
+  | { ok: false; motivo: "ESTABLECIMIENTO_INVALIDO" }
   | { ok: false; motivo: "DUPLICADO"; campo: CampoUnico; rut: string }
   | { ok: false; motivo: "AUTO_OPERACION" | "ULTIMO_ADMIN" | "PERFIL_ADMIN_RESTRINGIDO"; rut: string };
 
-const CAMPOS_EDITABLES = ["nombres", "apellidos", "email", "perfilCodigo"] as const;
+const CAMPOS_EDITABLES = [
+  "nombres",
+  "apellidos",
+  "email",
+  "perfilCodigo",
+  "establecimientoId",
+] as const;
 
 function detectarCamposModificados(actual: Usuario, datos: DatosEdicionUsuario): string[] {
   return CAMPOS_EDITABLES.filter((campo) => actual[campo] !== datos[campo]);
@@ -48,6 +59,7 @@ export async function actualizarUsuario(
     repositorio: UsuarioRepository;
     repositorioPerfiles: PerfilRepository;
     repositorioFormatosExcel: FormatoExcelRepository;
+    repositorioEstablecimientos: EstablecimientoRepository;
   },
 ): Promise<ResultadoActualizarUsuario> {
   const actual = await dependencias.repositorio.obtenerPorId(id);
@@ -94,6 +106,21 @@ export async function actualizarUsuario(
     if (actual.activo && (await dependencias.repositorio.contarAdminsActivos()) <= 1) {
       return { ok: false, motivo: "ULTIMO_ADMIN", rut: actual.rut };
     }
+  }
+
+  // RF-30: se evalúa DESPUÉS de las reglas de autorización y anti-autobloqueo. Un notificador que
+  // quedó sin establecimiento (cuentas previas a RF-30) debe recibir uno al editarse, igual que quien
+  // pasa a ser notificador. Conservar el establecimiento vigente siempre es válido aunque haya sido
+  // dado de baja; asignar uno distinto exige que esté activo.
+  const rechazoEstablecimiento = await validarEstablecimientoUsuario(
+    datos.perfilCodigo,
+    datos.establecimientoId,
+    actual.establecimientoId,
+    dependencias.repositorioEstablecimientos,
+  );
+
+  if (rechazoEstablecimiento) {
+    return { ok: false, motivo: rechazoEstablecimiento };
   }
 
   if (datos.email !== actual.email) {
@@ -153,6 +180,11 @@ export async function actualizarUsuario(
     // Un formato nuevo pudo darse de baja entre la comprobación y el UPDATE.
     if (error instanceof FormatoExcelInvalidoError) {
       return { ok: false, motivo: "FORMATO_INVALIDO" };
+    }
+
+    // El establecimiento pudo eliminarse entre la comprobación y el UPDATE.
+    if (error instanceof EstablecimientoInvalidoError) {
+      return { ok: false, motivo: "ESTABLECIMIENTO_INVALIDO" };
     }
 
     throw error;

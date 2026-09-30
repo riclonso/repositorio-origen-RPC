@@ -6,6 +6,7 @@ import { emitirEnlaceContrasena } from "@/modules/auth/application/use-cases/Emi
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaPasswordResetTokenRepository } from "@/modules/auth/infrastructure/repositories/PrismaPasswordResetTokenRepository";
 import { tokenService } from "@/modules/auth/infrastructure/tokens/TokenService";
@@ -26,6 +27,8 @@ import {
   exigirAdminORevisor,
   respuestaDuplicado,
   respuestaError,
+  respuestaEstablecimientoInvalido,
+  respuestaEstablecimientoRequerido,
   respuestaFormatoExcelInvalido,
   respuestaPerfilAdminRestringido,
   respuestaPerfilInvalido,
@@ -102,17 +105,26 @@ export async function POST(request: Request) {
       repositorio: prismaUsuarioRepository,
       repositorioPerfiles: prismaPerfilRepository,
       repositorioFormatosExcel: prismaFormatoExcelRepository,
+      repositorioEstablecimientos: prismaEstablecimientoRepository,
     });
 
     if (!resultado.ok) {
-      // Un perfil o un formato inválidos son errores de validación: no se auditan, como el
-      // resto de los 400.
+      // Un perfil, un formato o un establecimiento inválidos son errores de validación: no se
+      // auditan, como el resto de los 400.
       if (resultado.motivo === "PERFIL_INVALIDO") {
         return respuestaPerfilInvalido();
       }
 
       if (resultado.motivo === "FORMATO_INVALIDO") {
         return respuestaFormatoExcelInvalido();
+      }
+
+      if (resultado.motivo === "ESTABLECIMIENTO_REQUERIDO") {
+        return respuestaEstablecimientoRequerido();
+      }
+
+      if (resultado.motivo === "ESTABLECIMIENTO_INVALIDO") {
+        return respuestaEstablecimientoInvalido();
       }
 
       if (resultado.motivo === "PERFIL_ADMIN_RESTRINGIDO") {

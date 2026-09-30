@@ -8,8 +8,11 @@ import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/reposi
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
+import { listarEstablecimientosParaSelect } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientosParaSelect";
+import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesFormatoExcel } from "@/shared/components/opciones-formato-excel";
+import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
 import { UsuarioForm } from "@/shared/components/UsuarioForm";
 import { RUTA_USUARIOS_REVISOR } from "../../ruta-usuarios";
 
@@ -42,12 +45,20 @@ export default async function EditarUsuarioRevisorPage({ params }: EditarUsuario
   // navegador elegiría otra opción y guardar le cambiaría el perfil en silencio.
   const idsFormatosAsignados = usuario.formatosExcel.map((formato) => formato.id);
 
-  const [perfiles, formatosExcel] = await Promise.all([
+  // RF-30: mismo criterio para el establecimiento vigente: se incluye aunque esté inactivo.
+  const [perfiles, formatosExcel, establecimientos] = await Promise.all([
     listarPerfiles(
       { soloActivos: true, incluirCodigos: [usuario.perfilCodigo] },
       { repositorio: prismaPerfilRepository },
     ),
     listarFormatosExcel({ repositorio: prismaFormatoExcelRepository }),
+    listarEstablecimientosParaSelect(
+      {
+        soloActivos: true,
+        incluirIds: usuario.establecimientoId ? [usuario.establecimientoId] : [],
+      },
+      { repositorio: prismaEstablecimientoRepository },
+    ),
   ]);
 
   return (
@@ -81,6 +92,7 @@ export default async function EditarUsuarioRevisorPage({ params }: EditarUsuario
           email: usuario.email,
           perfilCodigo: usuario.perfilCodigo,
           formatosExcelIds: idsFormatosAsignados,
+          establecimientoId: usuario.establecimientoId ?? "",
         }}
         opcionesPerfil={aOpcionesPerfil(
           // Un actor REVISOR_REPOSITORIO no puede promover a nadie a ADMIN (regla en
@@ -91,6 +103,7 @@ export default async function EditarUsuarioRevisorPage({ params }: EditarUsuario
           ),
         )}
         opcionesFormatoExcel={aOpcionesFormatoExcel(formatosExcel, idsFormatosAsignados)}
+        opcionesEstablecimiento={aOpcionesEstablecimiento(establecimientos)}
       />
     </div>
   );

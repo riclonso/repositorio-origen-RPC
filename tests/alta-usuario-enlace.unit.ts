@@ -5,6 +5,8 @@ import { emitirEnlaceContrasena } from "../src/modules/auth/application/use-case
 import type { User } from "../src/modules/auth/domain/entities/User";
 import type { Usuario } from "../src/modules/usuarios/domain/entities/Usuario";
 
+const ESTABLECIMIENTO_ID = randomUUID();
+
 const usuarioBase: User = {
   id: randomUUID(),
   nombres: "Ana",
@@ -33,6 +35,7 @@ async function probarAltaSinContrasena() {
       email: usuarioBase.email,
       perfilCodigo: usuarioBase.perfilCodigo,
       formatosExcelIds: [],
+      establecimientoId: ESTABLECIMIENTO_ID,
     },
     "ADMIN",
     {
@@ -58,6 +61,7 @@ async function probarAltaSinContrasena() {
             formatosExcel: [],
             bloqueadaHasta: null,
             vecesBloqueada: 0,
+            establecimientoNombre: "Establecimiento de prueba",
           } satisfies Usuario;
         },
         actualizar: async () => {
@@ -106,6 +110,23 @@ async function probarAltaSinContrasena() {
         buscarPorNombre: async () => null,
         obtenerPlantilla: async () => null,
         contarNotificadoresAsignadosActivosPorFormato: async () => ({}),
+      },
+      // RF-30: el perfil NOTIFICADOR_RPC exige un establecimiento activo.
+      repositorioEstablecimientos: {
+        listarOpciones: async () => [],
+        existeActivo: async (id) => id === ESTABLECIMIENTO_ID,
+        listar: async () => ({ filas: [], total: 0 }),
+        obtenerPorId: async () => null,
+        buscarConflicto: async () => null,
+        crear: async () => {
+          throw new Error("No esperado");
+        },
+        actualizar: async () => {
+          throw new Error("No esperado");
+        },
+        cambiarEstado: async () => {
+          throw new Error("No esperado");
+        },
       },
     },
   );
