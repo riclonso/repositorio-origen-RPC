@@ -7,7 +7,7 @@ import { LONGITUD_MAXIMA_MOTIVO_RECHAZO } from "@/modules/reporte-excel/domain/e
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
-import { IconoMensaje } from "@/shared/components/iconos";
+import { IconoDescargar, IconoMensaje } from "@/shared/components/iconos";
 import {
   ModalConversacionesRevisor,
   type NotificadorInicialMensajes,
@@ -30,10 +30,8 @@ const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuev
 // Detalle de las cargas `APROBADA` y `PENDIENTE_VISTO_BUENO` ya finalizadas de una ventana de
 // carga puntual, compartido entre `/dashboard/ventanas-carga/[id]` (ADMIN) y
 // `/revisor/ventanas-carga/[id]` (REVISOR_REPOSITORIO). La descarga reutiliza el endpoint
-// existente `/api/dashboard/cargas/[id]/archivo` (guardado por `exigirAdminORevisor`, y que ya solo
-// sirve binarios con `estado = APROBADA`), sin modificarlo, mismo criterio que
-// `DetalleCargaAprobada.tsx`. Solo se ofrece el enlace de descarga para `APROBADA`: una
-// `PENDIENTE_VISTO_BUENO` todavía no tiene binario descargable por esa vía.
+// `/api/dashboard/cargas/[id]/archivo`, guardado por `exigirAdminORevisor`; ofrece el binario
+// aprobado o, antes de aprobar, una carga `PENDIENTE_VISTO_BUENO` ya finalizada.
 //
 // "use client": las acciones "Aprobar" (`POST /api/dashboard/cargas/[id]/aprobacion`) y "Rechazar"
 // (motivo obligatorio, `POST /api/dashboard/cargas/[id]/rechazo`) abren cada una su propio modal;
@@ -201,9 +199,19 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                       </Boton>
                     ) : null}
                     {fila.estado === "PENDIENTE_VISTO_BUENO" ? (
-                      <Boton variante="primario" onClick={() => setObjetivoAprobacion(fila)}>
-                        Aprobar
-                      </Boton>
+                      <>
+                        <a
+                          href={`/api/dashboard/cargas/${fila.id}/archivo`}
+                          download
+                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+                        >
+                          <IconoDescargar className="shrink-0" />
+                          Descargar
+                        </a>
+                        <Boton variante="primario" onClick={() => setObjetivoAprobacion(fila)}>
+                          Aprobar
+                        </Boton>
+                      </>
                     ) : null}
                     <Boton variante="peligro" onClick={() => setObjetivoRechazo(fila)}>
                       Rechazar

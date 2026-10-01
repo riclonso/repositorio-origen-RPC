@@ -645,9 +645,14 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   },
 
   async obtenerParaDescarga(id) {
-    // Única consulta de todo el módulo que trae `contenidoArchivo`, y solo si ya está aprobada.
+    // Única consulta de todo el módulo que trae `contenidoArchivo` para un revisor. Una pendiente
+    // solo queda disponible una vez finalizada por su dueño; un borrador o una carga con errores
+    // permanece inaccesible incluso para ADMIN/REVISOR_REPOSITORIO.
     const registro = await prisma.cargaArchivo.findFirst({
-      where: { id, estado: "APROBADA" },
+      where: {
+        id,
+        OR: [{ estado: "APROBADA" }, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
+      },
       select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
     });
 

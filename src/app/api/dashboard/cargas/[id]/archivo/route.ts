@@ -17,9 +17,10 @@ function nombreParaDescarga(nombreArchivo: string): string {
   return nombreArchivo.replace(/"/g, "'");
 }
 
-// Descarga el binario original. Solo si `estado = APROBADA` (lo garantiza
-// `obtenerParaDescarga` a nivel de consulta SQL). El `Content-Type` sale del valor persistido,
-// nunca de lo que declaró el cliente al subir.
+// Descarga el binario original para la revisión: solo si está aprobada o si el notificador ya la
+// finalizó y envió (`PENDIENTE_VISTO_BUENO`). El repositorio impone ambas condiciones en SQL; los
+// borradores y cargas con errores no son descargables. El `Content-Type` sale del valor
+// persistido, nunca de lo que declaró el cliente al subir.
 export async function GET(_request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
 

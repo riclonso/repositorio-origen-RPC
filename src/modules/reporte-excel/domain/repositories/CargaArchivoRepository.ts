@@ -82,7 +82,9 @@ export interface CargaArchivoRepository {
   // sigue siendo el notificador dueño de la carga quien finaliza) y `finalizadaEn IS NULL` en el
   // mismo `WHERE`: evita doble finalización. Si no calza, devuelve `null`.
   finalizar(id: string, usuarioId: string): Promise<CargaArchivo | null>;
-  // Única operación que trae el binario. Solo devuelve datos si `estado = APROBADA`.
+  // Única operación que trae el binario para ADMIN/REVISOR_REPOSITORIO. Devuelve una carga ya
+  // `APROBADA` o una `PENDIENTE_VISTO_BUENO` que el notificador finalizó y envió: esto permite
+  // revisar el archivo original antes de aprobarlo, sin exponer borradores ni cargas con errores.
   obtenerParaDescarga(id: string): Promise<CargaArchivoParaDescarga | null>;
   // Descarga para el propio notificador desde "Mis cargas": a diferencia de `obtenerParaDescarga`,
   // sin restricción de `estado` (aprobada, pendiente de decisión o rechazada, todas descargables por
