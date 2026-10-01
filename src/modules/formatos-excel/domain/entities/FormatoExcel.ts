@@ -48,7 +48,9 @@ export type ColumnaFormatoExcel = {
 // carga vigente para esa subida (RF-15); o una "fecha efectiva" calculada a partir de varias
 // columnas debe caer dentro del AÑO de esa ventana (ampliación posterior); o una fila no puede
 // repetir exactamente los mismos valores (tras `trim()`, comparación case-sensitive) que otra
-// fila anterior del mismo archivo en el mismo conjunto de columnas (ampliación posterior). Agregar
+// fila anterior del mismo archivo en el mismo conjunto de columnas (ampliación posterior); o
+// (RF-32) ninguna celda de datos puede traer etiquetas o entidades HTML (`CONTENIDO_HTML`); o
+// ninguna fila completamente vacía puede quedar entre filas con datos (`FILA_VACIA`). Agregar
 // un tipo nuevo es una decisión de producto que exige código nuevo (el evaluador que las ejecuta
 // contra un archivo real), así que vive en este arreglo fijo, mismo criterio que
 // `TIPOS_DATO_COLUMNA`.
@@ -58,7 +60,13 @@ export const TIPOS_REGLA_VALIDACION = [
   "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
   "FILA_DUPLICADA",
   "RUT_VALIDO",
+  "CONTENIDO_HTML",
+  "FILA_VACIA",
 ] as const;
+
+// RF-32: tipos que se aplican siempre a TODAS las columnas del formato presentes en el archivo
+// (ver convención de `columnas[]` más abajo) y de los que puede haber como máximo uno por formato.
+export const TIPOS_REGLA_TODAS_LAS_COLUMNAS: readonly TipoReglaValidacion[] = ["CONTENIDO_HTML", "FILA_VACIA"];
 
 export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 
@@ -83,6 +91,13 @@ export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 // trae el RUT completo (con o sin puntos y guion). Con 2, `columnas[0]` es el NÚMERO (cuerpo) y
 // `columnas[1]` el DÍGITO VERIFICADOR. Si todas las columnas vienen vacías la regla no falla; si
 // solo una de las dos viene vacía, falla.
+//
+// Convención de `columnas[]` específica de `CONTENIDO_HTML` y `FILA_VACIA` (RF-32): siempre
+// arreglo vacío `[]`, que significa "todas las columnas del formato presentes en el archivo".
+// No se guarda una lista explícita a propósito: `useEliminarColumnaFormato` borra toda regla que
+// mencione una columna eliminada, así que con una lista explícita borrar UNA columna eliminaría la
+// regla completa, y una columna agregada después quedaría sin cubrir. Con `[]` la regla nunca
+// queda huérfana. El esquema Zod exige `[]` y como máximo una regla de cada uno por formato.
 export type ReglaValidacionFormatoExcel = {
   id: string;
   orden: number;

@@ -14,12 +14,18 @@ import {
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { reaperturaVigente } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
-import { ValidadoresTipoDato, celdaVacia } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
+import { ValidadoresTipoDato } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 import {
+  columnasConContenidoHtml,
   crearRastreadorFilasDuplicadas,
   cumpleReglaValidacion,
   evaluarFilaDuplicada,
 } from "@/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
+import {
+  celdaVacia,
+  filaCompletamenteVacia,
+  indiceUltimaFilaConDatos,
+} from "@/modules/reporte-excel/domain/reglas/filasArchivo";
 
 export type DatosValidarYCargarArchivo = {
   formatoExcelId: string;
@@ -246,20 +252,43 @@ export async function validarYCargarArchivo(
     encabezadosPresentes.has(normalizarNombre(columna.nombre)),
   );
 
-  // Estructural: encabezados sin ninguna fila de datos debajo. Sin este chequeo, el `forEach` de
-  // abajo simplemente no itera y el archivo queda como `PENDIENTE_VISTO_BUENO` con 0 errores,
-  // dejando pasar un archivo que nunca llegó a validar sus columnas requeridas.
-  if (validarFilas && filas.length === 0) {
+  // RF-32: como máximo una regla de cada uno de estos tipos por formato (lo garantiza el esquema).
+  const reglaFilaVacia = formato.reglasValidacion.find((regla) => regla.tipo === "FILA_VACIA");
+  const reglaHtml = formato.reglasValidacion.find((regla) => regla.tipo === "CONTENIDO_HTML");
+
+  // Se calcula sobre el archivo COMPLETO, antes del tope de `TOPE_FILAS_DATOS`, para que una fila
+  // vacía cerca del tope no se confunda con una del final. -1 = ninguna fila trae datos.
+  const indiceUltimaConDatos = indiceUltimaFilaConDatos(filas);
+
+  // Solo con la regla `FILA_VACIA`, las filas vacías del final (residuos de Excel con formato)
+  // se recortan antes del recorrido y no cuentan en `cantidadFilasDatos`. Sin la regla se mantiene
+  // el comportamiento previo (se recorren y cuentan todas), por compatibilidad. Cortar solo por el
+  // final no mueve la numeración `indice + 2`.
+  const filasEfectivas = reglaFilaVacia ? filas.slice(0, indiceUltimaConDatos + 1) : filas;
+
+  // Estructural, para TODOS los formatos (tengan o no `FILA_VACIA`): un archivo sin ninguna fila
+  // con datos (solo encabezados, o encabezados + solo filas completamente vacías) se rechaza. Sin
+  // este chequeo el archivo podría quedar como `PENDIENTE_VISTO_BUENO` sin haber validado nada.
+  // Solo si se reconoció al menos una columna del formato: sin ninguna, el archivo ya trae un
+  // `COLUMNA_FALTANTE` por columna y afirmar que "parece estar vacío" sería falso (sus filas pueden
+  // traer datos bajo encabezados que no se reconocieron).
+  const sinFilasConDatos = indiceUltimaConDatos === -1;
+
+  if (validarFilas && sinFilasConDatos && columnasAValidar.length > 0) {
     errores.push({
       numeroFila: 0,
       columna: null,
       tipoError: "SIN_FILAS_DATOS",
-      mensaje: "El archivo parece estar vacío: solo trae la fila de encabezados, sin filas de datos",
+      mensaje: "El archivo parece estar vacío: no trae ninguna fila con datos debajo de los encabezados",
     });
   }
 
-  const filasLeidas = filas.slice(0, TOPE_FILAS_DATOS);
+  // Sin ninguna fila con datos, en cualquier formato, no hay filas de datos que contar
+  // (`cantidadFilasDatos = 0`) ni que recorrer: los residuos vacíos solo agregarían ruido (un
+  // `VALOR_REQUERIDO_VACIO` por columna requerida y fila) sobre la misma causa.
+  const filasLeidas = sinFilasConDatos ? [] : filasEfectivas.slice(0, TOPE_FILAS_DATOS);
   const filasAValidar = validarFilas ? filasLeidas : [];
+  const nombresColumnasAValidar = columnasAValidar.map((columna) => columna.nombre);
 
   // Reglas `FILA_DUPLICADA` del formato: a diferencia del resto, necesitan memoria entre filas
   // (ver comentario en `EvaluadorReglasValidacion.ts`). El rastreador se crea una sola vez, antes
@@ -271,6 +300,20 @@ export async function validarYCargarArchivo(
   filasAValidar.forEach((fila: Record<string, ValorCeldaArchivo>, indice) => {
     // La fila de encabezado cuenta como fila 1, así que la primera fila de datos es la 2.
     const numeroFila = indice + 2;
+
+    // RF-32 (`FILA_VACIA`): por el recorte de arriba, toda fila vacía que llega aquí está entre
+    // filas con datos. Un solo error por fila, y la fila no se sigue validando: si no, generaría
+    // un `VALOR_REQUERIDO_VACIO` por columna requerida más los fallos de otras reglas, todo ruido
+    // sobre la misma causa. El rastreador de `FILA_DUPLICADA` ya excluía claves vacías.
+    if (reglaFilaVacia && filaCompletamenteVacia(fila)) {
+      errores.push({
+        numeroFila,
+        columna: null,
+        tipoError: "REGLA_VALIDACION",
+        mensaje: reglaFilaVacia.mensaje,
+      });
+      return;
+    }
 
     for (const columna of columnasAValidar) {
       const valor = fila[columna.nombre] ?? null;
@@ -318,6 +361,22 @@ export async function validarYCargarArchivo(
           columna: null,
           tipoError: "REGLA_VALIDACION",
           mensaje: regla.mensaje,
+        });
+      }
+    }
+
+    // RF-32 (`CONTENIDO_HTML`): un error POR CELDA, con su `columna` (misma granularidad que
+    // `VALOR_REQUERIDO_VACIO`/`TIPO_DATO_INVALIDO`: el notificador necesita saber qué celda
+    // corregir). Si la celda además no cumple su tipo de dato (p. ej. `<b>5</b>` en ENTERO), se
+    // reportan ambos errores a propósito: son causas distintas y este explica la real. El volumen
+    // lo acota `acotarErrores`. Nunca se incluye el contenido de la celda en el mensaje.
+    if (reglaHtml) {
+      for (const nombreColumna of columnasConContenidoHtml(fila, nombresColumnasAValidar)) {
+        errores.push({
+          numeroFila,
+          columna: nombreColumna,
+          tipoError: "REGLA_VALIDACION",
+          mensaje: reglaHtml.mensaje,
         });
       }
     }

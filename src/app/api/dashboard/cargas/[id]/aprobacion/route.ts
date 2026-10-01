@@ -6,6 +6,7 @@ import { lectorArchivoReporteExcelJs } from "@/modules/reporte-excel/infrastruct
 import { vistoBuenoCargaMailer } from "@/modules/reporte-excel/infrastructure/email/VistoBuenoCargaMailer";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import {
   MENSAJE_ERROR_INTERNO,
@@ -43,6 +44,7 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
       repositorio: prismaCargaArchivoRepository,
       lector: lectorArchivoReporteExcelJs,
       repositorioSolicitudesReemplazo: prismaSolicitudReemplazoCargaRepository,
+      repositorioFormatosExcel: prismaFormatoExcelRepository,
     });
 
     if (!resultado.ok) {

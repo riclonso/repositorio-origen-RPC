@@ -21,7 +21,7 @@ export const generadorErroresExcelJs: GeneradorExcelErrores = {
 
     for (const error of errores) {
       hoja.addRow({
-        fila: etiquetaFila(error.numeroFila),
+        fila: etiquetaFila(error.numeroFila, error.tipoError),
         columna: error.columna ?? "—",
         tipoError: ETIQUETAS_TIPO_ERROR[error.tipoError],
         mensaje: error.mensaje,

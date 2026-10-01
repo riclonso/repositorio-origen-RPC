@@ -1,6 +1,11 @@
 "use client";
 
-import type { TipoReglaValidacion } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import {
+  TIPOS_REGLA_TODAS_LAS_COLUMNAS,
+  TIPOS_REGLA_VALIDACION,
+  type TipoReglaValidacion,
+} from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { ETIQUETAS_TIPO_REGLA_VALIDACION } from "@/shared/utils/reglasValidacion";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoSelect } from "@/shared/components/CampoSelect";
 import { CampoSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
@@ -34,16 +39,40 @@ export type ColumnaDisponible = { nombre: string; tipoDato: string };
 // columnas que el sistema sabe parsear como tal.
 const TIPOS_DATO_FECHA = new Set(["FECHA", "FECHA_HORA"]);
 
-const OPCIONES_TIPO_REGLA: OpcionSelect[] = [
-  { valor: "ALGUNA_COLUMNA_CON_VALOR", etiqueta: "Al menos una columna con valor" },
-  { valor: "FECHA_DENTRO_DE_VENTANA_VIGENTE", etiqueta: "Fecha dentro de la ventana de carga vigente" },
-  {
-    valor: "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
-    etiqueta: "Fecha efectiva (principal o alternativa más antigua) dentro del año de la ventana",
-  },
-  { valor: "FILA_DUPLICADA", etiqueta: "Fila duplicada" },
-  { valor: "RUT_VALIDO", etiqueta: "Validar RUT" },
-];
+// Mismo orden que `TIPOS_REGLA_VALIDACION`, con las etiquetas compartidas con los mensajes del
+// esquema (`shared/utils/reglasValidacion.ts`).
+const OPCIONES_TIPO_REGLA: OpcionSelect[] = TIPOS_REGLA_VALIDACION.map((tipo) => ({
+  valor: tipo,
+  etiqueta: ETIQUETAS_TIPO_REGLA_VALIDACION[tipo],
+}));
+
+// RF-32: tipos que se aplican a todas las columnas (sin selector) y admiten como máximo una regla
+// por formato. La garantía real es el esquema del servidor; aquí solo se ocultan del selector.
+const TIPOS_UNICOS_POR_FORMATO = new Set<string>(TIPOS_REGLA_TODAS_LAS_COLUMNAS);
+
+// Opciones del selector de tipo para una regla: oculta los tipos únicos ya usados por OTRA regla
+// del formato; la regla actual siempre conserva su propio valor.
+function opcionesTipoRegla(reglas: ReglaValidacionEditable[], indiceActual: number): OpcionSelect[] {
+  const tiposUnicosEnOtrasReglas = new Set<string>(
+    reglas
+      .filter((regla, indice) => indice !== indiceActual && TIPOS_UNICOS_POR_FORMATO.has(regla.tipo))
+      .map((regla) => regla.tipo),
+  );
+
+  return OPCIONES_TIPO_REGLA.filter((opcion) => !tiposUnicosEnOtrasReglas.has(opcion.valor));
+}
+
+const AYUDA_REGLA_TODAS_LAS_COLUMNAS: Partial<Record<TipoReglaValidacion, string>> = {
+  CONTENIDO_HTML: [
+    "Se revisan todas las columnas del formato.",
+    "Rechaza celdas con etiquetas HTML (p. ej. <p>, <a>, <br>) o entidades (p. ej. &nbsp;, &amp;).",
+    "Textos como «<5 años» o «A & B» se permiten.",
+  ].join(" "),
+  FILA_VACIA: [
+    "Rechaza toda fila sin ningún dato que esté entre filas con datos.",
+    "Las filas vacías al final del archivo se ignoran.",
+  ].join(" "),
+};
 
 const REGLA_POR_DEFECTO: ReglaValidacionEditable = {
   tipo: "ALGUNA_COLUMNA_CON_VALOR",
@@ -81,9 +110,11 @@ type EditorReglasValidacionFormatoExcelProps = {
 // dato), ninguna fila puede repetir exactamente los mismos valores (comparados tras recortar
 // espacios, distinguiendo mayúsculas de minúsculas) que otra fila anterior del mismo archivo; solo
 // se rechaza la 2ª aparición en adelante, y las filas con esas columnas totalmente vacías quedan
-// excluidas del chequeo. Los campos requeridos de `TablaColumnasFormatoExcel` se validan primero;
-// estas reglas se evalúan después (ver `CLAUDE.md`), pero ese evaluador vive en
-// `modules/reporte-excel/`: este componente solo gestiona la configuración.
+// excluidas del chequeo. `CONTENIDO_HTML` y `FILA_VACIA` (RF-32) se aplican a todas las
+// columnas (`columnas: []`), sin selector, y solo puede haber una de cada una. Los campos
+// requeridos de `TablaColumnasFormatoExcel` se validan primero; estas reglas se evalúan después
+// (ver `CLAUDE.md`), pero ese evaluador vive en `modules/reporte-excel/`: este componente solo
+// gestiona la configuración.
 export function EditorReglasValidacionFormatoExcel({
   reglas,
   columnasDisponibles,
@@ -125,7 +156,10 @@ export function EditorReglasValidacionFormatoExcel({
           (comparación sensible a mayúsculas); solo se rechaza la 2ª aparición en adelante, y las
           filas con esas columnas totalmente vacías quedan excluidas del chequeo. &ldquo;Validar
           RUT&rdquo; comprueba el dígito verificador del RUT, ya sea completo en una columna o
-          repartido en número y dígito verificador. Se evalúan
+          repartido en número y dígito verificador. &ldquo;Sin contenido HTML en las
+          celdas&rdquo; rechaza celdas con etiquetas o entidades HTML, revisando todas las
+          columnas. &ldquo;Sin filas vacías entre filas con datos&rdquo; rechaza las filas sin
+          ningún dato que queden entre filas con datos. Se evalúan
           después de comprobar las columnas requeridas.
         </p>
       </div>
@@ -161,7 +195,7 @@ export function EditorReglasValidacionFormatoExcel({
                 <CampoSelect
                   id={`regla-${indice}-tipo`}
                   etiqueta="Tipo de regla"
-                  opciones={OPCIONES_TIPO_REGLA}
+                  opciones={opcionesTipoRegla(reglas, indice)}
                   value={regla.tipo}
                   onChange={(evento) =>
                     // Cambiar de tipo reinicia las columnas seleccionadas: los dos tipos exigen
@@ -175,7 +209,11 @@ export function EditorReglasValidacionFormatoExcel({
                   }
                 />
 
-                {regla.tipo === "RUT_VALIDO" ? (
+                {TIPOS_UNICOS_POR_FORMATO.has(regla.tipo) ? (
+                  // Sin selector de columnas: estas reglas guardan `columnas: []` ("todas"), y
+                  // cambiar de tipo ya reinicia `columnas` a `[]`.
+                  <p className="text-xs text-gob-gray-a">{AYUDA_REGLA_TODAS_LAS_COLUMNAS[regla.tipo]}</p>
+                ) : regla.tipo === "RUT_VALIDO" ? (
                   <EditorColumnasReglaRut
                     idBase={`regla-${indice}`}
                     modo={modoReglaRut(regla)}
@@ -233,6 +271,7 @@ export function EditorReglasValidacionFormatoExcel({
 
                     <CampoSeleccionMultiple
                       id={`regla-${indice}-columnas-alternativas`}
+                      conSeleccionarTodas
                       etiqueta="Columnas alternativas"
                       opciones={opcionesColumnasFecha.filter((opcion) => opcion.valor !== (regla.columnas[0] ?? ""))}
                       valoresSeleccionados={regla.columnas.slice(1)}
@@ -253,21 +292,9 @@ export function EditorReglasValidacionFormatoExcel({
                   </>
                 ) : regla.tipo === "FILA_DUPLICADA" ? (
                   <>
-                    {/* Atajo de un solo sentido: marca todas las columnas del formato en la
-                        clave de duplicado de esta regla. Solo tiene sentido aquí, donde a
-                        diferencia de las demás reglas no hay restricción por tipo de dato: se
-                        ofrecen TODAS las columnas del formato como candidatas. */}
-                    <Boton
-                      type="button"
-                      variante="texto"
-                      className="w-fit"
-                      onClick={() => actualizarRegla(indice, { columnas: [...nombresColumnasDisponibles] })}
-                    >
-                      Seleccionar todas las columnas
-                    </Boton>
-
                     <CampoSeleccionMultiple
                       id={`regla-${indice}-columnas`}
+                      conSeleccionarTodas
                       etiqueta="Columnas de la clave de duplicado"
                       opciones={opcionesColumnas}
                       valoresSeleccionados={regla.columnas}
@@ -285,6 +312,7 @@ export function EditorReglasValidacionFormatoExcel({
                 ) : (
                   <CampoSeleccionMultiple
                     id={`regla-${indice}-columnas`}
+                    conSeleccionarTodas
                     etiqueta="Columnas de la regla"
                     opciones={opcionesColumnas}
                     valoresSeleccionados={regla.columnas}

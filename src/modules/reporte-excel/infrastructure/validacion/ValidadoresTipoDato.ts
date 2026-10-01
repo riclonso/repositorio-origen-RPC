@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { TipoDatoColumna } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { aTextoCelda, celdaVacia } from "@/modules/reporte-excel/domain/reglas/filasArchivo";
 
 // Convención chilena de formato de dato por celda (primera vez que se define en el proyecto):
 // decimal acepta coma o punto, fecha en texto acepta DD-MM-AAAA o DD/MM/AAAA, booleano acepta
@@ -8,17 +9,9 @@ import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/
 
 const ESQUEMA_EMAIL = z.string().trim().toLowerCase().pipe(z.email());
 
-function aTextoCelda(valor: ValorCeldaArchivo): string {
-  if (valor === null) return "";
-  if (valor instanceof Date) return valor.toISOString();
-  return String(valor).trim();
-}
-
-// Vacía = ni siquiera trae texto tras normalizar. `0`, `false` y una fecha epoch NO son vacíos:
-// son valores válidos de sus respectivos tipos.
-export function celdaVacia(valor: ValorCeldaArchivo): boolean {
-  return aTextoCelda(valor).length === 0;
-}
+// `aTextoCelda` y `celdaVacia` viven en `domain/reglas/filasArchivo.ts` (RF-32: también las usa
+// `DarVistoBueno`); `celdaVacia` se reexporta aquí para no cambiar a quienes ya la importan.
+export { celdaVacia };
 
 const PATRON_ENTERO = /^-?\d+$/;
 const PATRON_DECIMAL = /^-?\d+([.,]\d+)?$/;

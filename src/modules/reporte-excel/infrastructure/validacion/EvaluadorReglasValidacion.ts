@@ -5,6 +5,7 @@ import {
   parsearFecha,
   serializarValorParaClaveDuplicado,
 } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
+import { contieneHtml } from "@/modules/reporte-excel/infrastructure/validacion/DetectorContenidoHtml";
 import { esRutValidoFlexible } from "@/shared/utils/rut";
 
 // Un RUT (o su número) puede llegar como número desde un `.xlsx` o desde un CSV cuyo campo es
@@ -25,15 +26,17 @@ export type ContextoEvaluacionReglas = {
   ventana: { fechaApertura: Date; fechaVencimiento: Date; anio: number };
 };
 
-// Cuatro tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
+// Tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
 // fila), `FECHA_DENTRO_DE_VENTANA_VIGENTE` (una columna de fecha debe caer dentro del rango de la
 // ventana vigente), `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
-// partir de varias columnas debe caer dentro del AÑO calendario de la ventana) y `FILA_DUPLICADA`.
+// partir de varias columnas debe caer dentro del AÑO calendario de la ventana), `FILA_DUPLICADA`,
+// `RUT_VALIDO`, y (RF-32) `CONTENIDO_HTML` y `FILA_VACIA`.
 // Un tipo de regla nuevo exige agregar su propio `case` aquí, mismo criterio que
 // `ValidadoresTipoDato` para los tipos de dato.
 //
-// `FILA_DUPLICADA` es la excepción: a diferencia de las otras tres, que son puras y evalúan una
+// `FILA_DUPLICADA` es una excepción (igual que `CONTENIDO_HTML` y `FILA_VACIA`, ver su `case`):
+// a diferencia de las demás, que son puras y evalúan una
 // fila de forma aislada, detectar una fila repetida exige memoria de las filas ya vistas en el
 // mismo archivo. Por eso NO se resuelve en `cumpleReglaValidacion` (que se mantiene puro y sin
 // estado): el `case` de abajo devuelve `true` (sin error) a propósito para esta regla, y el
@@ -115,6 +118,14 @@ export function cumpleReglaValidacion(
       const rut = valores.map(aTextoRut).join("-");
       return esRutValidoFlexible(rut);
     }
+    // RF-32: mismo criterio que `FILA_DUPLICADA`, ninguna de las dos cabe en un booleano puro por
+    // fila. `CONTENIDO_HTML` produce un error POR CELDA (ver `columnasConContenidoHtml`) y
+    // `FILA_VACIA` necesita la posición de la fila respecto de la última fila con datos del
+    // archivo (ver `domain/reglas/filasArchivo.ts`). `ValidarYCargarArchivo`
+    // las evalúa aparte, dentro del mismo recorrido de filas.
+    case "CONTENIDO_HTML":
+    case "FILA_VACIA":
+      return true;
     default:
       return true;
   }
@@ -182,4 +193,20 @@ export function evaluarFilaDuplicada(
 
   clavesPorRegla.set(clave, numeroFila);
   return false; // primera aparición: es "el original", no se marca
+}
+
+// RF-32 (`FILA_VACIA`): `filaCompletamenteVacia` e `indiceUltimaFilaConDatos` son reglas puras y
+// viven en `domain/reglas/filasArchivo.ts`, porque también las usa `DarVistoBueno`.
+
+// RF-32 (`CONTENIDO_HTML`): nombres de las columnas de `nombresColumnas` cuya celda es texto y
+// contiene HTML. Un `number`, `boolean` o `Date` no puede contener HTML, y el richText e
+// hipervínculos de Excel ya llegan como texto plano desde el lector. Nunca devuelve el contenido.
+export function columnasConContenidoHtml(
+  fila: Record<string, ValorCeldaArchivo>,
+  nombresColumnas: string[],
+): string[] {
+  return nombresColumnas.filter((nombreColumna) => {
+    const valor = fila[nombreColumna] ?? null;
+    return typeof valor === "string" && contieneHtml(valor);
+  });
 }

@@ -227,6 +227,8 @@ enum TipoReglaValidacionFormatoExcel {
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
   FILA_DUPLICADA
   RUT_VALIDO
+  CONTENIDO_HTML
+  FILA_VACIA
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de

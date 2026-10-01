@@ -3,8 +3,11 @@ import {
   SEPARADORES_CSV,
   TIPOS_ARCHIVO,
   TIPOS_DATO_COLUMNA,
+  TIPOS_REGLA_TODAS_LAS_COLUMNAS,
   TIPOS_REGLA_VALIDACION,
+  type TipoReglaValidacion,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { ETIQUETAS_TIPO_REGLA_VALIDACION } from "@/shared/utils/reglasValidacion";
 import { MAXIMO_CAMBIOS_ASIGNACION_MASIVA } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
 
 export const tipoDatoColumnaSchema = z.enum(TIPOS_DATO_COLUMNA);
@@ -75,7 +78,8 @@ const reglaValidacionFormatoExcelSchema = z.object({
   tipo: tipoReglaValidacionSchema,
   columnas: z
     .array(z.string().trim().min(1, "Selecciona todas las columnas de la regla"))
-    .min(1, "Selecciona al menos una columna")
+    // Sin mínimo genérico aquí (RF-32): `CONTENIDO_HTML` y `FILA_VACIA` exigen `[]`, así que la
+    // cardinalidad depende del tipo y se valida en `validarReferenciasDeReglas`.
     .refine(
       // Comparación case-insensitive: mismo criterio que `nombresDeColumnaUnicos` y
       // `validarReferenciasDeReglas` en este mismo archivo, para que "Fecha_Ingreso" y
@@ -131,6 +135,15 @@ const MINIMO_COLUMNAS_FECHA_EFECTIVA = 2;
 const MINIMO_COLUMNAS_RUT = 1;
 const MAXIMO_COLUMNAS_RUT = 2;
 
+function esTipoTodasLasColumnas(tipo: string): boolean {
+  return (TIPOS_REGLA_TODAS_LAS_COLUMNAS as readonly string[]).includes(tipo);
+}
+
+// Nombre visible del tipo (el mismo del selector del editor), nunca el código del enum.
+function etiquetaTipoRegla(tipo: string): string {
+  return ETIQUETAS_TIPO_REGLA_VALIDACION[tipo as TipoReglaValidacion] ?? tipo;
+}
+
 // Las columnas referenciadas por cada regla deben existir entre las columnas del mismo payload
 // (comparación case-insensitive, mismo criterio que `nombresDeColumnaUnicos` usa para la
 // unicidad de nombres de columna), y cada tipo de regla exige su propia cantidad y tipo de
@@ -147,7 +160,41 @@ function validarReferenciasDeReglas(
     datos.columnas.map((columna) => [columna.nombre.trim().toLowerCase(), columna]),
   );
 
+  // RF-32: como máximo una regla de cada tipo "todas las columnas" por formato; dos reglas iguales
+  // duplicarían cada error del informe.
+  const tiposTodasLasColumnasVistos = new Set<string>();
+
   datos.reglasValidacion.forEach((regla, indiceRegla) => {
+    if (esTipoTodasLasColumnas(regla.tipo)) {
+      if (regla.columnas.length > 0) {
+        contexto.addIssue({
+          code: "custom",
+          path: ["reglasValidacion", indiceRegla, "columnas"],
+          message: `La regla ${indiceRegla + 1} se aplica a todas las columnas y no admite columnas`,
+        });
+      }
+
+      if (tiposTodasLasColumnasVistos.has(regla.tipo)) {
+        contexto.addIssue({
+          code: "custom",
+          path: ["reglasValidacion", indiceRegla, "tipo"],
+          message: `Ya existe una regla «${etiquetaTipoRegla(regla.tipo)}» en este formato`,
+        });
+      }
+      tiposTodasLasColumnasVistos.add(regla.tipo);
+      return;
+    }
+
+    // Los demás tipos siguen exigiendo al menos una columna (antes vivía en
+    // `reglaValidacionFormatoExcelSchema.columnas`; mismo mensaje y sin cambio de comportamiento).
+    if (regla.columnas.length === 0) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["reglasValidacion", indiceRegla, "columnas"],
+        message: "Selecciona al menos una columna",
+      });
+    }
+
     regla.columnas.forEach((nombreColumna, indiceColumna) => {
       if (!columnasPorNombre.has(nombreColumna.trim().toLowerCase())) {
         contexto.addIssue({
@@ -160,8 +207,7 @@ function validarReferenciasDeReglas(
 
     // `FILA_DUPLICADA` NO hereda este mínimo de 2: con 1 sola columna la regla es perfectamente
     // válida (p. ej. detectar un RUT repetido dentro del archivo), así que se queda con el mínimo
-    // genérico de 1 que ya exige `reglaValidacionFormatoExcelSchema.columnas`, sin restricción
-    // adicional aquí.
+    // genérico de 1 que se exige más arriba en esta misma función, sin restricción adicional aquí.
     if (regla.tipo === "ALGUNA_COLUMNA_CON_VALOR" && regla.columnas.length < MINIMO_COLUMNAS_POR_REGLA) {
       contexto.addIssue({
         code: "custom",

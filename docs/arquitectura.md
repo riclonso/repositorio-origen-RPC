@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-10-01 (RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-10-01 (RF-32: tipos de regla `CONTENIDO_HTML` y `FILA_VACIA`, `domain/reglas/filasArchivo.ts`; RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -1108,6 +1108,48 @@ Reporta con el mismo contrato que las demás reglas: `tipoError: "REGLA_VALIDACI
 `mensaje: regla.mensaje` sin texto dinámico agregado. Migración
 `20260917142311_agregar_regla_fila_duplicada`: aditiva (`ALTER TYPE ... ADD VALUE`), sin backfill,
 mismo caveat de reinicio del cliente de Prisma en memoria que las migraciones de enum anteriores.
+
+### Sexto y séptimo tipo de regla: `CONTENIDO_HTML` y `FILA_VACIA` (RF-32)
+
+**`columnas: []` significa "todas las columnas".** Ambos tipos se aplican a la fila completa, así que
+no guardan columnas (`TIPOS_REGLA_TODAS_LAS_COLUMNAS` en `FormatoExcel.ts`, compartido por el esquema
+y el editor). Con una lista explícita, eliminar una columna del formato borraría la regla entera
+(`useEliminarColumnaFormato`) y una columna agregada después quedaría sin cubrir. El esquema exige
+`[]` para estos tipos y ≥ 1 columna para los cinco anteriores (sin cambio para ellos), y como máximo
+una regla de cada tipo nuevo por formato (dos iguales duplicarían cada error).
+
+**El lector no cambia.** `LectorArchivoReporteExcelJs` entrega todas las filas de 2 a `rowCount`,
+incluidas las vacías (Excel escribe `<row>` para filas con solo formato, por eso las residuales del
+final ya llegan). Así `indice + 2` sigue siendo el número de fila real tanto al validar como al
+publicar. Toda la lógica nueva vive en el caso de uso y en funciones puras de dominio
+(`reporte-excel/domain/reglas/filasArchivo.ts`: `filaCompletamenteVacia`, `indiceUltimaFilaConDatos`,
+usadas por `ValidarYCargarArchivo` y `DarVistoBueno`).
+
+**Filas vacías.** `indiceUltimaFilaConDatos` se calcula siempre, sobre el archivo completo y antes del
+tope de filas. Si es `-1` (y se reconoció al menos una columna) el archivo se rechaza con
+`SIN_FILAS_DATOS` en **todos** los formatos, con `cantidadFilasDatos = 0` (decisión del usuario). Solo
+si el formato tiene `FILA_VACIA`: las filas tras la última con datos se recortan (no se validan, no se
+cuentan y `DarVistoBueno` no las publica), y cada fila vacía intermedia produce un único error sin
+seguir validándola (evita N `VALOR_REQUERIDO_VACIO` sobre la misma causa). Formatos sin la regla
+recorren y publican las filas como antes.
+
+**Detector de HTML (`infrastructure/validacion/DetectorContenidoHtml.ts`).** Función pura con filtro
+barato (sin `<` ni `&` no evalúa nada). Etiquetas: lista cerrada de elementos HTML (no "cualquier
+palabra", para no marcar `<sin dato>` o `<NA>`) o prefijos de Office en lista cerrada
+(`o|w|v|m|x|st0-9`; una lista abierta marcaba la notación TNM `<T1:N0>`). Tras el nombre: `>`, `/>`,
+espacio + atributos, o `/` seguido de un atributo con `=` (detecta `<svg/onload=1>` sin marcar
+`<u/l>`). Comentarios con `indexOf` (la regex equivalente era vulnerable a ReDoS con miles de `<!--`),
+`<!doctype`/`<?xml`, y entidades con `;` obligatorio (`R&D`, `A & B` pasan). Todas las clases de
+atributos son negadas (`[^<>]*`) y nunca dos clases solapadas seguidas, para que el costo sea lineal;
+la prueba unitaria incluye entradas de cientos de miles de caracteres. Es una regla de calidad de
+datos, no una defensa XSS: el contenido de la celda nunca se incluye en el mensaje ni en logs. Un
+error por celda, con su columna, dentro del tope existente de 500 errores.
+
+**Etiqueta de la columna "Fila" para errores de archivo.** `etiquetaFila(numeroFila, tipoError)`
+(`shared/utils/erroresCargaArchivo.ts`) muestra "Archivo" para `SIN_FILAS_DATOS`, "Columna
+desconocida" para errores de columna y "—" para el resto de los errores con fila 0, en pantalla y en el
+Excel de errores. Las etiquetas visibles de los tipos de regla viven en `shared/utils/reglasValidacion.ts`
+(`Record<TipoReglaValidacion, string>`: un tipo nuevo sin etiqueta no compila).
 
 ### Primera capacidad de escritura de REVISOR_REPOSITORIO
 

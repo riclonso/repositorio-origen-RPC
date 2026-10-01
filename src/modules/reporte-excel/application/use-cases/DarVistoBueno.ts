@@ -2,6 +2,8 @@ import type { CargaArchivo, FilaParaPublicar } from "@/modules/reporte-excel/dom
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
 import type { SolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
+import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
+import { indiceUltimaFilaConDatos } from "@/modules/reporte-excel/domain/reglas/filasArchivo";
 
 export type ResultadoDarVistoBueno =
   | { ok: true; carga: CargaArchivo }
@@ -26,6 +28,7 @@ export async function darVistoBueno(
     repositorio: CargaArchivoRepository;
     lector: LectorArchivoReporte;
     repositorioSolicitudesReemplazo: SolicitudReemplazoCargaRepository;
+    repositorioFormatosExcel: FormatoExcelRepository;
   },
 ): Promise<ResultadoDarVistoBueno> {
   const carga = await dependencias.repositorio.obtenerPorId(id);
@@ -44,8 +47,12 @@ export async function darVistoBueno(
   // Resuelto ANTES de la transacción: reparsear el binario no depende de la base de datos, y así
   // el `UPDATE`/`INSERT` atómico del repositorio no queda abierto mientras se procesa el archivo.
   // Ownership del contenido sigue siendo del notificador dueño de la carga (`carga.usuarioId`), no
-  // de quien aprueba.
-  const contenido = await dependencias.repositorio.obtenerContenidoParaProcesar(id, carga.usuarioId);
+  // de quien aprueba. El formato (RF-32, ver más abajo) es independiente del contenido, así que se
+  // lee en paralelo.
+  const [contenido, formato] = await Promise.all([
+    dependencias.repositorio.obtenerContenidoParaProcesar(id, carga.usuarioId),
+    dependencias.repositorioFormatosExcel.obtenerPorId(carga.formatoExcelId),
+  ]);
 
   if (!contenido) {
     // Cierra la ventana de carrera entre la comprobación de arriba y esta lectura: la carga dejó
@@ -58,9 +65,19 @@ export async function darVistoBueno(
     contenido.tipoContenidoArchivo,
   );
 
+  // RF-32: en formatos con la regla `FILA_VACIA`, las filas vacías del final (residuos de Excel)
+  // no se validaron ni se contaron en `cantidadFilasDatos`, así que tampoco se publican: mismo
+  // corte por `indiceUltimaFilaConDatos` que en `ValidarYCargarArchivo`. Sin la regla se publica
+  // exactamente como antes (todas las filas leídas). Se usan las reglas VIGENTES del formato al
+  // aprobar, no una copia de las del momento de la subida.
+  const conReglaFilaVacia = formato?.reglasValidacion.some((regla) => regla.tipo === "FILA_VACIA") ?? false;
+  const filasAPublicar = conReglaFilaVacia
+    ? filasArchivo.slice(0, indiceUltimaFilaConDatos(filasArchivo) + 1)
+    : filasArchivo;
+
   // Mismo desplazamiento que `ValidarYCargarArchivo`: la fila 1 es el encabezado, así que la
-  // primera fila de datos es la 2.
-  const filas: FilaParaPublicar[] = filasArchivo.map((valores, indice) => ({
+  // primera fila de datos es la 2. Cortar solo por el final no mueve esa numeración.
+  const filas: FilaParaPublicar[] = filasAPublicar.map((valores, indice) => ({
     numeroFila: indice + 2,
     valores,
   }));
