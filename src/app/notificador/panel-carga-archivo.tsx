@@ -21,11 +21,9 @@ import {
 import { Boton } from "@/shared/components/Boton";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
-import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
 import {
-  IconoAprobado,
   IconoDescargar,
   IconoRelojArena,
   IconoSolicitudAprobada,
@@ -357,9 +355,7 @@ type TarjetaCargaArchivoProps = {
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
-  onFinalizarYEnviar: (carga: CargaResumenVista) => void;
   onSolicitudReemplazoEnviada: () => void;
-  onLimpiar?: () => void;
 };
 
 // Una tarjeta por combinación (formato, ventana), cada una con su propio estado de
@@ -374,9 +370,7 @@ function TarjetaCargaArchivo({
   cargaPendienteDecision,
   solicitudPendienteDeCargaPendiente,
   onSubidaExitosa,
-  onFinalizarYEnviar,
   onSolicitudReemplazoEnviada,
-  onLimpiar,
 }: TarjetaCargaArchivoProps) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -522,13 +516,10 @@ function TarjetaCargaArchivo({
         </Boton>
       </div>
 
-      {resultado ? (
+      {resultado && (resultado.cantidadErrores > 0 || resultado.finalizadaEn) ? (
         <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
           {resultado.cantidadErrores === 0 ? (
             <>
-              <p className="text-sm font-medium text-gob-success">
-                 {resultado.cantidadFilasDatos} filas de datos validadas
-              </p>
               {resultado.finalizadaEn ? (
                 <p role="status" className="text-sm font-medium text-gob-tertiary">
                   Pendiente de aprobación.
@@ -555,27 +546,7 @@ function TarjetaCargaArchivo({
             </>
           )}
 
-          {resultado.estado === "PENDIENTE_VISTO_BUENO" && !resultado.finalizadaEn ? (
-            <div className="flex flex-wrap gap-3">
-              <Boton variante="primario" className="w-fit" onClick={() => onFinalizarYEnviar(resultado)}>
-                <IconoAprobado className="shrink-0" />
-                Finalizar y enviar
-              </Boton>
-              {onLimpiar && (
-                <Boton
-                  variante="secundario"
-                  className="w-fit"
-                  onClick={() => {
-                    setArchivo(null);
-                    setErrorSubida(null);
-                    onLimpiar();
-                  }}
-                >
-                  Cancelar y limpiar
-                </Boton>
-              )}
-            </div>
-          ) : null}
+
         </div>
       ) : null}
 
@@ -633,7 +604,6 @@ export function PanelCargaArchivo({
   }, [router]);
 
   const [cargaExitosa, setCargaExitosa] = useState<CargaDetalleVista | null>(null);
-  const [objetivoFinalizar, setObjetivoFinalizar] = useState<CargaResumenVista | null>(null);
   const [procesandoFinalizar, setProcesandoFinalizar] = useState(false);
   const [errorFinalizar, setErrorFinalizar] = useState<string | null>(null);
 
@@ -647,11 +617,13 @@ export function PanelCargaArchivo({
     });
   }
 
-  function limpiarResultado(clave: string) {
-    setResultados((actual) => {
-      const { [clave]: _, ...rest } = actual;
-      return rest;
-    });
+  function cancelarCargaExitosa() {
+    if (procesandoFinalizar) return;
+    if (cargaExitosa) {
+      setResultados((actual) => Object.fromEntries(Object.entries(actual).filter(([, carga]) => carga.id !== cargaExitosa.id)));
+    }
+    setCargaExitosa(null);
+    setErrorFinalizar(null);
   }
 
   function refrescarSolicitudes() {
@@ -661,13 +633,13 @@ export function PanelCargaArchivo({
   }
 
   async function confirmarFinalizacion() {
-    if (!objetivoFinalizar) return;
+    if (!cargaExitosa) return;
 
     setProcesandoFinalizar(true);
     setErrorFinalizar(null);
 
     try {
-      const respuesta = await fetch(`/api/notificador/cargas/${objetivoFinalizar.id}/finalizar`, {
+      const respuesta = await fetch(`/api/notificador/cargas/${cargaExitosa.id}/finalizar`, {
         method: "POST",
       });
 
@@ -685,14 +657,14 @@ export function PanelCargaArchivo({
       // inmediato para que `BannerReaperturaCarga` deje de mostrarse sin esperar a recargar la
       // página.
       setReaperturas((actual) =>
-        actual.filter((reapertura) => reapertura.ventanaCargaId !== objetivoFinalizar.ventanaCargaId),
+        actual.filter((reapertura) => reapertura.ventanaCargaId !== cargaExitosa.ventanaCargaId),
       );
 
       // La tarjeta de esta combinación desaparece por completo en cuanto `misCargas` refleje
       // `finalizadaEn` no nulo (ver `cargaPendienteFinalizada`); no hace falta actualizar
       // `resultados` de forma optimista.
       setResultados((actual) => {
-        const entrada = Object.entries(actual).find(([, carga]) => carga.id === objetivoFinalizar.id);
+        const entrada = Object.entries(actual).find(([, carga]) => carga.id === cargaExitosa.id);
         if (!entrada) return actual;
 
         const [clave, carga] = entrada;
@@ -700,7 +672,7 @@ export function PanelCargaArchivo({
       });
 
       setProcesandoFinalizar(false);
-      setObjetivoFinalizar(null);
+      setCargaExitosa(null);
 
       const actualizadas = await obtenerMisCargas();
       if (actualizadas) setMisCargas(actualizadas);
@@ -765,9 +737,7 @@ export function PanelCargaArchivo({
               cargaPendienteDecision={cargaPendienteDecision}
               solicitudPendienteDeCargaPendiente={solicitudPendienteDeCargaPendiente}
               onSubidaExitosa={registrarResultado}
-              onFinalizarYEnviar={setObjetivoFinalizar}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
-              onLimpiar={() => limpiarResultado(claveTarjeta)}
             />
           );
         })
@@ -776,28 +746,10 @@ export function PanelCargaArchivo({
       <ModalCargaExitosa
         abierto={cargaExitosa !== null}
         nombreArchivo={cargaExitosa?.nombreArchivoOriginal ?? ""}
-        onCerrar={() => setCargaExitosa(null)}
-      />
-
-      <DialogoConfirmacion
-        abierto={objetivoFinalizar !== null}
-        titulo="Finalizar y enviar"
-        descripcion={
-          objetivoFinalizar
-            ? `"${objetivoFinalizar.nombreArchivoOriginal}" quedará enviado a decisión de un administrador o el revisor del repositorio, quien deberá aprobarlo o rechazarlo. Esta acción no se puede deshacer.`
-            : ""
-        }
-        textoConfirmar="Finalizar y enviar"
-        textoConfirmando="Guardando..."
-        variante="primario"
         procesando={procesandoFinalizar}
         error={errorFinalizar}
-        onConfirmar={() => void confirmarFinalizacion()}
-        onCancelar={() => {
-          if (procesandoFinalizar) return;
-          setObjetivoFinalizar(null);
-          setErrorFinalizar(null);
-        }}
+        onFinalizar={() => void confirmarFinalizacion()}
+        onCerrar={cancelarCargaExitosa}
       />
     </div>
   );
