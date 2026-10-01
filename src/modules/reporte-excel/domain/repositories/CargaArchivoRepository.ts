@@ -58,6 +58,10 @@ export interface CargaArchivoRepository {
   // esa ventana en el mismo `WHERE`, nunca `CON_ERRORES`/`RECHAZADA` ni una `PENDIENTE_VISTO_BUENO`
   // todavía sin finalizar.
   listarPendientesODecididas(filtro: FiltroListadoCargasPendientesODecididas): Promise<PaginaCargas>;
+  // Cantidad de archivos que el notificador ya finalizó y envió, pero que aún necesitan la
+  // decisión de ADMIN/REVISOR_REPOSITORIO. Alimenta la campana de avisos del revisor sin traer
+  // filas ni binarios a la barra superior.
+  contarPendientesFinalizadas(): Promise<number>;
   // Transición condicional y atómica `PENDIENTE_VISTO_BUENO -> APROBADA`, filtrada por
   // `estado = PENDIENTE_VISTO_BUENO` y `finalizadaEn no nulo` en el mismo `WHERE` (sin
   // restricción de `usuarioId`: corrección que elimina la autoaprobación — quien aprueba es un

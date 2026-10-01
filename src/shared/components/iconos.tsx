@@ -5,6 +5,7 @@
 // dibujados a mano aquí; se reemplazaron por la librería.
 import {
   Archive,
+  Bell,
   CalendarBlank,
   Check,
   CheckCircle,
@@ -100,6 +101,9 @@ export const IconoEnlace = crearIcono(LinkSimple, TAMANO_ACCION);
 // (`MenuConfiguracionUsuario`). Es un botón con texto oculto (`sr-only`) que lo acompaña, así
 // que sigue siendo decorativo.
 export const IconoConfiguracion = crearIcono(Gear, TAMANO_CAMPO);
+// Avisos pendientes para quien revisa cargas. El texto accesible del botón comunica la cantidad;
+// el glifo se mantiene decorativo como el resto de este módulo.
+export const IconoNotificaciones = crearIcono(Bell, TAMANO_CAMPO);
 // Acción "Desbloquear cuenta" del mantenedor de usuarios, sobre una fila con bloqueo por
 // intentos fallidos vigente.
 export const IconoDesbloquear = crearIcono(LockOpen, TAMANO_ACCION);

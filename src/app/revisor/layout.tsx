@@ -5,6 +5,8 @@ import { BarraLateralPanel } from "@/shared/components/BarraLateralPanel";
 import { obtenerIdentidadPanel } from "@/app/_lib/identidadPanel";
 import { contarSolicitudesReemplazoPendientes } from "@/modules/solicitudes-reemplazo/application/use-cases/ContarSolicitudesReemplazoPendientes";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
+import { contarCargasPendientesRevision } from "@/modules/reporte-excel/application/use-cases/ContarCargasPendientesRevision";
+import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { ENLACES_REVISOR } from "./nav-enlaces";
 
 export const metadata: Metadata = {
@@ -12,9 +14,10 @@ export const metadata: Metadata = {
 };
 
 export default async function RevisorLayout({ children }: { children: ReactNode }) {
-  const [identidad, solicitudesPendientes] = await Promise.all([
+  const [identidad, solicitudesPendientes, cargasPendientesRevision] = await Promise.all([
     obtenerIdentidadPanel(),
     contarSolicitudesReemplazoPendientes({ repositorio: prismaSolicitudReemplazoCargaRepository }),
+    contarCargasPendientesRevision({ repositorio: prismaCargaArchivoRepository }),
   ]);
 
   const enlaces = ENLACES_REVISOR.map((enlace) =>
@@ -24,7 +27,7 @@ export default async function RevisorLayout({ children }: { children: ReactNode 
   return (
     <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
-        <EncabezadoPanel rutaBase="/revisor" />
+        <EncabezadoPanel rutaBase="/revisor" cantidadNotificaciones={cargasPendientesRevision} />
       </div>
       {/* Mismo shell que `/dashboard` y `/notificador`: la navegación es la primera columna en
           escritorio para llegar al borde superior, y bajo md vuelve a ser una barra horizontal bajo

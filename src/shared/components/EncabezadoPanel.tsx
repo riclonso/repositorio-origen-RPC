@@ -1,4 +1,5 @@
 import { MenuConfiguracionUsuario } from "@/shared/components/MenuConfiguracionUsuario";
+import { MenuNotificacionesRevisor } from "@/shared/components/MenuNotificacionesRevisor";
 import { obtenerSesionAdministradorOrigen } from "@/modules/auth/infrastructure/auth/SesionDelegada";
 import { VolverSesionAdministrador } from "@/shared/components/VolverSesionAdministrador";
 
@@ -7,13 +8,16 @@ type EncabezadoPanelProps = {
   // `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena` sin que este componente conozca las
   // tres áreas del sistema. Mismo patrón `rutaBase` ya usado por `TablaUsuarios`/`TablaFormatosExcel`.
   rutaBase: "/dashboard" | "/notificador" | "/revisor";
+  // Solo el revisor recibe la bandeja de trabajo de solicitudes pendientes; los demás perfiles
+  // conservan el encabezado actual sin un control que no les corresponde.
+  cantidadNotificaciones?: number;
 };
 
 // Encabezado común a los tres paneles: branding institucional a la izquierda y el menú de
 // configuración de la cuenta ("Mi perfil"/"Cambiar contraseña") a la derecha. La identidad de la
 // sesión (nombre, avatar de iniciales y perfil) no vive aquí: está al tope de la barra lateral
 // (`BarraLateralPanel`).
-export async function EncabezadoPanel({ rutaBase }: EncabezadoPanelProps) {
+export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: EncabezadoPanelProps) {
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
 
   return (
@@ -25,6 +29,9 @@ export async function EncabezadoPanel({ rutaBase }: EncabezadoPanelProps) {
 
       <div className="flex items-center gap-3">
         {sesionAdministradorOrigen ? <VolverSesionAdministrador /> : null}
+        {rutaBase === "/revisor" && cantidadNotificaciones !== undefined ? (
+          <MenuNotificacionesRevisor cantidad={cantidadNotificaciones} />
+        ) : null}
         <MenuConfiguracionUsuario rutaBase={rutaBase} />
       </div>
     </header>

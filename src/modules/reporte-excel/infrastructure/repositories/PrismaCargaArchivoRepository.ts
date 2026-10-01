@@ -519,6 +519,14 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return { filas: registros.map(aCargaArchivoResumen), total };
   },
 
+  async contarPendientesFinalizadas() {
+    // Mismo predicado que identifica una carga lista para la revisión. Se ejecuta directamente
+    // en la base de datos para que el encabezado no tenga que cargar todas las cargas pendientes.
+    return prisma.cargaArchivo.count({
+      where: { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } },
+    });
+  },
+
   async darVistoBueno(id, aprobadoPorId, publicacion: DatosPublicacionCarga) {
     // Transacción interactiva: la transición de estado, la publicación completa (cabecera + TODO
     // el detalle) y la eventual desactivación de la publicación reemplazada corren atómicas. No
