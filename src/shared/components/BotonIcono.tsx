@@ -14,7 +14,7 @@ type BotonIconoProps = {
   Icono: ComponentType<PropsIcono>;
   href?: string;
   onClick?: () => void;
-  tono?: "neutro" | "peligro";
+  tono?: "neutro" | "primario" | "peligro";
   // Solo aplica a la variante botón (sin `href`). `motivoDeshabilitado` reemplaza al `title`
   // mientras está deshabilitado, para explicar al puntero por qué no está disponible.
   deshabilitado?: boolean;
@@ -27,6 +27,8 @@ const CLASES_BASE =
 const CLASES_TONO = {
   neutro:
     "border-gob-accent bg-white text-gob-primary hover:border-gob-primary hover:bg-gob-neutral focus-visible:outline-gob-primary",
+  primario:
+    "border-gob-primary bg-gob-primary text-white hover:bg-gob-primary-oscuro focus-visible:outline-gob-primary",
   peligro:
     "border-gob-accent bg-white text-gob-danger hover:border-gob-danger hover:bg-gob-danger/10 focus-visible:outline-gob-danger",
 } as const;

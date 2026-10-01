@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import type { CargaArchivoResumen } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { LONGITUD_MAXIMA_MOTIVO_RECHAZO } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
-import { Boton } from "@/shared/components/Boton";
+import { BotonIcono } from "@/shared/components/BotonIcono";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
-import { IconoDescargar, IconoMensaje } from "@/shared/components/iconos";
+import { IconoAprobado, IconoDescargar, IconoMensaje, IconoRechazar } from "@/shared/components/iconos";
 import {
   ModalConversacionesRevisor,
   type NotificadorInicialMensajes,
@@ -189,33 +189,33 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
                     {permiteMensajes && fila.estado === "PENDIENTE_VISTO_BUENO" ? (
-                      <Boton
-                        variante="secundario"
+                      <BotonIcono
+                        etiqueta={`Enviar mensaje a ${fila.usuarioNombre} sobre ${fila.nombreArchivoOriginal}`}
+                        Icono={IconoMensaje}
                         onClick={() => abrirMensajes(fila)}
-                        aria-label={`Enviar mensaje a ${fila.usuarioNombre} sobre ${fila.nombreArchivoOriginal}`}
-                      >
-                        <IconoMensaje className="shrink-0" />
-                        Mensaje
-                      </Boton>
+                      />
                     ) : null}
                     {fila.estado === "PENDIENTE_VISTO_BUENO" ? (
                       <>
-                        <a
+                        <BotonIcono
+                          etiqueta={`Descargar ${fila.nombreArchivoOriginal}`}
+                          Icono={IconoDescargar}
                           href={`/api/dashboard/cargas/${fila.id}/archivo`}
-                          download
-                          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-                        >
-                          <IconoDescargar className="shrink-0" />
-                          Descargar
-                        </a>
-                        <Boton variante="primario" onClick={() => setObjetivoAprobacion(fila)}>
-                          Aprobar
-                        </Boton>
+                        />
+                        <BotonIcono
+                          etiqueta={`Aprobar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}
+                          Icono={IconoAprobado}
+                          tono="primario"
+                          onClick={() => setObjetivoAprobacion(fila)}
+                        />
                       </>
                     ) : null}
-                    <Boton variante="peligro" onClick={() => setObjetivoRechazo(fila)}>
-                      Rechazar
-                    </Boton>
+                    <BotonIcono
+                      etiqueta={`Rechazar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}
+                      Icono={IconoRechazar}
+                      tono="peligro"
+                      onClick={() => setObjetivoRechazo(fila)}
+                    />
                   </div>
                 </td>
               </tr>
