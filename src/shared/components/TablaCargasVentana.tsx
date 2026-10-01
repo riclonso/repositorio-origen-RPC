@@ -205,7 +205,7 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                         <BotonIcono
                           etiqueta={`Aprobar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}
                           Icono={IconoAprobado}
-                          tono="primario"
+                          tono="exito"
                           onClick={() => setObjetivoAprobacion(fila)}
                         />
                       </>
