@@ -588,6 +588,8 @@ orden, con el tipo de archivo y el separador del formato: una sola hoja ("Datos"
 encabezados (en XLSX, en negrita, fija y con ancho mínimo; en CSV, UTF-8 con BOM). Motivo: el archivo
 subido puede traer filas de ejemplo con datos reales, otras hojas, comentarios o metadatos de su
 autor. El nombre de descarga es el del formato (`<nombre>.xlsx|csv`), no el del archivo original.
+El NOTIFICADOR_RPC recibe siempre `.xlsx` (aunque el formato sea CSV); ADMIN y REVISOR_REPOSITORIO,
+el tipo de archivo del formato.
 `SincronizadorCabeceraPlantillaExcelJs` sigue usándose solo al crear el formato, sobre el binario que
 se persiste.
 
