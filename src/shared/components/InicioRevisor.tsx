@@ -5,8 +5,16 @@ import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastru
 import { prismaAlertaNotificacionRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaAlertaNotificacionRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
+import {
+  listarVentanasConNoLeidosSinTarjeta,
+  obtenerResumenMensajesPorVentana,
+} from "@/modules/mensajeria/application/use-cases/ObtenerResumenMensajesPorVentana";
+import { prismaMensajeCargaRepository } from "@/modules/mensajeria/infrastructure/repositories/PrismaMensajeCargaRepository";
 import { formatearFechaCalendario } from "@/shared/utils/fecha";
 import { IconoCalendario, IconoPlazo } from "@/shared/components/iconos";
+import { BannerMensajesSinLeer } from "@/shared/components/BannerMensajesSinLeer";
+import { BotonMensajesVentana } from "@/shared/components/BotonMensajesVentana";
+import { tituloVentanaMensajes } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 
 type InicioRevisorProps = {
   nombres: string;
@@ -44,6 +52,20 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
     repositorioCargas: prismaCargaArchivoRepository,
     repositorioAlertas: prismaAlertaNotificacionRepository,
   });
+  const idsVentanasConTarjeta = resumenes.map((resumen) => resumen.ventanaCargaId);
+  // RF-31: dos `groupBy` (bandeja compartida del equipo revisor), nunca una consulta por tarjeta.
+  // Los totales se acotan a las ventanas con tarjeta; los no leídos abarcan todas, para el banner.
+  const mensajes = await obtenerResumenMensajesPorVentana(
+    { lado: "REVISOR" },
+    { repositorio: prismaMensajeCargaRepository },
+    idsVentanasConTarjeta,
+  );
+  // Ventanas con respuestas sin leer que no tienen tarjeta aquí (cerradas): van al banner.
+  const ventanasConNoLeidosSinTarjeta = await listarVentanasConNoLeidosSinTarjeta(
+    mensajes.noLeidosPorVentana,
+    idsVentanasConTarjeta,
+    { repositorio: prismaMensajeCargaRepository },
+  );
   const resumenesOrdenados = ordenarParaRevision(resumenes);
   const totalAsignados = resumenes.reduce((total, resumen) => total + resumen.totalNotificadoresAsignados, 0);
   const totalReportaron = resumenes.reduce((total, resumen) => total + resumen.totalNotificadoresReportaron, 0);
@@ -101,6 +123,14 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
         </article>
       </section>
 
+      <BannerMensajesSinLeer
+        lado="REVISOR"
+        ventanas={ventanasConNoLeidosSinTarjeta.map((ventana) => ({
+          ventanaCargaId: ventana.ventanaCargaId,
+          titulo: tituloVentanaMensajes(ventana.formatoExcelNombre, ventana.anio),
+        }))}
+      />
+
       <section aria-labelledby="titulo-ventanas" className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -121,6 +151,7 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {resumenesOrdenados.map((resumen) => {
               const porcentaje = calcularPorcentaje(resumen);
+              const mensajesVentana = mensajes.porVentana[resumen.ventanaCargaId];
 
               return (
                 <article
@@ -151,6 +182,17 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
                     </div>
                     <p className="mt-2 text-sm font-medium text-gob-gray-a">{porcentaje}% con carga aprobada</p>
                   </div>
+
+                  {mensajesVentana && mensajesVentana.total > 0 ? (
+                    <div className="mt-4">
+                      <BotonMensajesVentana
+                        lado="REVISOR"
+                        ventanaCargaId={resumen.ventanaCargaId}
+                        tituloVentana={tituloVentanaMensajes(resumen.formatoExcelNombre, resumen.anio)}
+                        noLeidos={mensajesVentana.noLeidos}
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="mt-auto flex items-center justify-between gap-2 border-t border-[#e6edf5] pt-4">
                     <div className="flex min-w-0 items-center gap-2 text-xs font-semibold whitespace-nowrap">

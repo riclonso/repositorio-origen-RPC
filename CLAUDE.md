@@ -111,6 +111,7 @@ src/
 │   │   ├── domain/         — entities/Perfil.ts (esPerfilAdministrador, esPerfilNotificador)
 │   │   ├── application/    — use-cases/ListarPerfiles.ts
 │   │   └── infrastructure/ — repositories/PrismaPerfilRepository.ts
+│   ├── mensajeria/         — mensajes revisor ↔ notificador sobre cargas (RF-31); ver detalle abajo
 │   └── usuarios/           — mantenedor de usuarios (RF-06), nombres en español; ver detalle abajo
 │       ├── domain/         — entities/Usuario.ts, errors/ (UsuarioDuplicadoError, PerfilInvalidoError)
 │       ├── application/    — ports.ts, use-cases/ (CrearUsuario, ActualizarUsuario, ListarUsuarios, ...)
@@ -171,8 +172,9 @@ Puntos que hay que respetar al tocarlo:
   Client no soporta `unaccent()`. El término del usuario va parametrizado por la plantilla etiquetada
   de Prisma y los comodines LIKE se escapan: nunca concatenar el término en el SQL.
 * **Qué es "historial" tiene una sola fuente.** `infrastructure/repositories/relacionesHistorialUsuario.ts`
-  lista las 10 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
-  publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas) y las 2 `Cascade` que se
+  lista las 12 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
+  publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas, y desde RF-31 los mensajes
+  escritos y recibidos) y las 2 `Cascade` que se
   descartan (tokens de recuperación, asignaciones de formato). La usan `listar()` (columna
   `tieneHistorial`) y `eliminar()`. Al agregar una relación nueva a `Usuario` hay que clasificarla
   ahí; `tests/relaciones-usuario.guard.unit.ts` falla si no. `eliminar()` corre en una transacción
@@ -188,6 +190,29 @@ Puntos que hay que respetar al tocarlo:
   `LEFT JOIN`, nunca con un JOIN interno.
 * **`contrasenaHash` no sale nunca.** El tipo `Usuario` de `domain/entities/` no lo declara, así que el
   compilador impide filtrarlo; el mapper del repositorio lo descarta explícitamente.
+
+### `modules/mensajeria/` (mensajes revisor ↔ notificador, RF-31)
+
+Tabla `mensaje_carga`: un hilo por notificador (`notificadorId`), cada mensaje asociado a una carga y
+a su ventana (`ventanaCargaId` denormalizado), `ladoAutor` REVISOR|NOTIFICADOR y `leidoEn` (lectura del
+lado contrario; del lado revisor es compartida por todos los revisores). Puntos a respetar:
+
+* **Guards propios.** `/api/revisor/**` usa `exigirRevisor()` (`app/api/_lib/http.ts`): solo
+  REVISOR_REPOSITORIO; ADMIN recibe 403 (no participa). `/api/notificador/ventanas-carga/[id]/mensajes`
+  usa `exigirNotificador()` y fija la propiedad con `notificadorId = sesion.sub` en el WHERE.
+* **El servidor decide la asociación.** `notificadorId`/`ventanaCargaId` se copian de la carga y
+  `ladoAutor` del guard; nunca del cliente. Iniciar conversación exige una carga
+  `PENDIENTE_VISTO_BUENO` finalizada (409 `NO_PENDIENTE`); en una conversación existente el revisor
+  sigue escribiendo aunque ya no haya carga pendiente, y el notificador solo responde (409
+  `SIN_CONVERSACION` si no hay mensajes del revisor).
+* **Lectura con corte `hasta`**: solo se marcan los mensajes con `creadoEn <= hasta` (lo que el cliente
+  mostró). El cierre del modal espera los POST de lectura en curso antes de `router.refresh()`
+  (`shared/hooks/useRefrescoTrasLecturas.ts`).
+* **Contenido en texto plano, nunca en logs ni correo.** Sin `dangerouslySetInnerHTML`. La auditoría
+  (`MENSAJE_CARGA_ENVIADO`) y el aviso por correo al notificador (`AvisarMensajeNuevo`, vía `after()`,
+  uno por tanda de no leídos POR VENTANA) no llevan el contenido ni su longitud.
+* **Conteos sin N+1**: `groupBy` sobre `mensaje_carga` usando los índices
+  `[ventanaCargaId, ladoAutor, leidoEn]` y `[notificadorId, ventanaCargaId, creadoEn]`.
 
 ### Autenticación (flujo de referencia)
 
@@ -289,7 +314,8 @@ Registra **quién le hizo qué a quién** en el mantenedor de usuarios: creació
 activación, desactivación, eliminación (`USUARIO_ELIMINADO`, sin nombre ni correo del eliminado) y
 emisión de enlaces de contraseña. Otros mantenedores escriben en el mismo log con su propio helper
 `infrastructure/auditoria/auditar<Entidad>.ts` (regiones, provincias, comunas, y en tipos de
-establecimiento solo la eliminación, `TIPO_ESTABLECIMIENTO_ELIMINADO`). Es distinto de `accesos.txt` (que responde
+establecimiento solo la eliminación, `TIPO_ESTABLECIMIENTO_ELIMINADO`; la mensajería de RF-31 audita
+`MENSAJE_CARGA_ENVIADO` sin el contenido). Es distinto de `accesos.txt` (que responde
 "quién intentó entrar") y de `errores.txt` (fallas técnicas).
 
 Se escribe con `loggerAuditoria` a través de `registrarAuditoria()`

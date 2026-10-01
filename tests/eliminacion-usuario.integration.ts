@@ -125,10 +125,25 @@ const FIXTURES: Record<string, (victima: string, ayudante: string, ventanaAyudan
   ventanasCargaEliminadas: (victima, ayudante) => crearVentana(ayudante, victima),
   alertasRecibidas: (victima, _ayudante, ventana) => crearAlerta(ventana, victima),
   alertasDisparadas: (victima, ayudante, ventana) => crearAlerta(ventana, ayudante, victima),
+  // RF-31: un mensaje escrito por la víctima (lado REVISOR) en el hilo del ayudante, y un mensaje
+  // en el hilo de la víctima escrito por el ayudante. Ambos respetan el CHECK de coherencia de lado.
+  mensajesCargaEscritos: async (victima, ayudante, ventana) =>
+    crearMensaje(await crearCarga(ayudante, ventana), ventana, ayudante, victima),
+  mensajesCargaRecibidos: async (victima, ayudante, ventana) =>
+    crearMensaje(await crearCarga(ayudante, ventana), ventana, victima, ayudante),
 };
+
+function crearMensaje(cargaArchivoId: string, ventanaCargaId: string, notificadorId: string, autorId: string) {
+  return prisma.mensajeCarga.create({
+    data: { cargaArchivoId, ventanaCargaId, notificadorId, autorId, ladoAutor: "REVISOR", contenido: "prueba" },
+  });
+}
 
 async function limpiar(): Promise<void> {
   const ids = usuariosCreados;
+  await prisma.mensajeCarga.deleteMany({
+    where: { OR: [{ notificadorId: { in: ids } }, { autorId: { in: ids } }] },
+  });
   await prisma.alertaNotificacionVentana.deleteMany({
     where: { OR: [{ usuarioId: { in: ids } }, { disparadoPorId: { in: ids } }] },
   });

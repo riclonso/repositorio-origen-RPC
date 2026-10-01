@@ -13,6 +13,12 @@ import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entitie
 import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
 import type { ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import {
+  listarVentanasConNoLeidosSinTarjeta,
+  obtenerResumenMensajesPorVentana,
+} from "@/modules/mensajeria/application/use-cases/ObtenerResumenMensajesPorVentana";
+import { prismaMensajeCargaRepository } from "@/modules/mensajeria/infrastructure/repositories/PrismaMensajeCargaRepository";
+import { tituloVentanaMensajes, type VentanaMensajesSinLeerVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
+import {
   PanelCargaArchivo,
   type CargaResumenVista,
   type CombinacionCargaVista,
@@ -41,7 +47,7 @@ export default async function NotificadorPage() {
   // carga publicada y abierta ahora mismo (RF-15 ampliación), tampoco. `PanelCargaArchivo` muestra
   // un único mensaje genérico cuando el arreglo de combinaciones viene vacío, sin distinguir la
   // causa.
-  const [formatos, cargasPropias, ventanasDisponibles, solicitudesPropias, reaperturasVigentes] = await Promise.all([
+  const [formatos, cargasPropias, ventanasDisponibles, solicitudesPropias, reaperturasVigentes, mensajesPorVentana] = await Promise.all([
     prismaFormatoExcelRepository.listarAsignadosAUsuario(sesion.sub),
     listarCargasPropias(
       { usuarioId: sesion.sub, pagina: 1, tamano: 25 },
@@ -50,6 +56,11 @@ export default async function NotificadorPage() {
     listarVentanasDisponiblesParaNotificador({ repositorio: prismaVentanaCargaRepository }),
     listarSolicitudesReemplazoPropias(sesion.sub, { repositorio: prismaSolicitudReemplazoCargaRepository }),
     listarReaperturasVigentesPropias(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
+    // RF-31: avisos de mensajes del equipo revisor por ventana, solo del propio hilo (dos `groupBy`).
+    obtenerResumenMensajesPorVentana(
+      { lado: "NOTIFICADOR", notificadorId: sesion.sub },
+      { repositorio: prismaMensajeCargaRepository },
+    ),
   ]);
 
   // Una entrada por cada par (formato asignado, ventana disponible) cuyo formato coincide
@@ -93,6 +104,18 @@ export default async function NotificadorPage() {
       fechaLimite: reapertura.fechaLimite.toISOString(),
     }));
 
+  // RF-31: ventanas con mensajes sin leer que no tienen tarjeta en este panel (cerradas, no
+  // publicadas o con el formato ya no asignado): se avisan en un banner aparte.
+  const ventanasConNoLeidosSinTarjeta = await listarVentanasConNoLeidosSinTarjeta(
+    mensajesPorVentana.noLeidosPorVentana,
+    combinaciones.map((combinacion) => combinacion.ventanaCargaId),
+    { repositorio: prismaMensajeCargaRepository },
+  );
+  const ventanasMensajesSinLeer: VentanaMensajesSinLeerVista[] = ventanasConNoLeidosSinTarjeta.map((ventana) => ({
+    ventanaCargaId: ventana.ventanaCargaId,
+    titulo: tituloVentanaMensajes(ventana.formatoExcelNombre, ventana.anio),
+  }));
+
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
       <section className="flex flex-col justify-between gap-6 border-b border-gob-neutral pb-8 sm:flex-row sm:items-end">
@@ -112,6 +135,8 @@ export default async function NotificadorPage() {
         cargasIniciales={cargasIniciales}
         solicitudesIniciales={solicitudesIniciales}
         reaperturasIniciales={reaperturasIniciales}
+        mensajesPorVentana={mensajesPorVentana.porVentana}
+        ventanasMensajesSinLeer={ventanasMensajesSinLeer}
       />
     </div>
   );

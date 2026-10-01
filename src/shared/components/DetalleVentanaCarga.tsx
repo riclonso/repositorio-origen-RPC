@@ -22,6 +22,7 @@ import type {
   PaginaLotesAlerta,
 } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
+import { tituloVentanaMensajes } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import { IconoAdvertencia, IconoCalendario, IconoDocumento } from "@/shared/components/iconos";
 
 const TAMANO_PAGINA_ALERTAS = 10;
@@ -38,6 +39,9 @@ type DetalleVentanaCargaProps = {
   // RF-17: página actual de cada una de las dos tablas del historial de alertas.
   paginaAlertasAutomaticas: number;
   paginaAlertasManuales: number;
+  // RF-31: `true` solo en `/revisor/ventanas-carga/[id]`. ADMIN no participa de la mensajería con
+  // los notificadores, así que `/dashboard` pasa `false`.
+  permiteMensajes: boolean;
 };
 
 function aDestinatariosVista(destinatarios: DestinatarioAlertaVista[]): LoteAlertaVista["destinatarios"] {
@@ -80,6 +84,7 @@ export async function DetalleVentanaCarga({
   construirHref,
   paginaAlertasAutomaticas,
   paginaAlertasManuales,
+  permiteMensajes,
 }: DetalleVentanaCargaProps) {
   const [vistaAlertas, resultadoArchivo, resultadoRechazadas] = await Promise.all([
     obtenerVistaAlertasVentana(
@@ -143,6 +148,8 @@ export async function DetalleVentanaCarga({
           notificacionesArchivo={
             <ListadoCargasVentana
               ventanaCargaId={ventana.id}
+              tituloVentana={tituloVentanaMensajes(ventana.formatoExcelNombre, ventana.anio)}
+              permiteMensajes={permiteMensajes}
               pagina={pagina}
               tamano={tamano}
               construirHref={construirHref}

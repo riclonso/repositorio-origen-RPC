@@ -18,8 +18,12 @@ import {
   idTarjetaVentana,
   type ReaperturaVigentePropiaVista,
 } from "@/shared/components/BannerReaperturaCarga";
+import { BannerMensajesSinLeer } from "@/shared/components/BannerMensajesSinLeer";
 import { Boton } from "@/shared/components/Boton";
+import { BotonMensajesVentana } from "@/shared/components/BotonMensajesVentana";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
+import { tituloVentanaMensajes, type VentanaMensajesSinLeerVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
+import type { ResumenMensajesPorVentana } from "@/modules/mensajeria/domain/entities/MensajeCarga";
 import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
 import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
 import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
@@ -89,6 +93,27 @@ async function obtenerMisSolicitudes(): Promise<SolicitudReemplazoPropiaVista[] 
 
 function claveCombinacion(combinacion: CombinacionCargaVista): string {
   return `${combinacion.formatoExcelId}::${combinacion.ventanaCargaId}`;
+}
+
+// RF-31: aviso de mensajes del equipo revisor para la tarjeta de una combinación. Solo aparece si
+// la ventana tiene mensajes en el hilo propio; destacado cuando hay sin leer.
+function avisoMensajesDeCombinacion(
+  combinacion: CombinacionCargaVista,
+  mensajesPorVentana: ResumenMensajesPorVentana,
+): ReactNode {
+  const resumen = mensajesPorVentana[combinacion.ventanaCargaId];
+  if (!resumen || resumen.total === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <BotonMensajesVentana
+        lado="NOTIFICADOR"
+        ventanaCargaId={combinacion.ventanaCargaId}
+        tituloVentana={tituloVentanaMensajes(combinacion.formatoNombre, combinacion.anio)}
+        noLeidos={resumen.noLeidos}
+      />
+    </div>
+  );
 }
 
 // La carga vigente de una combinación (formato, ventana) es su APROBADA más reciente por
@@ -287,6 +312,8 @@ type TarjetaCargaBloqueadaProps = {
   // "aprobada": la carga original ya fue aprobada y esta tarjeta solo ofrece solicitar su
   // reemplazo (check). El icono, no solo el color, distingue ambos estados.
   variante: "pendiente" | "aprobada";
+  // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`).
+  avisoMensajes: ReactNode;
   onSolicitudReemplazoEnviada: () => void;
 };
 
@@ -302,6 +329,7 @@ function TarjetaCargaBloqueada({
   placeholderMotivo,
   solicitudPendiente,
   variante,
+  avisoMensajes,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaBloqueadaProps) {
   const Icono = variante === "aprobada" ? IconoSolicitudAprobada : IconoRelojArena;
@@ -318,6 +346,8 @@ function TarjetaCargaBloqueada({
       </h3>
 
       <p className="mt-2 text-sm text-gob-gray-a">{mensaje}</p>
+
+      {avisoMensajes}
 
       {solicitudPendiente ? (
         <p
@@ -354,6 +384,9 @@ type TarjetaCargaArchivoProps = {
   // ya finalizada.
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
+  // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`), visible en los tres
+  // estados de la tarjeta.
+  avisoMensajes: ReactNode;
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onSolicitudReemplazoEnviada: () => void;
 };
@@ -369,6 +402,7 @@ function TarjetaCargaArchivo({
   solicitudPendiente,
   cargaPendienteDecision,
   solicitudPendienteDeCargaPendiente,
+  avisoMensajes,
   onSubidaExitosa,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaArchivoProps) {
@@ -435,6 +469,7 @@ function TarjetaCargaArchivo({
         placeholderMotivo="Explica por qué necesitas reemplazar esta carga antes de que se decida"
         solicitudPendiente={solicitudPendienteDeCargaPendiente}
         variante="pendiente"
+        avisoMensajes={avisoMensajes}
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );
@@ -458,6 +493,7 @@ function TarjetaCargaArchivo({
         placeholderMotivo="Explica por qué necesitas reemplazar esta carga ya aprobada"
         solicitudPendiente={solicitudPendiente}
         variante="aprobada"
+        avisoMensajes={avisoMensajes}
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );
@@ -472,6 +508,8 @@ function TarjetaCargaArchivo({
       <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
         {combinacion.formatoNombre} · {combinacion.anio}
       </h3>
+
+      {avisoMensajes}
 
       <a
         href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
@@ -567,6 +605,10 @@ type PanelCargaArchivoProps = {
   cargasIniciales: CargaResumenVista[];
   solicitudesIniciales: SolicitudReemplazoPropiaVista[];
   reaperturasIniciales: ReaperturaVigentePropiaVista[];
+  // RF-31: se leen DIRECTO de las props (nunca copiadas a `useState`): así el `router.refresh()`
+  // de `visibilitychange` y el de cerrar el modal de mensajes actualizan los avisos.
+  mensajesPorVentana: ResumenMensajesPorVentana;
+  ventanasMensajesSinLeer: VentanaMensajesSinLeerVista[];
 };
 
 export function PanelCargaArchivo({
@@ -574,6 +616,8 @@ export function PanelCargaArchivo({
   cargasIniciales,
   solicitudesIniciales,
   reaperturasIniciales,
+  mensajesPorVentana,
+  ventanasMensajesSinLeer,
 }: PanelCargaArchivoProps) {
   // Resultado de la última subida por combinación, indexado por clave: cada tarjeta solo ve el
   // suyo. Vive aquí (no dentro de cada tarjeta) porque `confirmarVistoBueno` necesita poder
@@ -691,6 +735,8 @@ export function PanelCargaArchivo({
         )}
       />
 
+      <BannerMensajesSinLeer lado="NOTIFICADOR" ventanas={ventanasMensajesSinLeer} />
+
       {combinaciones.length === 0 ? (
         <section
           aria-labelledby="titulo-reporte"
@@ -736,6 +782,7 @@ export function PanelCargaArchivo({
               solicitudPendiente={solicitudPendiente}
               cargaPendienteDecision={cargaPendienteDecision}
               solicitudPendienteDeCargaPendiente={solicitudPendienteDeCargaPendiente}
+              avisoMensajes={avisoMensajesDeCombinacion(combinacion, mensajesPorVentana)}
               onSubidaExitosa={registrarResultado}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
             />

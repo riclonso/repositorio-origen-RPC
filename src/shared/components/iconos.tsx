@@ -7,6 +7,7 @@ import {
   Archive,
   Bell,
   CalendarBlank,
+  ChatCircleText,
   Check,
   CheckCircle,
   Circle,
@@ -118,3 +119,6 @@ export const IconoIngresarComoUsuario = crearIcono(UserSwitch, TAMANO_ACCION);
 // familia y peso que el resto de los iconos de acciones del sistema.
 export const IconoCalendario = crearIcono(CalendarBlank, TAMANO_ACCION);
 export const IconoPlazo = crearIcono(ShieldCheck, TAMANO_ACCION);
+// RF-31: mensajería entre el equipo revisor y los notificadores (botón "Mensaje" de una carga
+// pendiente, avisos de las tarjetas y banner de mensajes sin leer).
+export const IconoMensaje = crearIcono(ChatCircleText, TAMANO_ACCION);

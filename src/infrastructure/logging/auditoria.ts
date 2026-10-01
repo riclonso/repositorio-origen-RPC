@@ -91,7 +91,11 @@ export type AccionAuditoria =
   // RF-29: eliminación FÍSICA de un tipo de establecimiento sin uso. Es la única acción auditada del
   // mantenedor de tipos (crear, editar y activar/desactivar no se auditan, por decisión explícita).
   // No se registra el nombre del tipo, solo su id.
-  | "TIPO_ESTABLECIMIENTO_ELIMINADO";
+  | "TIPO_ESTABLECIMIENTO_ELIMINADO"
+  // RF-31: un mensaje sobre una carga, en cualquiera de las dos direcciones (equipo revisor hacia
+  // el notificador, o respuesta del notificador). El lado queda implícito en `actorPerfil`. NUNCA se
+  // registra el contenido del mensaje ni su longitud.
+  | "MENSAJE_CARGA_ENVIADO";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -236,7 +240,10 @@ export type MotivoAuditoria =
   | "CODIGO_PROVINCIA_CON_COMUNAS"
   // De `TIPO_ESTABLECIMIENTO_ELIMINADO` (RF-29): al menos un establecimiento (activo o inactivo)
   // referencia al tipo y la FK cortó el DELETE. El tipo solo puede desactivarse.
-  | "TIPO_ESTABLECIMIENTO_EN_USO";
+  | "TIPO_ESTABLECIMIENTO_EN_USO"
+  // De `MENSAJE_CARGA_ENVIADO` (RF-31): no existe conversación previa en ese par (notificador,
+  // ventana). El notificador nunca inicia; el revisor solo continúa un hilo que ya existe.
+  | "SIN_CONVERSACION";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -352,6 +359,9 @@ export type EventoAuditoria = {
   // Específico de `TIPO_ESTABLECIMIENTO_ELIMINADO` (RF-29): id del tipo afectado. Null si el id de la
   // ruta no era un UUID válido (no identifica a ningún tipo).
   tipoEstablecimientoId?: string | null;
+  // Específico de `MENSAJE_CARGA_ENVIADO` (RF-31): id del mensaje creado (solo en EXITO). Va junto
+  // a `cargaArchivoId`/`ventanaCargaId`, reutilizados de los eventos de cargas y ventanas.
+  mensajeCargaId?: string | null;
   ip: string | null;
   userAgent: string | null;
 };

@@ -98,6 +98,9 @@ export type CargaArchivoResumen = {
   // (formato, ventana) sin una consulta aparte — ver `panel-carga-archivo.tsx`.
   ventanaCargaId: string;
   anio: number;
+  // RF-31: la fila de una carga pendiente en el detalle de ventana lo necesita para abrir el hilo
+  // de mensajes del notificador correcto.
+  usuarioId: string;
   usuarioNombre: string;
   usuarioRut: string;
   nombreArchivoOriginal: string;

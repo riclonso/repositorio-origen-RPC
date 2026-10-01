@@ -6,6 +6,10 @@ import { TablaCargasVentana, type FilaCargaVentanaVista } from "@/shared/compone
 
 type ListadoCargasVentanaProps = {
   ventanaCargaId: string;
+  // RF-31: título visible de la ventana para el modal de mensajes, y si se ofrece "Mensaje" en las
+  // filas pendientes (solo `/revisor`; ver `TablaCargasVentana`).
+  tituloVentana: string;
+  permiteMensajes: boolean;
   pagina: number;
   tamano: number;
   construirHref: (pagina: number) => string;
@@ -18,6 +22,8 @@ type ListadoCargasVentanaProps = {
 // (`listarPendientesODecididas` en `PrismaCargaArchivoRepository`), nunca en la UI.
 export async function ListadoCargasVentana({
   ventanaCargaId,
+  tituloVentana,
+  permiteMensajes,
   pagina,
   tamano,
   construirHref,
@@ -29,6 +35,7 @@ export async function ListadoCargasVentana({
 
   const filas: FilaCargaVentanaVista[] = resultado.filas.map((carga) => ({
     id: carga.id,
+    usuarioId: carga.usuarioId,
     usuarioNombre: carga.usuarioNombre,
     usuarioRut: carga.usuarioRut,
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
@@ -50,7 +57,12 @@ export async function ListadoCargasVentana({
 
   return (
     <>
-      <TablaCargasVentana filas={filas} />
+      <TablaCargasVentana
+        filas={filas}
+        ventanaCargaId={ventanaCargaId}
+        tituloVentana={tituloVentana}
+        permiteMensajes={permiteMensajes}
+      />
       <Paginacion
         pagina={resultado.paginacion.pagina}
         tamano={resultado.paginacion.tamano}

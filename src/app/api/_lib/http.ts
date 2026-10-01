@@ -97,6 +97,29 @@ export async function exigirSesion(): Promise<AccesoSesion> {
   return { ok: true, sesion };
 }
 
+export type AccesoRevisor =
+  | { ok: true; sesion: SesionPayload }
+  | { ok: false; estado: 401 }
+  | { ok: false; estado: 403; sesion: SesionPayload };
+
+// Guard para `/api/revisor/**` (RF-31, mensajería): SOLO el perfil REVISOR_REPOSITORIO. A
+// diferencia de `exigirAdminORevisor`, un ADMIN recibe 403: no participa de la mensajería con los
+// notificadores. Mismo criterio que `exigirNotificador`: vive en cada Route Handler, no en el
+// matcher de `src/proxy.ts`.
+export async function exigirRevisor(): Promise<AccesoRevisor> {
+  const sesion = await obtenerSesionActual();
+
+  if (!sesion) {
+    return { ok: false, estado: 401 };
+  }
+
+  if (!esPerfilRevisorRepositorio(sesion.perfil)) {
+    return { ok: false, estado: 403, sesion };
+  }
+
+  return { ok: true, sesion };
+}
+
 export type AccesoAdminORevisor =
   | { ok: true; sesion: SesionPayload }
   | { ok: false; estado: 401 }

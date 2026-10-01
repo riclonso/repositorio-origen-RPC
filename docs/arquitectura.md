@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-09-30 (plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-10-01 (RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -92,6 +92,16 @@ src/
 │   │                         escritura recibe la INTERFAZ `ProvinciaRepository`
 │   │                         (validarProvinciaDeComuna.ts). Sin `regionId` propio: la región se
 │   │                         deriva por la provincia en el `select` anidado del listado
+│   ├── mensajeria/         — mensajes revisor ↔ notificador sobre cargas (RF-31). entities/
+│   │                         MensajeCarga.ts, repositories/MensajeCargaRepository.ts, ports.ts
+│   │                         (EnviadorAvisoMensajeNuevo), use-cases/ (EnviarMensajeRevisor,
+│   │                         ResponderMensajeNotificador, ListarConversacionesVentana,
+│   │                         ObtenerHiloVentana, MarcarMensajesLeidos,
+│   │                         ObtenerResumenMensajesPorVentana, AvisarMensajeNuevo),
+│   │                         PrismaMensajeCargaRepository.ts, email/AvisoMensajeMailer.ts,
+│   │                         auditoria/auditarMensajeCarga.ts, schemas/ (mensaje.schema.ts,
+│   │                         vistas-mensajeria.ts: DTOs compartidos por API y componentes). Lee la
+│   │                         carga vía la INTERFAZ `CargaArchivoRepository` de `reporte-excel`
 │   └── solicitudes-reemplazo/ — autoriza el reemplazo de una carga ya APROBADA (RF-19), ampliado
 │       │                     (RF-22) a también cubrir una carga PENDIENTE_VISTO_BUENO ya finalizada
 │       │                     y sin decidir (ver `origen` abajo)
@@ -209,6 +219,9 @@ Ejemplo completo de cómo encajan las capas (login es un Route Handler REST, no 
   Desde RF-30, `usuario.establecimientoId` es FK nullable a `establecimiento.id` (`ON UPDATE CASCADE`,
   `ON DELETE RESTRICT`, `@@index([establecimientoId])`); ver "El usuario pertenece a un
   establecimiento (RF-30)".
+  Desde RF-31, `MensajeCarga` (`mensaje_carga`, enum `LadoMensajeCarga`), con FK `Restrict` a
+  `carga_archivo`, `ventana_carga` y dos veces a `usuario` (`notificadorId`, `autorId`); ver
+  "Mensajería entre revisor y notificador (RF-31)".
 
 ## Agentes de desarrollo
 
@@ -224,7 +237,8 @@ Registradas aquí porque condicionan cómo se construyen los módulos siguientes
 ### Eliminación física solo sin historial (RF-25)
 
 El borrado físico estaba fuera de alcance por trazabilidad; RF-25 lo permite solo cuando no hay
-nada que trazar. De las 12 relaciones que referencian a `Usuario`, 10 son `ON DELETE RESTRICT` y
+nada que trazar. De las 12 relaciones que referencian a `Usuario` (14 desde RF-31, que agrega los
+mensajes escritos y recibidos, ambos de historial), 10 (hoy 12) son `ON DELETE RESTRICT` y
 representan historial (bloquean) y 2 son `CASCADE` y se descartan con la cuenta (tokens de
 recuperación y asignaciones de formato; la traza de estas queda en `formatosQuitados` de la
 auditoría). La clasificación vive en **una sola fuente**
@@ -2016,6 +2030,70 @@ tipo `AccionAuditoria` solo para poder leer el histórico ya escrito antes de es
 `actorRol`/`rolAnterior` de la época pre-RF-09) — ningún código nuevo la emite. `CARGA_ARCHIVO_RECHAZADA`
 gana un campo opcional `estadoOrigenRechazo` (`PENDIENTE_VISTO_BUENO` | `APROBADA`) para que el
 histórico distinga de qué estado vino cada rechazo, ahora que puede ser cualquiera de los dos.
+
+## Mensajería entre revisor y notificador (RF-31)
+
+### Modelo: un hilo por notificador, cada mensaje etiquetado con su carga
+
+`mensaje_carga` guarda `cargaArchivoId`, `ventanaCargaId` (copia denormalizada de la carga),
+`notificadorId` (clave del hilo, copia de `carga.usuarioId`), `autorId`, `ladoAutor`
+(`REVISOR`|`NOTIFICADOR`, persistido al escribir porque el perfil del autor puede cambiar),
+`contenido` `VarChar(1000)`, `creadoEn` y `leidoEn`. Denormalizar ventana y notificador (que nunca
+cambian en una carga) permite contar no leídos por ventana con `groupBy` de Prisma, sin `$queryRaw` ni
+JOIN. Un CHECK manual en la migración exige `ladoAutor <> 'NOTIFICADOR' OR autorId = notificadorId`.
+Índices: `[notificadorId, ventanaCargaId, creadoEn]` (hilo y resumen del notificador),
+`[ventanaCargaId, ladoAutor, leidoEn]` (alertas del revisor) y `[autorId]` (EXISTS de historial y FK).
+
+### Bandeja compartida: un solo `leidoEn` por mensaje
+
+`leidoEn` es la lectura del lado contrario al autor. Del lado revisor no hay estado por persona: lo
+que lee un revisor queda leído para todos, porque la bandeja es del equipo. La marca de lectura recibe
+`hasta` (fecha del último mensaje que el cliente mostró) y solo afecta `creadoEn <= hasta`, para no
+marcar como leído un mensaje que llegó entre el GET y el POST.
+
+### Quién puede escribir y a qué carga se asocia (siempre en el servidor)
+
+* Revisor, desde la fila de la carga: `POST /api/revisor/mensajes` exige carga `PENDIENTE_VISTO_BUENO`
+  finalizada (409 `NO_PENDIENTE`).
+* Revisor, en una conversación existente (`POST .../conversaciones/[notificadorId]/mensajes`): se
+  permite aunque la carga ya se haya decidido (decisión del usuario); se asocia a la carga pendiente si
+  existe, si no a la del último mensaje del hilo. Sin mensajes → 409 `SIN_CONVERSACION`.
+* Notificador: nunca inicia; responde solo si hay mensajes del revisor en su hilo de esa ventana, y su
+  respuesta se asocia a la carga del último mensaje del revisor.
+* El chequeo de "pendiente" y el INSERT no van en transacción `Serializable`: un mensaje guardado
+  milisegundos después de una aprobación concurrente no causa daño.
+
+### Guards: `exigirRevisor()` es nuevo y excluye a ADMIN
+
+`/api/revisor/**` (prefijo nuevo) usa `exigirRevisor()`, distinto de `exigirAdminORevisor()`: ADMIN
+recibe 403 porque no participa de la mensajería. En la UI, `permiteMensajes` (true en
+`/revisor/ventanas-carga/[id]`, false en `/dashboard/...`) oculta el botón, pero es solo comodidad. El
+notificador accede a su hilo con la propiedad fijada en el WHERE (`notificadorId = sesion.sub`): pedir
+otra ventana devuelve una lista vacía. El GET del hilo del revisor responde 404 si el par (notificador,
+ventana) no tiene mensajes ni carga pendiente finalizada, para no exponer datos de un usuario cualquiera.
+
+### Correo como caso de uso, una vez por tanda y por ventana
+
+`AvisarMensajeNuevo` (contra el puerto `EnviadorAvisoMensajeNuevo`) decide si se envía: no si el correo
+no está disponible ni si la cuenta no existe o está inactiva. El Route Handler lo invoca con `after()` y
+registra un fallo en `logger.error`: el mensaje ya está guardado y el 201 no depende del SMTP.
+Anti-ráfaga: se envía solo si, antes de este mensaje, el notificador no tenía mensajes del revisor sin
+leer **en esa misma ventana** (un mensaje olvidado en otra ventana no bloquea los avisos nuevos). El
+correo nunca lleva el contenido.
+
+### UI: refresco sin tiempo real, y la carrera "cerrar antes de marcar leído"
+
+Los avisos de las tarjetas los calcula el servidor (props, nunca copiadas a `useState`) y se actualizan
+con `router.refresh()` al cerrar el modal. Se encontró en la verificación en navegador una carrera: si
+el modal se cierra mientras el POST de lectura sigue en vuelo (frecuente en dev, por la compilación bajo
+demanda de la ruta), el refresco renderiza el mensaje aún como no leído y el aviso queda pegado.
+`shared/hooks/useRefrescoTrasLecturas.ts` hace que el refresco del cierre espere a los POST de lectura
+en curso. Mientras el modal está abierto, `shared/hooks/useRefrescoPeriodico.ts` consulta cada 20 s con
+la pestaña visible y de inmediato al volver a ella; los modales fusionan mensajes por `id`, para que una
+respuesta de sondeo iniciada antes de un envío no haga desaparecer el mensaje recién enviado. Los
+modales se montan solo mientras están abiertos (estado limpio en cada apertura). En `/revisor`, el
+`groupBy` de totales se acota a las ventanas con tarjeta; el de no leídos no, porque el banner de
+ventanas cerradas lo necesita.
 
 ## Perfil propio, cambio de contraseña, invalidación de sesión y bloqueo progresivo de cuentas (RF-21)
 

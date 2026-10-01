@@ -104,11 +104,17 @@ model Usuario {
   alertasRecibidas  AlertaNotificacionVentana[] @relation("AlertasNotificacionRecibidasPor")
   alertasDisparadas AlertaNotificacionVentana[] @relation("AlertasNotificacionDisparadasPor")
 
+  // Relaciones inversas de RF-31 (mensajería sobre cargas), exigidas por Prisma. NUNCA usarlas con
+  // `include` en el listado de usuarios, mismo motivo que `cargasArchivo`: arrastrarían todo el
+  // historial de mensajes de cada fila.
+  mensajesCargaEscritos  MensajeCarga[] @relation("MensajesCargaEscritosPor")
+  mensajesCargaRecibidos MensajeCarga[] @relation("MensajesCargaDeNotificador")
+
   // Política de eliminación FÍSICA (RF-25): una cuenta solo puede borrarse si no tiene historial.
-  //  - Las 10 relaciones con `onDelete: Restrict` (cargas, vistos buenos, publicaciones,
+  //  - Las 12 relaciones con `onDelete: Restrict` (cargas, vistos buenos, publicaciones,
   //    solicitudes de reemplazo solicitadas/revisadas, rechazos, ventanas creadas/eliminadas,
-  //    alertas recibidas/disparadas) SON historial: una sola fila impide eliminar, y la FK Restrict
-  //    es la defensa final de la base.
+  //    alertas recibidas/disparadas, mensajes de carga escritos/recibidos) SON historial: una sola
+  //    fila impide eliminar, y la FK Restrict es la defensa final de la base.
   //  - Las 2 con `onDelete: Cascade` (`tokensRecuperacion`, `formatosAsignados`) son descartables y
   //    caen con la cuenta.
   // La clasificación vive en `modules/usuarios/infrastructure/repositories/
@@ -498,6 +504,9 @@ model CargaArchivo {
   // notificador subió un archivo nuevo dentro del plazo habilitado por `CargaArchivoRechazo`).
   reaperturaGenerada CargaArchivoRechazo? @relation("ReaperturaConsumidaPorCarga")
 
+  // Relación inversa de RF-31, exigida por Prisma. NUNCA usarla con `include` en listados.
+  mensajes MensajeCarga[]
+
   // PostgreSQL no indexa las FK automáticamente. Sirve al EXISTS de historial del listado de
   // usuarios (RF-25) y a la verificación de la FK Restrict al eliminar una cuenta.
   @@index([usuarioId])
@@ -735,8 +744,60 @@ model VentanaCarga {
 
   cargas              CargaArchivo[]
   alertasNotificacion AlertaNotificacionVentana[]
+  // Relación inversa de RF-31, exigida por Prisma. NUNCA usarla con `include` en listados.
+  mensajesCarga       MensajeCarga[]
 
   @@map("ventana_carga")
+}
+
+// ============================================================
+// RF-31: mensajería entre REVISOR_REPOSITORIO y NOTIFICADOR_RPC sobre cargas
+// ============================================================
+
+// Lado de la conversación que escribió el mensaje. Se persiste al escribir y no se deriva del
+// perfil actual del autor, que puede cambiar con el tiempo.
+enum LadoMensajeCarga {
+  REVISOR
+  NOTIFICADOR
+}
+
+// Un hilo continuo por notificador (`notificadorId`); cada mensaje queda etiquetado con la carga
+// sobre la que se escribió y, por ella, con su ventana. La bandeja del lado revisor es COMPARTIDA
+// entre todos los REVISOR_REPOSITORIO: `autorId` identifica a la persona concreta que escribió.
+//
+// `ventanaCargaId` y `notificadorId` son COPIAS denormalizadas de `carga_archivo.ventanaCargaId` y
+// `carga_archivo.usuarioId` (nunca cambian en una carga): permiten contar no leídos por ventana con
+// `groupBy` sin JOIN. El repositorio las copia SIEMPRE desde la fila de la carga, nunca desde el
+// cliente. Coherencia de lado reforzada con un CHECK agregado a mano en la migración: un mensaje
+// del lado NOTIFICADOR solo puede tener como autor al propio notificador del hilo.
+model MensajeCarga {
+  id             String           @id @default(uuid())
+  cargaArchivoId String
+  cargaArchivo   CargaArchivo     @relation(fields: [cargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  ventanaCargaId String
+  ventanaCarga   VentanaCarga     @relation(fields: [ventanaCargaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  notificadorId  String
+  notificador    Usuario          @relation("MensajesCargaDeNotificador", fields: [notificadorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  autorId        String
+  autor          Usuario          @relation("MensajesCargaEscritosPor", fields: [autorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  ladoAutor      LadoMensajeCarga
+  // Texto plano. Nunca se registra en logs ni viaja en correos.
+  contenido      String           @db.VarChar(1000)
+  // Timestamps sin zona, mismo convenio que `TokenRecuperacion`: el instante siempre viaja como
+  // parámetro desde la aplicación, nunca comparado contra `now()` de PostgreSQL.
+  creadoEn       DateTime         @default(now()) @db.Timestamp(3)
+  // Lectura por el lado CONTRARIO al autor; NULL = sin leer. Del lado revisor basta un solo valor
+  // porque la bandeja es compartida: lo que lee un revisor queda leído para todos.
+  leidoEn        DateTime?        @db.Timestamp(3)
+
+  // Hilo de un notificador en una ventana, ordenado; su prefijo `notificadorId` cubre también el
+  // resumen por ventana del inicio del notificador y el EXISTS de historial de RF-25.
+  @@index([notificadorId, ventanaCargaId, creadoEn])
+  // Conteos de no leídos por ventana (inicio del revisor) y columna izquierda del modal.
+  @@index([ventanaCargaId, ladoAutor, leidoEn])
+  // EXISTS de historial de RF-25 y verificación de la FK Restrict al eliminar una cuenta.
+  @@index([autorId])
+  @@map("mensaje_carga")
 }
 
 // RF-17: alertas por email a notificadores (NOTIFICADOR_RPC) que no han reportado su archivo en

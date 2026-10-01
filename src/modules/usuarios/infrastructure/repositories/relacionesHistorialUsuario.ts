@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 // `PrismaUsuarioRepository`. Prohibido duplicar esta lista en otro punto.
 //
 // Clasificación de TODAS las relaciones de lista del `model Usuario` de `prisma/schema.prisma`:
-//  - HISTORIAL (10, todas `onDelete: Restrict`): hechos del sistema que una eliminación borraría o
+//  - HISTORIAL (12, todas `onDelete: Restrict`): hechos del sistema que una eliminación borraría o
 //    dejaría huérfanos. Una sola fila en cualquiera impide eliminar; la FK Restrict es además la
 //    defensa final de la base de datos.
 //  - DESCARTABLES (2, `onDelete: Cascade`): material de la propia cuenta sin valor histórico
@@ -63,6 +63,16 @@ export const RELACIONES_HISTORIAL_USUARIO: readonly RelacionHistorialUsuario[] =
   {
     nombre: "alertasDisparadas",
     existe: Prisma.sql`EXISTS (SELECT 1 FROM "alerta_notificacion_ventana" h WHERE h."disparadoPorId" = u."id")`,
+  },
+  {
+    // RF-31: un mensaje escrito sobre una carga (por un revisor o por el propio notificador).
+    nombre: "mensajesCargaEscritos",
+    existe: Prisma.sql`EXISTS (SELECT 1 FROM "mensaje_carga" h WHERE h."autorId" = u."id")`,
+  },
+  {
+    // RF-31: el hilo de mensajes de un notificador (clave `notificadorId`).
+    nombre: "mensajesCargaRecibidos",
+    existe: Prisma.sql`EXISTS (SELECT 1 FROM "mensaje_carga" h WHERE h."notificadorId" = u."id")`,
   },
 ];
 

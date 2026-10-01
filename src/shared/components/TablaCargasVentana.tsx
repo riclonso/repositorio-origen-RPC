@@ -7,6 +7,11 @@ import { LONGITUD_MAXIMA_MOTIVO_RECHAZO } from "@/modules/reporte-excel/domain/e
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
+import { IconoMensaje } from "@/shared/components/iconos";
+import {
+  ModalConversacionesRevisor,
+  type NotificadorInicialMensajes,
+} from "@/shared/components/ModalConversacionesRevisor";
 
 // Vista liviana de una fila: solo lo que necesita esta tabla, no todo `CargaArchivoResumen`.
 // `estado` decide qué acciones se ofrecen (ver `Acciones` más abajo): `APROBADA` solo puede
@@ -17,7 +22,7 @@ import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 // (`ListadoCargasVentana.tsx`).
 export type FilaCargaVentanaVista = Pick<
   CargaArchivoResumen,
-  "id" | "usuarioNombre" | "usuarioRut" | "nombreArchivoOriginal" | "estado"
+  "id" | "usuarioId" | "usuarioNombre" | "usuarioRut" | "nombreArchivoOriginal" | "estado"
 > & { fechaReporte: string };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
@@ -34,12 +39,32 @@ const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuev
 // (motivo obligatorio, `POST /api/dashboard/cargas/[id]/rechazo`) abren cada una su propio modal;
 // ambas rutas son compartidas por ambos paneles y guardadas por `exigirAdminORevisor`, mismo patrón
 // que `TablaSolicitudesReemplazo.tsx`.
+//
+// RF-31: con `permiteMensajes` (solo `/revisor`, nunca `/dashboard`: ADMIN no participa de la
+// mensajería) cada fila `PENDIENTE_VISTO_BUENO` ofrece "Mensaje", que abre el modal de
+// conversaciones de esta ventana con el notificador de la fila preseleccionado. Ocultarlo es solo
+// comodidad: la barrera real es el 403 de `/api/revisor/**` para cualquier perfil distinto de
+// REVISOR_REPOSITORIO.
 type TablaCargasVentanaProps = {
   filas: FilaCargaVentanaVista[];
+  ventanaCargaId: string;
+  tituloVentana: string;
+  permiteMensajes: boolean;
 };
 
-export function TablaCargasVentana({ filas }: TablaCargasVentanaProps) {
+export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permiteMensajes }: TablaCargasVentanaProps) {
   const router = useRouter();
+
+  const [notificadorMensajes, setNotificadorMensajes] = useState<NotificadorInicialMensajes | null>(null);
+
+  function abrirMensajes(fila: FilaCargaVentanaVista) {
+    setNotificadorMensajes({
+      id: fila.usuarioId,
+      nombreCompleto: fila.usuarioNombre,
+      rut: fila.usuarioRut,
+      cargaArchivoId: fila.id,
+    });
+  }
 
   const [objetivoRechazo, setObjetivoRechazo] = useState<FilaCargaVentanaVista | null>(null);
   const [motivo, setMotivo] = useState("");
@@ -165,6 +190,16 @@ export function TablaCargasVentana({ filas }: TablaCargasVentanaProps) {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
+                    {permiteMensajes && fila.estado === "PENDIENTE_VISTO_BUENO" ? (
+                      <Boton
+                        variante="secundario"
+                        onClick={() => abrirMensajes(fila)}
+                        aria-label={`Enviar mensaje a ${fila.usuarioNombre} sobre ${fila.nombreArchivoOriginal}`}
+                      >
+                        <IconoMensaje className="shrink-0" />
+                        Mensaje
+                      </Boton>
+                    ) : null}
                     {fila.estado === "PENDIENTE_VISTO_BUENO" ? (
                       <Boton variante="primario" onClick={() => setObjetivoAprobacion(fila)}>
                         Aprobar
@@ -180,6 +215,15 @@ export function TablaCargasVentana({ filas }: TablaCargasVentanaProps) {
           </tbody>
         </table>
       </div>
+
+      {notificadorMensajes ? (
+        <ModalConversacionesRevisor
+          ventanaCargaId={ventanaCargaId}
+          tituloVentana={tituloVentana}
+          notificadorInicial={notificadorMensajes}
+          onCerrar={() => setNotificadorMensajes(null)}
+        />
+      ) : null}
 
       <DialogoConfirmacion
         abierto={objetivoAprobacion !== null}

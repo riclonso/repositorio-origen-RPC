@@ -60,6 +60,7 @@ export default async function DetalleVentanaCargaDashboardPage({
       }
       paginaAlertasAutomaticas={paginaAlertasAutomaticas}
       paginaAlertasManuales={paginaAlertasManuales}
+      permiteMensajes={false}
     />
   );
 }
