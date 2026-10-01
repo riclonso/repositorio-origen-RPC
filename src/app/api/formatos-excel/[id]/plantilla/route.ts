@@ -75,9 +75,12 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
 
+    // El notificador (que descarga desde la ventana de carga) recibe SIEMPRE un `.xlsx`, aunque el
+    // formato sea CSV: es más cómodo de llenar en Excel. ADMIN y REVISOR_REPOSITORIO reciben el tipo
+    // de archivo del formato.
     const plantilla = await generarPlantillaDesdeColumnasExcelJs(
       formato.columnas.map((columna) => columna.nombre),
-      formato.tipoArchivo,
+      puedeAdministrarFormato ? formato.tipoArchivo : "EXCEL",
       formato.separadorCsv,
     );
 
