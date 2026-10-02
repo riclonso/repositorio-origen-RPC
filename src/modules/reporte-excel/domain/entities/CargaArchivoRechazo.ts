@@ -1,8 +1,6 @@
 // Rechazo unilateral de una carga ya `APROBADA` (a diferencia de `SolicitudReemplazoCarga`, no hay
 // "solicitud pendiente": quien rechaza decide directamente). Habilita una REAPERTURA de la
-// combinación (formato, ventana) para que el mismo notificador vuelva a subir un archivo. La
-// reapertura NO se consume al subir: se consume al finalizar y enviar con éxito
-// (`CargaArchivoRepository.finalizar()`), con la ventana abierta o cerrada.
+// combinación (formato, ventana) para que el mismo notificador vuelva a subir un archivo.
 
 import { finDelDiaChile, paredChileAInstante } from "@/shared/utils/fecha";
 
@@ -74,27 +72,4 @@ export function reaperturaVigente(
 ): boolean {
   if (rechazo.reaperturaConsumidaEn !== null) return false;
   return ahora.getTime() <= fechaLimiteReapertura(rechazo, ventana).getTime();
-}
-
-// `true` si el rechazo ocurrió DESPUÉS de que se aprobara la carga hoy vigente de la combinación:
-// solo entonces la reapertura corresponde a un intento posterior a esa aprobación (p.ej. se
-// rechazó la carga de reemplazo). Una reapertura vieja que quedó sin consumir, anterior a la
-// aprobación vigente, no debe abrir un reemplazo que nadie autorizó. Sin `vistoBuenoEn` (no
-// debería ocurrir en una `APROBADA`) se trata como no autorizada. Pura y sin dependencias de
-// servidor: la reutiliza el panel del notificador (Client Component).
-export function rechazoPosteriorAAprobacion(rechazadoEn: Date, vistoBuenoEn: Date | null): boolean {
-  if (!vistoBuenoEn) return false;
-  return rechazadoEn.getTime() > vistoBuenoEn.getTime();
-}
-
-// Una reapertura autoriza a reemplazar la carga `APROBADA` vigente solo si sigue vigente y es
-// posterior a esa aprobación (ver `rechazoPosteriorAAprobacion`). La usa
-// `resolverAutorizacionReemplazo` tanto al subir como al finalizar.
-export function reaperturaAutorizaReemplazo(
-  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "reaperturaConsumidaEn">,
-  ventana: VentanaParaReapertura,
-  vigente: { vistoBuenoEn: Date | null },
-  ahora: Date,
-): boolean {
-  return reaperturaVigente(rechazo, ventana, ahora) && rechazoPosteriorAAprobacion(rechazo.rechazadoEn, vigente.vistoBuenoEn);
 }

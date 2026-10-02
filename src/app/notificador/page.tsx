@@ -3,13 +3,13 @@ import { ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
-import { listarCargasPanelNotificador } from "@/modules/reporte-excel/application/use-cases/ListarCargasPanelNotificador";
+import { listarCargasPropias } from "@/modules/reporte-excel/application/use-cases/ListarCargasPropias";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { listarVentanasDisponiblesParaNotificador } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasDisponiblesParaNotificador";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 import { listarSolicitudesReemplazoPropias } from "@/modules/solicitudes-reemplazo/application/use-cases/ListarSolicitudesReemplazoPropias";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
-import { solicitudUtilizable, solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
 import type { ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import {
@@ -49,9 +49,10 @@ export default async function NotificadorPage() {
   // causa.
   const [formatos, cargasPropias, ventanasDisponibles, solicitudesPropias, reaperturasVigentes, mensajesPorVentana] = await Promise.all([
     prismaFormatoExcelRepository.listarAsignadosAUsuario(sesion.sub),
-    // Intentos recientes + las cargas que determinan el estado de cada tarjeta, para que una
-    // `APROBADA` vigente o una pendiente finalizada nunca queden fuera de un corte de página.
-    listarCargasPanelNotificador(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
+    listarCargasPropias(
+      { usuarioId: sesion.sub, pagina: 1, tamano: 25 },
+      { repositorio: prismaCargaArchivoRepository },
+    ),
     listarVentanasDisponiblesParaNotificador({ repositorio: prismaVentanaCargaRepository }),
     listarSolicitudesReemplazoPropias(sesion.sub, { repositorio: prismaSolicitudReemplazoCargaRepository }),
     listarReaperturasVigentesPropias(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
@@ -77,7 +78,7 @@ export default async function NotificadorPage() {
       })),
   );
 
-  const cargasIniciales: CargaResumenVista[] = cargasPropias.map((carga) => ({
+  const cargasIniciales: CargaResumenVista[] = cargasPropias.filas.map((carga) => ({
     ...carga,
     createdAt: carga.createdAt.toISOString(),
     vistoBuenoEn: carga.vistoBuenoEn ? carga.vistoBuenoEn.toISOString() : null,
@@ -91,7 +92,6 @@ export default async function NotificadorPage() {
     estado: solicitud.estado,
     origen: solicitud.origen,
     vencida: solicitudVencida(solicitud, ahora),
-    utilizable: solicitudUtilizable(solicitud, ahora),
   }));
 
   // El aviso de rechazo solo se muestra si la ventana está publicada y abierta: con una ventana en
@@ -102,7 +102,6 @@ export default async function NotificadorPage() {
     .map((reapertura) => ({
       ...reapertura,
       fechaLimite: reapertura.fechaLimite.toISOString(),
-      rechazadoEn: reapertura.rechazadoEn.toISOString(),
     }));
 
   // RF-31: ventanas con mensajes sin leer que no tienen tarjeta en este panel (cerradas, no

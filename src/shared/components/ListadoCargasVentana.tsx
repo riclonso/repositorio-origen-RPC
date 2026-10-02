@@ -40,7 +40,6 @@ export async function ListadoCargasVentana({
     usuarioRut: carga.usuarioRut,
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
     estado: carga.estado,
-    superada: carga.estado === "APROBADA" && carga.publicacionActiva === false,
     fechaReporte: formatearFechaHora(carga.createdAt),
   }));
 

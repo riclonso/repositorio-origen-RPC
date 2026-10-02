@@ -1,12 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
-import { logger } from "@/infrastructure/logging/logger";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
-import { marcarSolicitudUtilizadaEnTransaccion } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import type {
   CargaArchivo,
-  CargaArchivoResumenConPublicacion,
   CargaArchivoResumenPropia,
   DatosNuevaCargaArchivo,
   DatosPublicacionCarga,
@@ -14,7 +12,6 @@ import type {
   ErrorCargaArchivo,
   FiltroListadoCargasPendientesODecididas,
   InfoRechazoCargaArchivo,
-  ResultadoFinalizarCargaArchivo,
   ValorCeldaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRechazo } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
@@ -226,87 +223,6 @@ function aCargaArchivoResumenPropia(registro: RegistroResumenPropia): CargaArchi
   };
 }
 
-// Extensión de `SELECCION_RESUMEN` para el panel del notificador (`listarPropias`,
-// `listarDeterminantesPanelPropias`): solo `activo` de la publicación (join 1:1, sin N+1). No se
-// agrega al `SELECCION_RESUMEN` compartido para no sumar ese join a los listados que no lo usan.
-const SELECCION_RESUMEN_CON_PUBLICACION = {
-  ...SELECCION_RESUMEN,
-  publicacion: { select: { activo: true } },
-} as const;
-
-type RegistroResumenConPublicacion = RegistroResumen & { publicacion: { activo: boolean } | null };
-
-function aCargaArchivoResumenConPublicacion(registro: RegistroResumenConPublicacion): CargaArchivoResumenConPublicacion {
-  return {
-    ...aCargaArchivoResumen(registro),
-    publicacionActiva: registro.publicacion ? registro.publicacion.activo : null,
-  };
-}
-
-// Predicado de "candidata a vigente": `APROBADA` cuya publicación no fue desactivada (sin
-// publicación —cargas antiguas sin backfill— o activa). Compartido por
-// `obtenerAprobadaVigentePorUsuarioYVentana` y `listarDeterminantesPanelPropias` para que ambos
-// usen exactamente la misma noción de "vigente".
-const FILTRO_APROBADA_NO_SUPERADA = {
-  estado: "APROBADA" as const,
-  OR: [{ publicacion: { is: null } }, { publicacion: { is: { activo: true } } }],
-};
-
-const CODIGO_UNIQUE_VIOLADO = "P2002";
-
-// Índice único parcial de la migración `indice_unico_carga_pendiente_finalizada`.
-const INDICE_PENDIENTE_FINALIZADA = "carga_archivo_pendiente_finalizada_key";
-
-// ¿Es un P2002 causado por `INDICE_PENDIENTE_FINALIZADA`? Con `@prisma/adapter-pg` el nombre del
-// índice no viene en un campo propio: solo aparece en
-// `meta.driverAdapterError.cause.originalMessage` (texto del servidor, localizado, p.ej.
-// "llave duplicada viola restricción de unicidad «carga_archivo_pendiente_finalizada_key»"). Se
-// revisa también `meta.target` por si el motor sin adaptador lo informa ahí. Nunca se registra el
-// mensaje: solo se usa para clasificar.
-function esViolacionIndicePendienteFinalizada(error: unknown): boolean {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== CODIGO_UNIQUE_VIOLADO) {
-    return false;
-  }
-
-  const meta = error.meta as
-    | { target?: unknown; driverAdapterError?: { cause?: { originalMessage?: unknown; constraint?: unknown } } }
-    | undefined;
-  const causa = meta?.driverAdapterError?.cause;
-  const candidatos = [meta?.target, causa?.originalMessage, causa?.constraint];
-
-  return candidatos.some((candidato) => {
-    if (typeof candidato === "string") return candidato.includes(INDICE_PENDIENTE_FINALIZADA);
-    if (Array.isArray(candidato)) return candidato.includes(INDICE_PENDIENTE_FINALIZADA);
-    if (candidato && typeof candidato === "object") {
-      return JSON.stringify(candidato).includes(INDICE_PENDIENTE_FINALIZADA);
-    }
-    return false;
-  });
-}
-
-// Lectura del detalle (con relaciones) DESPUÉS de confirmar una escritura, fuera de cualquier
-// transacción: ver comentario de `crear`. La fila se acaba de escribir, así que su ausencia es una
-// falla técnica, no un desenlace de negocio.
-async function leerDetalleTrasEscritura(id: string): Promise<CargaArchivo> {
-  const registro = await prisma.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
-  if (!registro) throw new Error("Carga inexistente al releerla tras una escritura");
-  return aCargaArchivo(registro);
-}
-
-// Tope defensivo de `listarDeterminantesPanelPropias`.
-const TOPE_DETERMINANTES_PANEL = 500;
-
-// Centinela para abortar (rollback) la transacción interactiva de `finalizar()` con un desenlace de
-// negocio: Prisma solo revierte si el callback lanza. Se traduce a `{ ok: false, motivo }` afuera.
-class RollbackFinalizar extends Error {
-  readonly motivo: "CARGA_PENDIENTE_DECISION" | "REEMPLAZO_NO_AUTORIZADO";
-
-  constructor(motivo: "CARGA_PENDIENTE_DECISION" | "REEMPLAZO_NO_AUTORIZADO") {
-    super(motivo);
-    this.motivo = motivo;
-  }
-}
-
 // Vista denormalizada de `CargaArchivoRechazo`, mismo criterio que `PrismaSolicitudReemplazoCargaRepository`.
 const SELECCION_RECHAZO_ENTIDAD = {
   id: true,
@@ -349,8 +265,9 @@ function aCargaArchivoRechazo(registro: RegistroRechazoEntidad): CargaArchivoRec
   };
 }
 
-function datosCreacionCargaArchivo(datos: DatosNuevaCargaArchivo) {
+function datosCreacionCargaArchivo(datos: DatosNuevaCargaArchivo, id?: string) {
   return {
+    ...(id ? { id } : {}),
     formatoExcelId: datos.formatoExcelId,
     ventanaCargaId: datos.ventanaCargaId,
     usuarioId: datos.usuarioId,
@@ -375,21 +292,81 @@ function datosCreacionCargaArchivo(datos: DatosNuevaCargaArchivo) {
 
 export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   async crear(datos: DatosNuevaCargaArchivo) {
-    // Nested write de una sola escritura: la carga y sus errores en una única operación atómica,
-    // mismo patrón que `PrismaFormatoExcelRepository.crear`. La subida ya no consume ninguna
-    // autorización (solicitud de reemplazo ni reapertura): eso ocurre en `finalizar()`.
-    //
-    // La escritura anidada corre en una transacción implícita: devuelve solo el id, y el detalle
-    // (con relaciones) se lee después del commit. Leer `SELECCION_DETALLE` dentro de la transacción
-    // hace que Prisma 7 + adapter-pg lance consultas paralelas sobre su única conexión (aviso de
-    // deprecación de `pg`, error en pg@9). Mismo criterio en `darVistoBueno`, `finalizar` y
-    // `rechazar`.
-    const creada = await prisma.cargaArchivo.create({
-      data: datosCreacionCargaArchivo(datos),
-      select: { id: true },
-    });
+    // Camino normal (sin reemplazo ni reapertura pendiente de consumir): nido de una sola
+    // escritura, la carga y sus errores en una única operación atómica, mismo patrón que
+    // `PrismaFormatoExcelRepository.crear`.
+    if (!datos.solicitudReemplazoAConsumirId && !datos.cargaArchivoRechazoAConsumirId) {
+      const registro = await prisma.cargaArchivo.create({
+        data: datosCreacionCargaArchivo(datos),
+        select: SELECCION_DETALLE,
+      });
 
-    return leerDetalleTrasEscritura(creada.id);
+      return aCargaArchivo(registro);
+    }
+
+    // Extensión "solicitudes de reemplazo"/"rechazo de cargas aprobadas": la autorización (una u
+    // otra, nunca ambas a la vez) se consume por el intento de subida en sí (exista o no error de
+    // validación en él), en la MISMA transacción que crea esta carga — nunca dos escrituras
+    // sueltas que puedan quedar a medio camino. El id se genera en el cliente (en vez de dejarlo
+    // al `@default(uuid())` de Prisma) para poder referenciarlo en la segunda sentencia de la
+    // transacción en forma de arreglo sin depender del resultado de la primera.
+    //
+    // Nota de módulo: `solicitud_reemplazo_carga` pertenece al módulo `solicitudes-reemplazo`, no
+    // a este. Se actualiza aquí, directo por Prisma, en vez de a través de
+    // `SolicitudReemplazoCargaRepository`, porque la transacción de array de Prisma exige que cada
+    // elemento sea la promesa de una operación de este mismo cliente: envolverla en otro
+    // repositorio no la dejaría dentro de la misma transacción. Mismo criterio de acceso
+    // cross-módulo desde infraestructura que ya usa `auditarCargaArchivo.ts` (importa
+    // `prismaUsuarioRepository` directo para resolver el RUT del actor).
+    const idNuevo = randomUUID();
+    const ahora = new Date();
+
+    const operaciones: Prisma.PrismaPromise<unknown>[] = [
+      prisma.cargaArchivo.create({
+        data: datosCreacionCargaArchivo(datos, idNuevo),
+        select: SELECCION_DETALLE,
+      }),
+    ];
+
+    if (datos.solicitudReemplazoAConsumirId) {
+      operaciones.push(
+        prisma.solicitudReemplazoCarga.updateMany({
+          where: { id: datos.solicitudReemplazoAConsumirId, estado: "APROBADA", utilizadaEn: null },
+          data: { utilizadaEn: ahora, nuevaCargaArchivoId: idNuevo },
+        }),
+      );
+    }
+
+    if (datos.cargaArchivoRechazoAConsumirId) {
+      operaciones.push(
+        prisma.cargaArchivoRechazo.updateMany({
+          where: { id: datos.cargaArchivoRechazoAConsumirId, reaperturaConsumidaEn: null },
+          data: { reaperturaConsumidaEn: ahora, reaperturaConsumidaPorCargaArchivoId: idNuevo },
+        }),
+      );
+
+      // Cualquier OTRO rechazo sin consumir de esta misma combinación (usuario, ventana) queda
+      // superado por esta subida (p.ej. dos reemplazos aprobados sucesivos sobre la misma ventana
+      // antes de subir el archivo nuevo): se marca resuelto igual, pero sin apuntarlo a esta carga
+      // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1, ya la usa
+      // el `updateMany` de arriba con `cargaArchivoRechazoAConsumirId`). Sin esto, un rechazo viejo
+      // suelto seguía apareciendo en `BannerReaperturaCarga` (`/notificador`) como una segunda
+      // alerta duplicada para la misma `ventanaCargaId`.
+      operaciones.push(
+        prisma.cargaArchivoRechazo.updateMany({
+          where: {
+            id: { not: datos.cargaArchivoRechazoAConsumirId },
+            reaperturaConsumidaEn: null,
+            cargaArchivo: { usuarioId: datos.usuarioId, ventanaCargaId: datos.ventanaCargaId },
+          },
+          data: { reaperturaConsumidaEn: ahora },
+        }),
+      );
+    }
+
+    const [registro] = (await prisma.$transaction(operaciones)) as [RegistroDetalle, ...unknown[]];
+
+    return aCargaArchivo(registro);
   },
 
   async obtenerPorId(id) {
@@ -411,23 +388,15 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   },
 
   async obtenerAprobadaVigentePorUsuarioYVentana(usuarioId, ventanaCargaId) {
-    // La "vigente" es la APROBADA más reciente por `vistoBuenoEn` cuya publicación no fue
-    // desactivada: una aprobación ya superada por un reemplazo (publicación `activo = false`) nunca
-    // revive como vigente, aunque después se rechace la carga que la reemplazó.
+    // La "vigente" es la APROBADA más reciente por `vistoBuenoEn`: un notificador puede tener
+    // varias cargas APROBADA en la misma ventana (correcciones/reemplazos sucesivos), mismo
+    // criterio que `agruparCargasAprobadasPorVentana`.
     const registro = await prisma.cargaArchivo.findFirst({
-      where: { usuarioId, ventanaCargaId, ...FILTRO_APROBADA_NO_SUPERADA },
+      where: { usuarioId, ventanaCargaId, estado: "APROBADA" },
       orderBy: { vistoBuenoEn: "desc" },
       select: SELECCION_DETALLE,
     });
     return registro ? aCargaArchivo(registro) : null;
-  },
-
-  async obtenerUltimaPorUsuarioYVentana(usuarioId, ventanaCargaId) {
-    return prisma.cargaArchivo.findFirst({
-      where: { usuarioId, ventanaCargaId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, createdAt: true },
-    });
   },
 
   async obtenerPendienteFinalizadaPorUsuarioYVentana(usuarioId, ventanaCargaId) {
@@ -464,14 +433,10 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       ...(filtro.formatoExcelId ? { formatoExcelId: filtro.formatoExcelId } : {}),
     };
 
-    // `Promise.all` sin transacción (no `$transaction` de arreglo): con Prisma 7 + adapter-pg, una
-    // selección con relaciones dentro de una transacción de arreglo dispara consultas paralelas
-    // sobre la única conexión de la tx (aviso de deprecación de `pg`). En READ COMMITTED la
-    // transacción tampoco daba una foto consistente entre filas y conteo.
-    const [registros, total] = await Promise.all([
+    const [registros, total] = await prisma.$transaction([
       prisma.cargaArchivo.findMany({
         where,
-        select: SELECCION_RESUMEN_CON_PUBLICACION,
+        select: SELECCION_RESUMEN,
         orderBy: { createdAt: "desc" },
         skip: (filtro.pagina - 1) * filtro.tamano,
         take: filtro.tamano,
@@ -479,33 +444,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       prisma.cargaArchivo.count({ where }),
     ]);
 
-    return { filas: registros.map(aCargaArchivoResumenConPublicacion), total };
-  },
-
-  async listarDeterminantesPanelPropias(usuarioId) {
-    // Ownership en el `WHERE`. Tope defensivo (no paginado): por construcción hay a lo más una
-    // publicación activa y una pendiente finalizada por ventana; solo las aprobaciones antiguas sin
-    // publicación pueden acumularse.
-    const registros = await prisma.cargaArchivo.findMany({
-      where: {
-        usuarioId,
-        OR: [FILTRO_APROBADA_NO_SUPERADA, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
-      },
-      select: SELECCION_RESUMEN_CON_PUBLICACION,
-      orderBy: { createdAt: "desc" },
-      take: TOPE_DETERMINANTES_PANEL,
-    });
-
-    // Alcanzar el tope no debería ocurrir; si ocurre, alguna tarjeta podría quedar en un estado
-    // incorrecto. Se registra como falla técnica (solo el id del usuario y el tope).
-    if (registros.length >= TOPE_DETERMINANTES_PANEL) {
-      logger.error("Tope alcanzado al listar las cargas determinantes del panel del notificador", {
-        usuarioId,
-        tope: TOPE_DETERMINANTES_PANEL,
-      });
-    }
-
-    return registros.map(aCargaArchivoResumenConPublicacion);
+    return { filas: registros.map(aCargaArchivoResumen), total };
   },
 
   async listarPropiasAprobadas(usuarioId) {
@@ -565,13 +504,10 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       ],
     };
 
-    // `Promise.all` sin transacción, mismo motivo que `listarPropias`.
-    const [registros, total] = await Promise.all([
+    const [registros, total] = await prisma.$transaction([
       prisma.cargaArchivo.findMany({
         where,
-        // Con `publicacion.activo` (join 1:1, sin N+1): la tabla distingue una `APROBADA` ya
-        // superada por un reemplazo ("Reemplazada", sin "Rechazar").
-        select: SELECCION_RESUMEN_CON_PUBLICACION,
+        select: SELECCION_RESUMEN,
         // Más reciente primero por fecha de ingreso: a diferencia de `listarAprobadas`
         // (`vistoBuenoEn desc`), una `PENDIENTE_VISTO_BUENO` finalizada todavía no tiene
         // `vistoBuenoEn`, así que ese campo dejaría de servir para ordenar esta tabla mixta.
@@ -582,7 +518,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       prisma.cargaArchivo.count({ where }),
     ]);
 
-    return { filas: registros.map(aCargaArchivoResumenConPublicacion), total };
+    return { filas: registros.map(aCargaArchivoResumen), total };
   },
 
   async contarPendientesFinalizadas() {
@@ -602,7 +538,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     // `timeout` explícito (por encima del defecto de Prisma, 5000ms): con el tope de RF-14
     // (`TOPE_FILAS_DATOS = 20_000`) esta transacción puede llegar a hacer 4 lotes de `createMany`
     // además del resto de las escrituras; 5s puede no alcanzar fuera de localhost.
-    const aprobada = await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       // Corrección (fin de la autoaprobación): ya no filtra por `usuarioId` (quien aprueba es un
       // tercero, no el dueño de la carga), y exige `finalizadaEn` no nulo (el notificador ya
       // finalizó y envió). Si cualquiera no calza, no toca ninguna fila. Cierra la ventana de
@@ -612,7 +548,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
         data: { estado: "APROBADA", vistoBuenoEn: new Date(), vistoBuenoPorId: aprobadoPorId },
       });
 
-      if (resultado.count === 0) return false;
+      if (resultado.count === 0) return null;
 
       const publicada = await tx.cargaArchivoPublicada.create({
         data: { cargaArchivoId: id, publicadoPorId: aprobadoPorId },
@@ -633,29 +569,12 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
         });
       }
 
-      // Si esta aprobación reemplaza a la vigente de su combinación (usuario, ventana), TODAS las
-      // publicaciones activas de esa combinación distintas de la nueva dejan de ser visibles para el
-      // revisor (baja lógica, sus filas de detalle se conservan intactas) y quedan enlazadas a esta
-      // carga con el motivo resuelto en `DarVistoBueno`. Barrer la combinación completa (y no solo
-      // una carga anterior puntual) garantiza que nunca queden dos publicaciones activas, llegue
-      // esta carga por solicitud de reemplazo o por reapertura tras un rechazo.
+      // Si esta carga nació de un reemplazo consumido, la publicación anterior deja de ser
+      // visible para el revisor (baja lógica, sus filas de detalle se conservan intactas) y queda
+      // enlazada a esta carga con el motivo que el notificador escribió al pedir el reemplazo.
       if (publicacion.reemplazo) {
-        const combinacion = await tx.cargaArchivo.findUnique({
-          where: { id },
-          select: { usuarioId: true, ventanaCargaId: true },
-        });
-
-        // Imposible en la práctica (la fila se acaba de actualizar en esta misma tx). Se lanza en
-        // vez de devolver `null` para que Prisma revierta la transición y la publicación ya
-        // insertadas: un `return` confirmaría esas escrituras.
-        if (!combinacion) throw new Error("Carga inexistente al desactivar publicaciones reemplazadas");
-
         await tx.cargaArchivoPublicada.updateMany({
-          where: {
-            activo: true,
-            cargaArchivoId: { not: id },
-            cargaArchivo: { usuarioId: combinacion.usuarioId, ventanaCargaId: combinacion.ventanaCargaId },
-          },
+          where: { cargaArchivoId: publicacion.reemplazo.cargaArchivoIdAnterior },
           data: {
             activo: false,
             desactivadaEn: new Date(),
@@ -666,110 +585,39 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
         });
       }
 
-      return true;
+      const registro = await tx.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
+      return registro ? aCargaArchivo(registro) : null;
     }, { timeout: 15_000 });
-
-    // Detalle leído después del commit (ver comentario de `crear`).
-    return aprobada ? leerDetalleTrasEscritura(id) : null;
   },
 
-  async finalizar(id, usuarioId, consumo): Promise<ResultadoFinalizarCargaArchivo> {
-    let finalizada: boolean;
+  async finalizar(id, usuarioId) {
+    // `updateMany` condicional y atómico: ownership (`usuarioId`), estado y `finalizadaEn IS NULL`
+    // en el mismo `WHERE`. Cierra la ventana de carrera de un doble clic o dos pestañas.
+    const resultado = await prisma.cargaArchivo.updateMany({
+      where: { id, usuarioId, estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: null },
+      data: { finalizadaEn: new Date() },
+    });
 
-    try {
-      finalizada = await prisma.$transaction(async (tx): Promise<boolean> => {
-        const ahora = new Date();
+    if (resultado.count === 0) return null;
 
-        // (a) `updateMany` condicional y atómico: ownership (`usuarioId`), estado y
-        // `finalizadaEn IS NULL` en el mismo `WHERE`. Cierra la carrera de un doble clic.
-        const resultado = await tx.cargaArchivo.updateMany({
-          where: { id, usuarioId, estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: null },
-          data: { finalizadaEn: ahora },
-        });
+    const registro = await prisma.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
+    if (!registro) return null;
 
-        if (resultado.count === 0) return false;
+    // Con la ventana todavía abierta, una reapertura pendiente de esta combinación (usuario,
+    // ventana) no se consume al subir el archivo (ver `ValidarYCargarArchivo`): recién aquí, al
+    // finalizar y enviar con éxito, se considera que el notificador ya corrigió lo que motivó el
+    // rechazo. Cierra todas las que sigan sin consumir (no solo una), sin apuntarlas a esta carga
+    // como su "consumidor" (`reaperturaConsumidaPorCargaArchivoId` es una relación 1:1 exclusiva
+    // del camino de ventana vencida) — solo apaga el banner `BannerReaperturaCarga`.
+    await prisma.cargaArchivoRechazo.updateMany({
+      where: {
+        reaperturaConsumidaEn: null,
+        cargaArchivo: { usuarioId, ventanaCargaId: registro.ventanaCargaId },
+      },
+      data: { reaperturaConsumidaEn: new Date() },
+    });
 
-        // Imposible en la práctica (la fila se acaba de actualizar en esta tx): se lanza para
-        // revertir, nunca `return`, que confirmaría las escrituras previas.
-        const carga = await tx.cargaArchivo.findUnique({ where: { id }, select: { ventanaCargaId: true } });
-        if (!carga) throw new Error("Carga inexistente tras marcarla finalizada");
-
-        const combinacion = { usuarioId, ventanaCargaId: carga.ventanaCargaId };
-
-        // (b) Otra carga de la combinación ya finalizada y sin decidir. Ante dos finalizaciones
-        // simultáneas que pasen este conteo a la vez, el índice único parcial
-        // `carga_archivo_pendiente_finalizada_key` rechaza la segunda con P2002 (traducido abajo).
-        const otrasPendientes = await tx.cargaArchivo.count({
-          where: {
-            ...combinacion,
-            id: { not: id },
-            estado: "PENDIENTE_VISTO_BUENO",
-            finalizadaEn: { not: null },
-          },
-        });
-
-        if (otrasPendientes > 0) throw new RollbackFinalizar("CARGA_PENDIENTE_DECISION");
-
-        // (c) Consumo de la solicitud de reemplazo (id resuelto por el servidor, nunca del
-        // cliente). Escritura cross-módulo dentro de esta misma transacción, a través de la
-        // función de infraestructura de `solicitudes-reemplazo`.
-        if (consumo.solicitudReemplazoId) {
-          const consumida = await marcarSolicitudUtilizadaEnTransaccion(tx, consumo.solicitudReemplazoId, id);
-          if (!consumida) throw new RollbackFinalizar("REEMPLAZO_NO_AUTORIZADO");
-        }
-
-        // (d) Reaperturas pendientes de la combinación, SIEMPRE (ventana abierta o cerrada): la
-        // más reciente queda enlazada a esta carga (`reaperturaConsumidaPorCargaArchivoId`, 1:1) y
-        // el resto solo recibe `reaperturaConsumidaEn` (apaga avisos duplicados del banner). Si
-        // esta carga ya figura como consumidora de una reapertura (dato heredado de cuando se
-        // consumía al subir), no se enlaza otra, para no violar la unicidad 1:1.
-        // Una sola lectura: las pendientes de la combinación y, si existe, la ya enlazada a esta carga.
-        const rechazos = await tx.cargaArchivoRechazo.findMany({
-          where: {
-            OR: [
-              { reaperturaConsumidaEn: null, cargaArchivo: combinacion },
-              { reaperturaConsumidaPorCargaArchivoId: id },
-            ],
-          },
-          orderBy: { rechazadoEn: "desc" },
-          select: { id: true, reaperturaConsumidaEn: true, reaperturaConsumidaPorCargaArchivoId: true },
-        });
-        const reaperturaMasReciente = rechazos.find((rechazo) => rechazo.reaperturaConsumidaEn === null);
-        const yaConsumioReapertura = rechazos.some((rechazo) => rechazo.reaperturaConsumidaPorCargaArchivoId === id);
-
-        if (reaperturaMasReciente && !yaConsumioReapertura) {
-          await tx.cargaArchivoRechazo.updateMany({
-            where: { id: reaperturaMasReciente.id, reaperturaConsumidaEn: null },
-            data: { reaperturaConsumidaEn: ahora, reaperturaConsumidaPorCargaArchivoId: id },
-          });
-        }
-
-        await tx.cargaArchivoRechazo.updateMany({
-          where: { reaperturaConsumidaEn: null, cargaArchivo: combinacion },
-          data: { reaperturaConsumidaEn: ahora },
-        });
-
-        return true;
-      });
-    } catch (error) {
-      if (error instanceof RollbackFinalizar) {
-        return { ok: false, motivo: error.motivo };
-      }
-
-      // Solo la violación del índice parcial de una `PENDIENTE_VISTO_BUENO` finalizada por (usuario,
-      // ventana) es un desenlace de negocio. Cualquier otro P2002 se relanza (la ruta lo registra
-      // como error técnico).
-      if (esViolacionIndicePendienteFinalizada(error)) {
-        return { ok: false, motivo: "CARGA_PENDIENTE_DECISION" };
-      }
-
-      throw error;
-    }
-
-    if (!finalizada) return { ok: false, motivo: "NO_ENCONTRADO" };
-
-    // (e) Detalle leído después del commit (ver comentario de `crear`).
-    return { ok: true, carga: await leerDetalleTrasEscritura(id) };
+    return aCargaArchivo(registro);
   },
 
   async contarNotificadoresDistintosPorVentana(ventanaCargaIds) {
@@ -835,39 +683,35 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   async rechazar(id, datos: DatosRechazoCargaArchivo) {
     // Transacción interactiva, mismo criterio que `darVistoBueno`: la transición de estado, el
     // registro del rechazo y la desactivación de la publicación corren atómicas.
-    const rechazada = await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       // Leído ANTES del `updateMany` (dentro de la misma transacción): determina si el origen fue
       // `APROBADA` (hubo publicación que desactivar) o `PENDIENTE_VISTO_BUENO` finalizada (nunca
       // hubo publicación, se salta ese paso sin error).
       const previo = await tx.cargaArchivo.findUnique({ where: { id }, select: { estado: true } });
 
-      if (!previo) return false;
+      if (!previo) return null;
 
       // `updateMany` con `estado IN (APROBADA, PENDIENTE_VISTO_BUENO con finalizadaEn no nulo)` en
       // el mismo `WHERE`: si la carga no existe o ya no está en ninguno de esos dos estados, no
       // toca ninguna fila. Sin restricción de `usuarioId`: cualquier ADMIN/REVISOR_REPOSITORIO
       // puede rechazar cualquier carga (simétrico, mismo criterio que `RevisarSolicitudReemplazo`).
-      // Una `APROBADA` ya superada por un reemplazo (publicación `activo = false`) NO es
-      // rechazable: su rechazo crearía una reapertura posterior a la aprobación vigente, que
-      // autorizaría (`reaperturaAutorizaReemplazo`) un reemplazo que nadie pidió. Mismo predicado
-      // de "no superada" que la vigente.
       const resultado = await tx.cargaArchivo.updateMany({
         where: {
           id,
-          OR: [FILTRO_APROBADA_NO_SUPERADA, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
+          OR: [{ estado: "APROBADA" }, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
         },
         data: { estado: "RECHAZADA" },
       });
 
-      if (resultado.count === 0) return false;
+      if (resultado.count === 0) return null;
 
       await tx.cargaArchivoRechazo.create({
         data: { cargaArchivoId: id, rechazadoPorId: datos.rechazadoPorId, motivo: datos.motivo },
       });
 
       // Una solicitud de reemplazo todavía PENDIENTE sobre esta carga pierde sentido: el rechazo ya
-      // reabre la combinación. Se cierra en la misma transacción (escritura cross-módulo directa por
-      // Prisma: debe quedar dentro de esta transacción). Una solicitud ya APROBADA (camino RF-22, que es el que
+      // reabre la combinación. Se cierra en la misma transacción (escritura cross-módulo, mismo
+      // criterio documentado que `crear()`). Una solicitud ya APROBADA (camino RF-22, que es el que
       // dispara este rechazo) no se toca.
       await tx.solicitudReemplazoCarga.updateMany({
         where: { cargaArchivoId: id, estado: "PENDIENTE" },
@@ -895,11 +739,9 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
         });
       }
 
-      return true;
+      const registro = await tx.cargaArchivo.findUnique({ where: { id }, select: SELECCION_DETALLE });
+      return registro ? aCargaArchivo(registro) : null;
     });
-
-    // Detalle leído después del commit (ver comentario de `crear`).
-    return rechazada ? leerDetalleTrasEscritura(id) : null;
   },
 
   async obtenerReaperturaPendientePorUsuarioYVentana(usuarioId, ventanaCargaId) {

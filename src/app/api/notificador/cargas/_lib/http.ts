@@ -53,18 +53,13 @@ export function aCargaArchivoDTO(carga: CargaArchivo): CargaArchivoDTO {
   };
 }
 
-// Genérico para conservar campos extra del resumen al serializar (p.ej. `publicacionActiva` de
-// `CargaArchivoResumenConPublicacion`, que expone GET /api/notificador/cargas).
-export type CargaArchivoResumenDTO<T extends CargaArchivoResumen = CargaArchivoResumen> = Omit<
-  T,
-  "createdAt" | "vistoBuenoEn" | "finalizadaEn"
-> & {
+export type CargaArchivoResumenDTO = Omit<CargaArchivoResumen, "createdAt" | "vistoBuenoEn" | "finalizadaEn"> & {
   createdAt: string;
   vistoBuenoEn: string | null;
   finalizadaEn: string | null;
 };
 
-export function aCargaArchivoResumenDTO<T extends CargaArchivoResumen>(carga: T): CargaArchivoResumenDTO<T> {
+export function aCargaArchivoResumenDTO(carga: CargaArchivoResumen): CargaArchivoResumenDTO {
   return {
     ...carga,
     createdAt: carga.createdAt.toISOString(),
@@ -119,13 +114,4 @@ export function respuestaReemplazoNoAutorizado(): NextResponse {
     409,
     { codigo: "REEMPLAZO_NO_AUTORIZADO" },
   );
-}
-
-// Mismo código que `respuestaReemplazoNoAutorizado`, con un mensaje orientador para el paso de
-// finalizar: la subida sí estaba autorizada, pero la autorización venció (o se consumió) antes de
-// finalizar.
-export function respuestaReemplazoNoVigenteAlFinalizar(): NextResponse {
-  return respuestaError("Tu autorización de reemplazo ya no está vigente; solicita una nueva", 409, {
-    codigo: "REEMPLAZO_NO_AUTORIZADO",
-  });
 }

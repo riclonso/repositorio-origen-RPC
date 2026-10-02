@@ -23,12 +23,7 @@ import {
 export type FilaCargaVentanaVista = Pick<
   CargaArchivoResumen,
   "id" | "usuarioId" | "usuarioNombre" | "usuarioRut" | "nombreArchivoOriginal" | "estado"
-> & {
-  fechaReporte: string;
-  // `APROBADA` ya superada por un reemplazo (publicación desactivada): se muestra "Reemplazada" y
-  // NO ofrece "Rechazar" (el servidor tampoco lo acepta, ver `CargaArchivoRepository.rechazar`).
-  superada: boolean;
-};
+> & { fechaReporte: string };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
 
@@ -189,7 +184,7 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                   ) : null}
                 </td>
                 <td className="px-3 py-2">
-                  <BadgeEstadoCarga estado={fila.estado} superada={fila.superada} />
+                  <BadgeEstadoCarga estado={fila.estado} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
@@ -215,14 +210,12 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                         />
                       </>
                     ) : null}
-                    {fila.superada ? null : (
-                      <BotonIcono
-                        etiqueta={`Rechazar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}
-                        Icono={IconoRechazar}
-                        tono="peligro"
-                        onClick={() => setObjetivoRechazo(fila)}
-                      />
-                    )}
+                    <BotonIcono
+                      etiqueta={`Rechazar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}
+                      Icono={IconoRechazar}
+                      tono="peligro"
+                      onClick={() => setObjetivoRechazo(fila)}
+                    />
                   </div>
                 </td>
               </tr>

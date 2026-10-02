@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-10-02 (RF-33: la autorización de reemplazo se consume al finalizar, `resolverAutorizacionReemplazo`, "APROBADA vigente" excluye las superadas, índice único parcial de pendientes finalizadas; antes, 2026-10-01: RF-32: tipos de regla `CONTENIDO_HTML` y `FILA_VACIA`, `domain/reglas/filasArchivo.ts`; RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-10-01 (RF-32: tipos de regla `CONTENIDO_HTML` y `FILA_VACIA`, `domain/reglas/filasArchivo.ts`; RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -1809,83 +1809,7 @@ Sin backfill: las cargas ya `APROBADA` antes de esta entrega no tienen fila en
 `CargaArchivoPublicada` (nunca se reparsearon retroactivamente, por el costo/riesgo de reprocesar
 binarios antiguos en una migración) — limitación conocida y aceptada.
 
-**Actualizado por RF-33:** el visto bueno desactiva **todas** las publicaciones activas de la misma
-combinación (usuario, ventana) distintas de la aprobada, no solo la de la carga enlazada por la
-solicitud. Así se mantiene la invariante "como mucho una publicación activa por combinación" aunque
-la carga nueva haya llegado por una cadena de rechazos (sin solicitud enlazada). El motivo copiado es
-el de la solicitud enlazada a la carga nueva; si no hay, el de la última solicitud consumida sobre la
-vigente anterior (`obtenerUltimaUtilizadaPorCarga`); si tampoco hay, la constante genérica
-`MOTIVO_REEMPLAZO_GENERICO`.
-
-### "APROBADA vigente" y aprobaciones superadas (RF-33)
-
-La carga APROBADA **vigente** de (usuario, ventana) es la más reciente por `vistoBuenoEn` cuya
-publicación no esté desactivada (`publicacion IS NULL` —cargas sin backfill— o `activo = true`;
-filtro compartido `FILTRO_APROBADA_NO_SUPERADA` en `PrismaCargaArchivoRepository`). No hay estado
-`REEMPLAZADA` en el enum: la marca persistida de "superada" es `CargaArchivoPublicada.activo = false`
-con `motivoDesactivacionTipo = REEMPLAZO`. Consecuencias:
-
-* Una aprobación superada nunca vuelve a bloquear al notificador, aunque después se rechace la carga
-  que la reemplazó (antes `obtenerAprobadaVigentePorUsuarioYVentana` la "revivía").
-* No es rechazable: `rechazar()` usa el mismo filtro en su `updateMany` condicional y responde 409
-  `NO_RECHAZABLE`. Si lo fuera, su rechazo crearía una reapertura posterior a la vigente y abriría un
-  reemplazo que nadie pidió.
-* En `TablaCargasVentana` (revisor y dashboard) se muestra con el badge derivado "Reemplazada"
-  (`BadgeEstadoCarga` prop `superada`, etiqueta en `shared/utils/estadoCargaArchivo.ts`), sin acción
-  "Rechazar"; la descarga se mantiene.
-* `SolicitarReemplazoCarga` hereda la definición: pedir el reemplazo de una aprobación superada da
-  `NO_ES_VIGENTE`.
-
-Al 2026-10-02, la BD de desarrollo no tenía ninguna `APROBADA` sin publicación; si existiera alguna
-más vieja que una aprobación posterior luego rechazada, volvería a contar como vigente.
-
-### Autorización de reemplazo: se consume al FINALIZAR, no al subir (RF-33 revierte la decisión original de RF-19)
-
-**Estado actual (RF-33).** La regla única vive en `application/resolverAutorizacionReemplazo.ts`, usada
-por la subida (`ValidarYCargarArchivo`) y por el envío (`FinalizarYEnviarCarga`): sin APROBADA vigente
-no hace falta autorización; con una vigente, se acepta (a) una `SolicitudReemplazoCarga` utilizable
-sobre esa carga, o (b) una reapertura vigente cuyo `rechazadoEn` sea posterior al `vistoBuenoEn` de la
-vigente (`reaperturaAutorizaReemplazo` / `rechazoPosteriorAAprobacion` en
-`domain/entities/CargaArchivoRechazo.ts`, funciones puras que también usa el cliente). La condición
-de fecha impide que una reapertura vieja sin consumir abra un reemplazo no autorizado; (b) cubre que
-el revisor rechace la carga de reemplazo, o apruebe una solicitud `CARGA_PENDIENTE_DECISION` sobre
-ella. Si existen ambas, se consume la solicitud.
-
-La subida **no consume nada** (`crear()` volvió a ser una escritura anidada simple). La solicitud y
-las reaperturas se consumen en `CargaArchivoRepository.finalizar()`, dentro de una transacción
-interactiva: `updateMany` condicional de `finalizadaEn` → chequeo de otra pendiente finalizada de la
-combinación → `marcarSolicitudUtilizadaEnTransaccion(tx, …)` (mutex `estado = APROBADA AND utilizadaEn
-IS NULL`, exportada por `PrismaSolicitudReemplazoCargaRepository` fuera de la interfaz de dominio) →
-reaperturas (la pendiente más reciente queda enlazada 1:1 a la carga, el resto solo recibe
-`reaperturaConsumidaEn`). Los desenlaces de negocio se revierten lanzando el centinela
-`RollbackFinalizar`; la carga se relee después del commit (`leerDetalleTrasEscritura`). Antes de la
-transacción, `FinalizarYEnviarCarga` exige que la carga sea propia, `PENDIENTE_VISTO_BUENO` sin
-finalizar y **el último intento** (`createdAt`) de su combinación (si no, 404 uniforme), revalida que
-la ventana siga abierta y publicada o que haya reapertura vigente (`resolverVentanaHabilitada`, 400
-`SIN_VENTANA_ABIERTA`) y revalida la autorización con un `ahora` fresco (409 `REEMPLAZO_NO_AUTORIZADO`).
-
-Por qué se revirtió la decisión original (abajo): consumir al subir dejaba al notificador **sin
-salida**. Un intento con errores, o un archivo válido cuyo modal se cerraba sin "Finalizar y
-enviar", gastaba la autorización; la UI seguía ofreciendo la subida y el servidor la rechazaba. El
-riesgo de "reintentos ilimitados" queda acotado por la vigencia de 5 días de la solicitud o el plazo
-de la reapertura, y solo un envío finalizado la consume. Las solicitudes que el código anterior ya
-había consumido se liberan con `npm run datos:liberar-solicitudes-reemplazo` (dry-run por defecto,
-`-- --aplicar` para escribir).
-
-Defensa en BD: índice único parcial `carga_archivo_pendiente_finalizada_key` sobre
-`carga_archivo ("usuarioId", "ventanaCargaId") WHERE estado = 'PENDIENTE_VISTO_BUENO' AND "finalizadaEn"
-IS NOT NULL` (migración `20261002153611_indice_unico_carga_pendiente_finalizada`). Con adapter-pg, la
-violación llega como P2002 sin `meta.target`: se reconoce por el nombre del índice en
-`meta.driverAdapterError.cause.originalMessage` (`esViolacionIndicePendienteFinalizada`) y solo esa se
-traduce a `CARGA_PENDIENTE_DECISION`.
-
-**Nota sobre `pg`:** leer relaciones anidadas (`include`/`select` relacional) dentro de una
-transacción (de arreglo o interactiva) hace que Prisma 7.9 + adapter-pg lance consultas en paralelo
-sobre la misma conexión y emita el aviso de deprecación "client.query() when the client is already
-executing a query". Las transacciones de este repositorio devuelven solo ids o booleanos y los
-listados paginados usan `Promise.all([findMany, count])` sin transacción.
-
-**Decisión original de RF-19 (histórica, reemplazada por RF-33):**
+### Autorización de reemplazo: se consume al subir, no al aprobar visto bueno
 
 `SolicitudReemplazoCarga` vive en un módulo propio, `modules/solicitudes-reemplazo/`, no dentro de
 `reporte-excel/`, porque su ciclo de vida (pedir → aprobar/rechazar → consumir) es independiente del
@@ -1910,11 +1834,6 @@ mientras reintenta). Efecto colateral aceptado: si el primer archivo de reemplaz
 `revisor` para que quede documentado como decisión y no como olvido.
 
 ### Escritura cross-módulo en `PrismaCargaArchivoRepository.crear()` — excepción puntual, no un patrón a repetir
-
-**Resuelto en RF-33:** `crear()` ya no escribe en `solicitud_reemplazo_carga`. El consumo se movió a
-`finalizar()` y pasa por `marcarSolicitudUtilizadaEnTransaccion(tx, id, nuevaCargaArchivoId)`,
-exportada por el repositorio del módulo `solicitudes-reemplazo`, tal como proponía el último párrafo
-de esta sección. Texto histórico:
 
 Al crear la nueva `CargaArchivo` de un reemplazo, `crear()` necesita marcar la
 `SolicitudReemplazoCarga` como consumida en la MISMA transacción atómica. La API de transacciones de
@@ -2052,13 +1971,12 @@ reaperturaVigente = !rechazo.reaperturaConsumidaEn && ahora <= fechaLimite
 Es decir: si la ventana todavía no había vencido al momento del rechazo, la reapertura dura lo mismo
 que le quedaba a la ventana normal (sin plazo extra injustificado); si ya había vencido, se extienden
 5 días desde el rechazo. `ValidarYCargarArchivo` consulta esta reapertura antes de rechazar por
-`SIN_VENTANA_ABIERTA` cuando la ventana ya venció. **Desde RF-33** se consume
-(`reaperturaConsumidaEn`/`reaperturaConsumidaPorCargaArchivoId`) al **finalizar y enviar** la carga
-nueva, con la ventana abierta o cerrada, dentro de la transacción de `finalizar()` (ver "Autorización
-de reemplazo" arriba). Un intento con errores ya no la gasta. Antes se consumía al subir, con o sin
-error, en la misma transacción que creaba la `CargaArchivo`. Con la ventana abierta, una reapertura
-cuyo rechazo es posterior a la APROBADA vigente también autoriza el reemplazo de esa vigente. El
-banner `BannerReaperturaCarga` en `/notificador` deja de mostrarse al finalizar con éxito.
+`SIN_VENTANA_ABIERTA` cuando la ventana ya venció. Se consume (`reaperturaConsumidaEn`/
+`reaperturaConsumidaPorCargaArchivoId`) al SUBIR el archivo nuevo —con o sin error de validación en
+ese intento—, en la MISMA transacción que crea la `CargaArchivo` (mismo criterio que la autorización
+de reemplazo de RF-19: nunca queda reutilizable indefinidamente en reintentos). El banner
+`BannerReaperturaCarga` en `/notificador` deja de mostrarse ahí mismo, sin esperar a que esa carga
+nueva sea aprobada.
 
 **Visibilidad.** Sección "Rechazadas" en el detalle de ventana (junto a "Cargas aprobadas",
 `TablaCargasRechazadasVentana`/`ListadoCargasRechazadasVentana`) y en "Mis cargas" del notificador

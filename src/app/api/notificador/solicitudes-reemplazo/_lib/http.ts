@@ -3,7 +3,7 @@ import type {
   OrigenSolicitudReemplazoCarga,
   SolicitudReemplazoCarga,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
-import { solicitudUtilizable, solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import {
   exigirNotificador,
   idRutaSchema,
@@ -34,9 +34,6 @@ export type SolicitudReemplazoPropiaDTO = {
   comentarioRevision: string | null;
   revisadoEn: string | null;
   vencida: boolean;
-  // `true` solo si la autorización todavía habilita subir el reemplazo (`APROBADA`, sin consumir y
-  // dentro de su plazo). Una `APROBADA` ya consumida no es `vencida`, pero tampoco `utilizable`.
-  utilizable: boolean;
   createdAt: string;
 };
 
@@ -53,7 +50,6 @@ export function aSolicitudReemplazoPropiaDTO(solicitud: SolicitudReemplazoCarga,
     comentarioRevision: solicitud.comentarioRevision,
     revisadoEn: solicitud.revisadoEn ? solicitud.revisadoEn.toISOString() : null,
     vencida: solicitudVencida(solicitud, ahora),
-    utilizable: solicitudUtilizable(solicitud, ahora),
     createdAt: solicitud.createdAt.toISOString(),
   };
 }

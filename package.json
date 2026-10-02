@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "eslint",
     "db:seed": "prisma db seed",
-    "datos:liberar-solicitudes-reemplazo": "tsx scripts/liberar-solicitudes-reemplazo-consumidas.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

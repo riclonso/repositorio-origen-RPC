@@ -12,8 +12,8 @@ import {
   type EstadoCargaArchivo,
   type ValorCeldaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-import { resolverAutorizacionReemplazo } from "@/modules/reporte-excel/application/resolverAutorizacionReemplazo";
-import { resolverVentanaHabilitada } from "@/modules/reporte-excel/application/resolverVentanaHabilitada";
+import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import { reaperturaVigente } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import { ValidadoresTipoDato } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 import {
   columnasConContenidoHtml,
@@ -61,8 +61,7 @@ export type ResultadoValidarYCargarArchivo =
   | { ok: false; motivo: "VENTANA_NO_PUBLICADA" }
   // Extensión "solicitudes de reemplazo": ya existe una carga `APROBADA` vigente para esta
   // combinación (formato, ventana) y no hay ninguna `SolicitudReemplazoCarga` aprobada y todavía
-  // utilizable, ni una reapertura vigente posterior a esa aprobación, que autorice volver a subir
-  // (ver `resolverAutorizacionReemplazo`).
+  // utilizable que autorice volver a subir.
   | { ok: false; motivo: "REEMPLAZO_NO_AUTORIZADO" }
   // Corrección (fin de la autoaprobación): ya existe, para esta combinación (formato, ventana), una
   // carga `PENDIENTE_VISTO_BUENO` que el notificador ya finalizó y envió, y que todavía nadie
@@ -140,20 +139,36 @@ export async function validarYCargarArchivo(
     return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
   }
 
-  const ahora = new Date();
+  // Nuevo (rechazo de cargas aprobadas): una ventana ya vencida sigue habilitando la subida si el
+  // notificador tiene una reapertura vigente (su carga anterior para esta combinación fue
+  // rechazada, y el plazo de reapertura no expiró). Se consume por el intento en sí, exista o no
+  // error de validación en él (decisión de diseño de RF-20: aquí la reapertura es la única
+  // autorización que habilita subir con la ventana cerrada, así que se agota al primer intento).
+  //
+  // Con la ventana todavía abierta, en cambio, una reapertura pendiente NO se consume aquí: solo
+  // cumple el rol de apagar el banner `BannerReaperturaCarga`, y hacerlo en el intento de subida
+  // (en vez de al finalizar con éxito) apagaría el aviso ante un archivo con errores que el
+  // notificador ni siquiera llegó a enviar. Ese consumo vive en `FinalizarYEnviarCarga`/
+  // `CargaArchivoRepository.finalizar()`, que solo se alcanza con una carga sin errores.
+  let cargaArchivoRechazoAConsumirId: string | null = null;
 
-  // Ventana cerrada sin reapertura vigente, o en borrador: ver `resolverVentanaHabilitada`. Una
-  // reapertura vigente habilita subir con la ventana vencida, pero NO se consume aquí (decisión que
-  // revierte la de RF-20): se consume al finalizar y enviar con éxito
-  // (`CargaArchivoRepository.finalizar()`), para que un intento con errores, o uno que el
-  // notificador no llegó a finalizar, no lo deje bloqueado.
-  const motivoVentana = await resolverVentanaHabilitada(
-    { ventana, usuarioId: datos.usuarioId, ahora },
-    { repositorio: dependencias.repositorio },
-  );
+  if (!estaAbierta(ventana, new Date())) {
+    const reapertura = await dependencias.repositorio.obtenerReaperturaPendientePorUsuarioYVentana(
+      datos.usuarioId,
+      ventana.id,
+    );
 
-  if (motivoVentana) {
-    return { ok: false, motivo: motivoVentana };
+    if (reapertura && reaperturaVigente(reapertura, { fechaVencimiento: ventana.fechaVencimiento }, new Date())) {
+      cargaArchivoRechazoAConsumirId = reapertura.id;
+    } else {
+      return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
+    }
+  }
+
+  // RF-15 (ampliación): una ventana en borrador (no publicada) no debe habilitar subidas, aunque
+  // esté dentro de su rango de fechas.
+  if (!ventana.publicada) {
+    return { ok: false, motivo: "VENTANA_NO_PUBLICADA" };
   }
 
   // Corrección (fin de la autoaprobación): defensa de servidor, barato primero. Si ya existe una
@@ -170,19 +185,25 @@ export async function validarYCargarArchivo(
 
   // Extensión "solicitudes de reemplazo": si ya existe una carga APROBADA vigente para esta
   // combinación (formato, ventana), esta subida es un intento de REEMPLAZO y exige una
-  // autorización (solicitud aprobada y utilizable, o reapertura posterior a esa aprobación). Barato
-  // primero, antes de leer el archivo completo. Aquí solo se verifica: nada se consume al subir, así
-  // que el notificador puede reintentar mientras la autorización siga vigente.
-  const autorizacion = await resolverAutorizacionReemplazo(
-    { usuarioId: datos.usuarioId, ventanaCargaId: ventana.id, ahora },
-    {
-      repositorio: dependencias.repositorio,
-      repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo,
-    },
+  // autorización previa. Barato primero, antes de leer el archivo completo.
+  const cargaAprobadaVigente = await dependencias.repositorio.obtenerAprobadaVigentePorUsuarioYVentana(
+    datos.usuarioId,
+    ventana.id,
   );
 
-  if (!autorizacion.autorizado) {
-    return { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" };
+  let solicitudReemplazoAConsumirId: string | null = null;
+
+  if (cargaAprobadaVigente) {
+    const solicitud = await dependencias.repositorioSolicitudesReemplazo.obtenerAprobadaUtilizablePorCarga(
+      cargaAprobadaVigente.id,
+      new Date(),
+    );
+
+    if (!solicitud) {
+      return { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" };
+    }
+
+    solicitudReemplazoAConsumirId = solicitud.id;
   }
 
   const { encabezados, filas } = await dependencias.lector.leer(
@@ -378,6 +399,10 @@ export async function validarYCargarArchivo(
     cantidadErrores: errores.length,
     estado,
     errores: erroresAcotados,
+    // Se consume por el intento en sí, exista o no error de validación en él (sección 5.4 del
+    // diseño): así no quedan solicitudes "fantasma" reutilizables indefinidamente en reintentos.
+    solicitudReemplazoAConsumirId,
+    cargaArchivoRechazoAConsumirId,
   });
 
   return { ok: true, carga };

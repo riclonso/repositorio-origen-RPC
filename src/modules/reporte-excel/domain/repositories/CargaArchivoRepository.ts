@@ -1,9 +1,7 @@
 import type {
   CargaArchivo,
   CargaArchivoParaDescarga,
-  CargaArchivoResumenConPublicacion,
   CargaArchivoResumenPropia,
-  ConsumoFinalizacionCarga,
   ContenidoCargaArchivo,
   DatosNuevaCargaArchivo,
   DatosPublicacionCarga,
@@ -13,9 +11,6 @@ import type {
   FiltroListadoCargasPropias,
   FiltroListadoCargasRechazadas,
   PaginaCargas,
-  PaginaCargasConPublicacion,
-  ResultadoFinalizarCargaArchivo,
-  UltimaCargaCombinacion,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRechazo } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 
@@ -29,17 +24,12 @@ export interface CargaArchivoRepository {
   obtenerPropiaPorId(id: string, usuarioId: string): Promise<CargaArchivo | null>;
   // Filtra `estado = APROBADA` a nivel de consulta SQL, mismo criterio que `listarAprobadas`.
   obtenerAprobadaPorId(id: string): Promise<CargaArchivo | null>;
-  // Extensión "solicitudes de reemplazo": la carga `APROBADA` VIGENTE de un usuario en una ventana
-  // de carga puntual, o `null` si no tiene ninguna. Vigente = la `APROBADA` más reciente (por
-  // `vistoBuenoEn`) cuya publicación NO esté desactivada (sin publicación —cargas antiguas sin
-  // backfill— o `publicacion.activo = true`): una aprobación ya superada por un reemplazo nunca
-  // vuelve a ser la vigente, aunque después se rechace la carga que la reemplazó. Reutilizada por
-  // `SolicitarReemplazoCarga`, `resolverAutorizacionReemplazo` (subida y finalización) y
-  // `DarVistoBueno`.
+  // Extensión "solicitudes de reemplazo": la carga `APROBADA` más reciente (por `vistoBuenoEn`) de
+  // un usuario en una ventana de carga puntual, o `null` si no tiene ninguna. Es la noción de
+  // "vigente" de esa combinación (formato, ventana), reutilizada tanto por `SolicitarReemplazoCarga`
+  // (¿es esta carga la vigente de su grupo?) como por `ValidarYCargarArchivo` (¿existe ya una carga
+  // aprobada que exija autorización de reemplazo para volver a subir?).
   obtenerAprobadaVigentePorUsuarioYVentana(usuarioId: string, ventanaCargaId: string): Promise<CargaArchivo | null>;
-  // El intento más reciente (por `createdAt`, cualquier estado) de un usuario en una ventana, o
-  // `null`. `FinalizarYEnviarCarga` solo admite finalizar el último intento de su combinación.
-  obtenerUltimaPorUsuarioYVentana(usuarioId: string, ventanaCargaId: string): Promise<UltimaCargaCombinacion | null>;
   // Corrección (fin de la autoaprobación): defensa de servidor de `ValidarYCargarArchivo` — una
   // `PENDIENTE_VISTO_BUENO` con `finalizadaEn` no nulo de esta combinación (usuario, ventana)
   // todavía no fue decidida (ni aprobada ni rechazada) por ADMIN/REVISOR_REPOSITORIO, así que no
@@ -49,15 +39,7 @@ export interface CargaArchivoRepository {
   // `obtenerParaDescarga`): lo usa `DarVistoBueno` para reparsear el archivo y construir el
   // detalle de filas a publicar. Ownership por `usuarioId` siempre en el `WHERE`.
   obtenerContenidoParaProcesar(id: string, usuarioId: string): Promise<ContenidoCargaArchivo | null>;
-  // Incluye `publicacionActiva` (join 1:1 a la publicación, sin N+1) para que el panel del
-  // notificador descarte como vigente una `APROBADA` ya superada.
-  listarPropias(filtro: FiltroListadoCargasPropias): Promise<PaginaCargasConPublicacion>;
-  // Panel del notificador: las cargas que determinan el estado de cada tarjeta y que no pueden
-  // quedar fuera por la paginación de `listarPropias` — toda `APROBADA` con publicación activa o
-  // sin publicación (candidatas a vigente) y toda `PENDIENTE_VISTO_BUENO` ya finalizada. Acotada
-  // por construcción (a lo más una pendiente finalizada y una publicación activa por ventana, más
-  // las aprobaciones antiguas sin publicación). Ownership por `usuarioId` en el `WHERE`.
-  listarDeterminantesPanelPropias(usuarioId: string): Promise<CargaArchivoResumenConPublicacion[]>;
+  listarPropias(filtro: FiltroListadoCargasPropias): Promise<PaginaCargas>;
   // "Mis cargas" (histórico de exitosas): TODAS las `APROBADA`/`RECHAZADA` de un notificador,
   // ordenadas `vistoBuenoEn desc NULLS LAST` (contrato del que depende
   // `agruparCargasAprobadasPorVentana` en `domain/entities/CargaArchivo.ts` para detectar la
@@ -75,9 +57,7 @@ export interface CargaArchivoRepository {
   // o rechazo" del detalle de ventana. Trae `APROBADA` y `PENDIENTE_VISTO_BUENO` ya finalizada de
   // esa ventana en el mismo `WHERE`, nunca `CON_ERRORES`/`RECHAZADA` ni una `PENDIENTE_VISTO_BUENO`
   // todavía sin finalizar.
-  // Incluye `publicacionActiva` para que la tabla marque como "Reemplazada" (y sin "Rechazar") una
-  // `APROBADA` ya superada por un reemplazo.
-  listarPendientesODecididas(filtro: FiltroListadoCargasPendientesODecididas): Promise<PaginaCargasConPublicacion>;
+  listarPendientesODecididas(filtro: FiltroListadoCargasPendientesODecididas): Promise<PaginaCargas>;
   // Cantidad de archivos que el notificador ya finalizó y envió, pero que aún necesitan la
   // decisión de ADMIN/REVISOR_REPOSITORIO. Alimenta la campana de avisos del revisor sin traer
   // filas ni binarios a la barra superior.
@@ -92,25 +72,16 @@ export interface CargaArchivoRepository {
   //
   // Extensión "publicación hacia el revisor": en la MISMA transacción que la transición de estado,
   // inserta la cabecera `CargaArchivoPublicada` y su detalle (`createMany`, troceado en lotes si
-  // hace falta) y, si `publicacion.reemplazo` no es nulo, desactiva TODAS las publicaciones activas
-  // de la misma combinación (usuario, ventana) distintas de la nueva (`activo = false`,
-  // `desactivadaEn`, `reemplazadaPorCargaArchivoId = id`, `motivoDesactivacion`,
-  // `motivoDesactivacionTipo = REEMPLAZO`): nunca quedan dos publicaciones activas de la misma
-  // combinación, llegue la carga nueva por solicitud de reemplazo o por reapertura tras un rechazo.
-  // `aprobadoPorId` es quien realmente aprueba (ADMIN/REVISOR_REPOSITORIO), persistido en
-  // `vistoBuenoPorId`.
+  // hace falta) y, si `publicacion.reemplazo` no es nulo, desactiva la publicación de la carga
+  // anterior con su `motivoDesactivacion`/`motivoDesactivacionTipo = REEMPLAZO`. Ver diseño de la
+  // sección 5.5 del RF de reemplazos. `aprobadoPorId` es quien realmente aprueba (ADMIN/
+  // REVISOR_REPOSITORIO), persistido en `vistoBuenoPorId`.
   darVistoBueno(id: string, aprobadoPorId: string, publicacion: DatosPublicacionCarga): Promise<CargaArchivo | null>;
-  // Transición `PENDIENTE_VISTO_BUENO -> PENDIENTE_VISTO_BUENO` (mismo estado) que marca
-  // `finalizadaEn` y, en la MISMA transacción, consume las autorizaciones que habilitaron el
-  // intento: (1) `updateMany` condicional por `id`, `usuarioId` (ownership), estado y
-  // `finalizadaEn IS NULL` → si no calza, `NO_ENCONTRADO`; (2) si otra carga de la combinación ya
-  // está finalizada y sin decidir → rollback y `CARGA_PENDIENTE_DECISION` (también ante el índice
-  // único parcial, si dos finalizaciones compiten); (3) si `consumo.solicitudReemplazoId`, la marca
-  // usada con un `updateMany` condicional (`estado = APROBADA AND utilizadaEn IS NULL`) → si otra
-  // petición ya la consumió, rollback y `REEMPLAZO_NO_AUTORIZADO`; (4) consume SIEMPRE las
-  // reaperturas pendientes de la combinación (la más reciente queda enlazada a esta carga, el
-  // resto solo recibe `reaperturaConsumidaEn`), con la ventana abierta o cerrada.
-  finalizar(id: string, usuarioId: string, consumo: ConsumoFinalizacionCarga): Promise<ResultadoFinalizarCargaArchivo>;
+  // Nuevo (fin de la autoaprobación): transición `PENDIENTE_VISTO_BUENO -> PENDIENTE_VISTO_BUENO`
+  // (mismo estado) que solo marca `finalizadaEn = now()`, filtrada por `id`, `usuarioId` (ownership,
+  // sigue siendo el notificador dueño de la carga quien finaliza) y `finalizadaEn IS NULL` en el
+  // mismo `WHERE`: evita doble finalización. Si no calza, devuelve `null`.
+  finalizar(id: string, usuarioId: string): Promise<CargaArchivo | null>;
   // Única operación que trae el binario para ADMIN/REVISOR_REPOSITORIO. Devuelve una carga ya
   // `APROBADA` o una `PENDIENTE_VISTO_BUENO` que el notificador finalizó y envió: esto permite
   // revisar el archivo original antes de aprobarlo, sin exponer borradores ni cargas con errores.
@@ -134,9 +105,7 @@ export interface CargaArchivoRepository {
   // rechazar cualquier carga). Si la carga no existe o ya no está en ese estado, no actualiza
   // ninguna fila y devuelve `null`. En la MISMA transacción crea el `CargaArchivoRechazo` y, solo si
   // el estado de origen era `APROBADA` (una `PENDIENTE_VISTO_BUENO` nunca llegó a publicarse),
-  // desactiva la `CargaArchivoPublicada` correspondiente (`motivoDesactivacionTipo = RECHAZO`). Una
-  // `APROBADA` ya superada por un reemplazo (publicación desactivada) NO es rechazable: devuelve
-  // `null`, igual que una carga en un estado no rechazable.
+  // desactiva la `CargaArchivoPublicada` correspondiente (`motivoDesactivacionTipo = RECHAZO`).
   rechazar(id: string, datos: DatosRechazoCargaArchivo): Promise<CargaArchivo | null>;
   // La reapertura vigente (si existe) de un usuario en una ventana de carga puntual: la carga
   // `RECHAZADA` más reciente de ese usuario en esa ventana cuyo `CargaArchivoRechazo` todavía no

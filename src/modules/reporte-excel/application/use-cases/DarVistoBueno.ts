@@ -1,8 +1,4 @@
-import type {
-  CargaArchivo,
-  DatosPublicacionCarga,
-  FilaParaPublicar,
-} from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import type { CargaArchivo, FilaParaPublicar } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
 import type { SolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
@@ -14,41 +10,6 @@ export type ResultadoDarVistoBueno =
   | { ok: false; motivo: "NO_ENCONTRADO" }
   | { ok: false; motivo: "NO_PENDIENTE" };
 
-// Motivo de desactivación cuando la carga aprobada reemplaza a la vigente sin ninguna solicitud de
-// reemplazo de la que tomar el texto del notificador (datos antiguos o cadenas sin solicitud).
-export const MOTIVO_REEMPLAZO_GENERICO = "Reemplazada por una carga posterior aprobada.";
-
-type DependenciasResolverReemplazo = {
-  repositorio: CargaArchivoRepository;
-  repositorioSolicitudesReemplazo: SolicitudReemplazoCargaRepository;
-};
-
-// Motivo del reemplazo, por orden de preferencia: (1) la solicitud consumida al finalizar ESTA
-// carga; (2) si no hay (llegó por reapertura tras rechazarse la carga de reemplazo), la última
-// solicitud consumida sobre la vigente anterior, que es la que originó la cadena; (3) uno genérico.
-// `null` si la combinación no tenía una `APROBADA` vigente (no es un reemplazo).
-async function resolverReemplazo(
-  id: string,
-  carga: CargaArchivo,
-  dependencias: DependenciasResolverReemplazo,
-): Promise<DatosPublicacionCarga["reemplazo"]> {
-  const vigenteAnterior = await dependencias.repositorio.obtenerAprobadaVigentePorUsuarioYVentana(
-    carga.usuarioId,
-    carga.ventanaCargaId,
-  );
-
-  if (!vigenteAnterior) return null;
-
-  const solicitudDeOrigen = await dependencias.repositorioSolicitudesReemplazo.obtenerPorNuevaCargaArchivoId(id);
-  if (solicitudDeOrigen) return { motivo: solicitudDeOrigen.motivo };
-
-  const ultimaConsumida = await dependencias.repositorioSolicitudesReemplazo.obtenerUltimaUtilizadaPorCarga(
-    vigenteAnterior.id,
-  );
-
-  return { motivo: ultimaConsumida?.motivo ?? MOTIVO_REEMPLAZO_GENERICO };
-}
-
 // Corrección (fin de la autoaprobación): el visto bueno YA NO lo da el notificador dueño de la
 // carga. Ahora lo da un tercero (ADMIN/REVISOR_REPOSITORIO) sobre una carga que el notificador ya
 // "finalizó y envió" (`finalizadaEn` no nulo). Sigue siendo irreversible: no existe caso de uso ni
@@ -56,9 +17,10 @@ async function resolverReemplazo(
 //
 // Extensión "publicación hacia el revisor": en el mismo instante en que la carga pasa a
 // `APROBADA`, se congela un snapshot (cabecera + una fila de detalle por cada fila del archivo) en
-// tablas nuevas, visibles para el perfil revisor. Si la combinación ya tenía una `APROBADA`
-// vigente, todas sus publicaciones activas quedan deshabilitadas y enlazadas a esta, con el motivo
-// que el notificador escribió al pedir el reemplazo (ver `resolverReemplazo`).
+// tablas nuevas, visibles para el perfil revisor. Si esta carga nació de un reemplazo consumido
+// (`SolicitudReemplazoCarga.nuevaCargaArchivoId = id de esta carga`), la publicación de la carga
+// anterior queda deshabilitada y enlazada a esta, con el motivo que el notificador escribió al
+// pedir el reemplazo.
 export async function darVistoBueno(
   id: string,
   aprobadoPorId: string,
@@ -120,11 +82,13 @@ export async function darVistoBueno(
     valores,
   }));
 
-  // ¿La combinación (usuario, ventana) ya tenía una `APROBADA` vigente? Si sí, esta aprobación la
-  // reemplaza: el repositorio desactiva TODAS las publicaciones activas de la combinación en la
-  // misma transacción, llegue esta carga por solicitud de reemplazo o por reapertura tras un rechazo
-  // de la carga de reemplazo (sin esto quedarían dos publicaciones activas).
-  const reemplazo = await resolverReemplazo(id, carga, dependencias);
+  // ¿Esta carga nació de un reemplazo consumido al subir? Si sí, la publicación de la carga
+  // anterior debe desactivarse en la misma transacción, con el motivo que el notificador escribió
+  // al pedir el reemplazo.
+  const solicitudDeOrigen = await dependencias.repositorioSolicitudesReemplazo.obtenerPorNuevaCargaArchivoId(id);
+  const reemplazo = solicitudDeOrigen
+    ? { cargaArchivoIdAnterior: solicitudDeOrigen.cargaArchivoId, motivo: solicitudDeOrigen.motivo }
+    : null;
 
   const actualizada = await dependencias.repositorio.darVistoBueno(id, aprobadoPorId, { filas, reemplazo });
 

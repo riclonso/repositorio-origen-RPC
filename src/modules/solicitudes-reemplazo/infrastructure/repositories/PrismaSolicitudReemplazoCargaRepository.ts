@@ -63,24 +63,6 @@ function aSolicitudReemplazoCarga(registro: RegistroSolicitud): SolicitudReempla
   };
 }
 
-// Consume una solicitud de reemplazo DENTRO de una transacción abierta por otro repositorio
-// (`PrismaCargaArchivoRepository.finalizar()`), para que marcar la solicitud y fijar
-// `finalizadaEn` de la carga sean atómicos. Queda fuera de la interfaz de dominio a propósito: recibe
-// un `Prisma.TransactionClient`, detalle de infraestructura que `application/` no debe conocer.
-// El `updateMany` condicional (`estado = APROBADA AND utilizadaEn IS NULL`) actúa como mutex: si
-// otra petición ya la consumió, no toca filas y devuelve `false`.
-export async function marcarSolicitudUtilizadaEnTransaccion(
-  tx: Prisma.TransactionClient,
-  id: string,
-  nuevaCargaArchivoId: string,
-): Promise<boolean> {
-  const resultado = await tx.solicitudReemplazoCarga.updateMany({
-    where: { id, estado: "APROBADA", utilizadaEn: null },
-    data: { utilizadaEn: new Date(), nuevaCargaArchivoId },
-  });
-  return resultado.count === 1;
-}
-
 export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRepository = {
   async crear(datos) {
     try {
@@ -146,15 +128,6 @@ export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRep
     // reimplementar la aritmética de fechas aquí: una sola fuente de verdad para "5 días desde
     // `revisadoEn`".
     return solicitudUtilizable(solicitud, ahora) ? solicitud : null;
-  },
-
-  async obtenerUltimaUtilizadaPorCarga(cargaArchivoId) {
-    const registro = await prisma.solicitudReemplazoCarga.findFirst({
-      where: { cargaArchivoId, estado: "APROBADA", utilizadaEn: { not: null } },
-      orderBy: { utilizadaEn: "desc" },
-      select: SELECCION,
-    });
-    return registro ? aSolicitudReemplazoCarga(registro) : null;
   },
 
   async listarPropias(usuarioId) {

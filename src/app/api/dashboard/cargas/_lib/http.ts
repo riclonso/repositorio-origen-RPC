@@ -33,8 +33,7 @@ export const idCargaArchivoSchema = idRutaSchema;
 
 // Rechazo de cargas, ampliado (RF-20) a `APROBADA` y a `PENDIENTE_VISTO_BUENO` ya finalizada por el
 // notificador. Genérico (409), sin distinguir cuál de los dos motivos exactos aplicó, mismo
-// criterio de no filtrar detalle interno que `respuestaSolicitudYaResuelta`. Cubre también una
-// `APROBADA` ya superada por un reemplazo (no rechazable).
+// criterio de no filtrar detalle interno que `respuestaSolicitudYaResuelta`.
 export function respuestaCargaNoRechazable() {
   return respuestaError("Solo se puede rechazar una carga pendiente de decisión o aprobada", 409, {
     codigo: "NO_RECHAZABLE",

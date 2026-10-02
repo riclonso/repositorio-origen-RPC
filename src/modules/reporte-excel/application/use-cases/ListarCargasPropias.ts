@@ -1,4 +1,4 @@
-import type { FiltroListadoCargasPropias, PaginaCargasConPublicacion } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import type { FiltroListadoCargasPropias, PaginaCargas } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 
 export type PaginacionCargas = {
@@ -10,7 +10,7 @@ export type PaginacionCargas = {
 
 export type ResultadoListarCargas = {
   ok: true;
-  filas: PaginaCargasConPublicacion["filas"];
+  filas: PaginaCargas["filas"];
   paginacion: PaginacionCargas;
 };
 

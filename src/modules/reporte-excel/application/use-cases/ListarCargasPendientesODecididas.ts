@@ -1,13 +1,13 @@
 import type {
   FiltroListadoCargasPendientesODecididas,
-  PaginaCargasConPublicacion,
+  PaginaCargas,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { PaginacionCargas } from "@/modules/reporte-excel/application/use-cases/ListarCargasPropias";
 
 export type ResultadoListarCargasPendientesODecididas = {
   ok: true;
-  filas: PaginaCargasConPublicacion["filas"];
+  filas: PaginaCargas["filas"];
   paginacion: PaginacionCargas;
 };
 

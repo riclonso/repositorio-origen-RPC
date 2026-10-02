@@ -59,7 +59,7 @@ export function BarraLateralPanel({ enlaces, titulo, nombreCompleto, perfil }: B
         <form action={cerrarSesionAction}>
           <button
             type="submit"
-            className="w-full bg-white/10 rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            className="w-full rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             Cerrar sesión
           </button>
