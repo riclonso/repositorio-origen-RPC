@@ -11,6 +11,7 @@ type DialogoConfirmacionProps = {
   textoConfirmando: string;
   variante?: VarianteBoton;
   procesando?: boolean;
+  confirmarDeshabilitado?: boolean;
   error?: string | null;
   onConfirmar: () => void;
   onCancelar: () => void;
@@ -29,6 +30,7 @@ export function DialogoConfirmacion({
   textoConfirmando,
   variante = "primario",
   procesando = false,
+  confirmarDeshabilitado = false,
   error,
   onConfirmar,
   onCancelar,
@@ -90,6 +92,7 @@ export function DialogoConfirmacion({
         <Boton
           variante={variante}
           onClick={onConfirmar}
+          disabled={confirmarDeshabilitado}
           cargando={procesando}
           textoCargando={textoConfirmando}
         >

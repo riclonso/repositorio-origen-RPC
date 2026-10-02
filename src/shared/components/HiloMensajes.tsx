@@ -8,9 +8,10 @@ import {
 } from "@/modules/mensajeria/domain/entities/MensajeCarga";
 import { contenidoMensajeSchema } from "@/modules/mensajeria/schemas/mensaje.schema";
 import { Boton } from "@/shared/components/Boton";
-import { IconoDocumento } from "@/shared/components/iconos";
+import { IconoEnviarMensaje, IconoMensaje, IconoMensajeLeido } from "@/shared/components/iconos";
 import type { MensajeVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import { formatearFechaHora } from "@/shared/utils/fecha";
+import estilos from "./Chat.module.css";
 
 type BurbujaMensajeProps = {
   mensaje: MensajeVista;
@@ -24,25 +25,15 @@ function BurbujaMensaje({ mensaje, alineadaDerecha }: BurbujaMensajeProps) {
   const fecha = formatearFechaHora(new Date(mensaje.creadoEn));
 
   return (
-    <li className={`flex ${alineadaDerecha ? "justify-end" : "justify-start"}`}>
-      <article
-        className={`max-w-[85%] rounded-lg px-3 py-2 shadow-sm ${
-          alineadaDerecha ? "rounded-br-sm bg-gob-primary text-white" : "rounded-bl-sm border border-gob-accent bg-white text-gob-black"
-        }`}
-      >
-        <p className="text-xs font-semibold">{mensaje.esPropio ? "Tú" : mensaje.autorNombre}</p>
-        <p
-          className={`mt-0.5 inline-flex max-w-full items-center gap-1 text-xs ${alineadaDerecha ? "text-white" : "text-gob-gray-a"}`}
-        >
-          <IconoDocumento className="shrink-0" />
-          <span className="truncate" title={mensaje.nombreArchivoOriginal}>
-            {mensaje.nombreArchivoOriginal}
-          </span>
+    <li className={`${estilos.filaMensaje} ${alineadaDerecha ? estilos.filaPropia : ""}`}>
+      <article className={`${estilos.burbuja} ${alineadaDerecha ? estilos.burbujaPropia : ""}`}>
+        <p className={estilos.textoMensaje}>
+          <span className={estilos.autor}>{mensaje.esPropio ? "Tú dices:" : `${mensaje.autorNombre} dice:`}</span>{" "}
+          {mensaje.contenido}
         </p>
-        <p className="mt-1 whitespace-pre-wrap break-words text-sm">{mensaje.contenido}</p>
-        <p className={`mt-1 text-right text-xs tabular-nums ${alineadaDerecha ? "text-white" : "text-gob-gray-a"}`}>
+        <p className={estilos.metadatos}>
           <time dateTime={mensaje.creadoEn}>{fecha}</time>
-          {alineadaDerecha && mensaje.leidoEn ? <span> · Leído</span> : null}
+          {alineadaDerecha && mensaje.leidoEn ? <span className={estilos.leido}><IconoMensajeLeido /> Leído</span> : null}
         </p>
       </article>
     </li>
@@ -91,6 +82,7 @@ export function HiloMensajes({
   const idAyuda = useId();
 
   const cantidadMensajes = mensajes.length;
+  const etiquetaEnviar = enviando ? "Enviando mensaje" : "Enviar mensaje";
 
   // Al llegar mensajes nuevos (propios o del otro lado) el hilo se desplaza al más reciente.
   useEffect(() => {
@@ -124,30 +116,36 @@ export function HiloMensajes({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={estilos.hilo}>
       <div
         ref={referenciaLista}
         role="log"
         aria-live="polite"
         aria-label="Mensajes de la conversación"
-        className="min-h-0 flex-1 overflow-y-auto bg-gob-neutral/60 px-4 py-3"
+        className={estilos.historial}
       >
         {hayMasAntiguos ? (
-          <p className="mb-3 text-center text-xs text-gob-gray-a">
+          <p className={estilos.notaHistorial}>
             Se muestran los {TOPE_MENSAJES_HILO} mensajes más recientes.
           </p>
         ) : null}
 
         {error ? (
-          <p role="alert" className="text-sm font-medium text-gob-danger">
+          <p role="alert" className={estilos.error}>
             {error}
           </p>
         ) : cargando && cantidadMensajes === 0 ? (
-          <p className="text-sm text-gob-gray-a">Cargando mensajes...</p>
+          <div className={estilos.estado} role="status">
+            <span aria-hidden="true" className={estilos.avatar}><IconoMensaje /></span>
+            <p>Cargando mensajes...</p>
+          </div>
         ) : cantidadMensajes === 0 ? (
-          <p className="text-sm text-gob-gray-a">{textoVacio}</p>
+          <div className={estilos.estado}>
+            <span aria-hidden="true" className={estilos.avatar}><IconoMensaje /></span>
+            <p>{textoVacio}</p>
+          </div>
         ) : (
-          <ol className="flex flex-col gap-3">
+          <ol className={estilos.listaMensajes}>
             {mensajes.map((mensaje) => (
               <BurbujaMensaje key={mensaje.id} mensaje={mensaje} alineadaDerecha={mensaje.ladoAutor === ladoPropio} />
             ))}
@@ -156,49 +154,46 @@ export function HiloMensajes({
       </div>
 
       {puedeEscribir ? (
-        <form onSubmit={(evento) => void enviar(evento)} className="flex flex-col gap-2 border-t border-gob-accent bg-white px-4 py-3">
+        <form onSubmit={(evento) => void enviar(evento)} className={estilos.formulario}>
           <label htmlFor={idTexto} className="sr-only">
             {etiquetaRedaccion}
           </label>
-          <textarea
-            id={idTexto}
-            value={texto}
-            onChange={(evento) => setTexto(evento.target.value)}
-            disabled={enviando}
-            maxLength={LONGITUD_MAXIMA_MENSAJE}
-            rows={3}
-            aria-describedby={idAyuda}
-            placeholder="Escribe tu mensaje"
-            className="w-full resize-none rounded-md border border-gob-accent bg-white px-3 py-2 text-sm text-gob-black outline-none placeholder:text-gob-gray-b focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30 disabled:bg-gob-neutral"
-          />
-          <div id={idAyuda} className="flex flex-col gap-1 text-xs text-gob-gray-a">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              {archivoAsociado ? (
-                <p className="min-w-0 break-all">
-                  Se asociará a: <span className="font-semibold text-gob-black">{archivoAsociado}</span>
-                </p>
-              ) : (
-                <span />
-              )}
-              <p className="shrink-0 tabular-nums">
-                {texto.length}/{LONGITUD_MAXIMA_MENSAJE}
+          <div className={estilos.redaccion}>
+            <textarea
+              id={idTexto}
+              value={texto}
+              onChange={(evento) => setTexto(evento.target.value)}
+              disabled={enviando}
+              maxLength={LONGITUD_MAXIMA_MENSAJE}
+              rows={1}
+              aria-describedby={idAyuda}
+              placeholder="Escribe tu mensaje"
+              className={estilos.campo}
+            />
+            <Boton type="submit" disabled={texto.trim().length === 0} cargando={enviando}
+              aria-label={etiquetaEnviar} className={estilos.enviar}>
+              <IconoEnviarMensaje />
+              <span className="sr-only">{etiquetaEnviar}</span>
+            </Boton>
+          </div>
+          <div id={idAyuda} className={estilos.ayuda}>
+            {archivoAsociado ? (
+              <p className={estilos.archivoAsociado}>
+                Se asociará a: <span className="font-semibold">{archivoAsociado}</span>
               </p>
-            </div>
+            ) : null}
             <p>No incluyas datos de pacientes en los mensajes.</p>
+            <p className={estilos.contador}>{texto.length}/{LONGITUD_MAXIMA_MENSAJE}</p>
           </div>
 
           {errorEnvio ? (
-            <p role="alert" className="text-sm font-medium text-gob-danger">
+            <p role="alert" className={estilos.error}>
               {errorEnvio}
             </p>
           ) : null}
-
-          <Boton type="submit" disabled={texto.trim().length === 0} cargando={enviando} textoCargando="Enviando..." className="w-fit self-end">
-            Enviar
-          </Boton>
         </form>
       ) : (
-        <p className="border-t border-gob-accent bg-white px-4 py-3 text-sm text-gob-gray-a">{textoSinPermisoEscritura}</p>
+        <p className={estilos.sinPermiso}>{textoSinPermisoEscritura}</p>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { enviarJson, pedirJson } from "@/shared/components/clienteMensajeria";
 import { HiloMensajes } from "@/shared/components/HiloMensajes";
+import { EncabezadoChat } from "@/shared/components/EncabezadoChat";
 import {
   fusionarMensajes,
   hastaParaMarcarLeidos,
@@ -12,6 +13,11 @@ import {
 } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import { useRefrescoPeriodico } from "@/shared/hooks/useRefrescoPeriodico";
 import { formatearFechaHora } from "@/shared/utils/fecha";
+import estilos from "./Chat.module.css";
+
+function inicialesNombre(nombre: string): string {
+  return nombre.trim().split(/\s+/).slice(0, 2).map((parte) => parte[0]).join("").toUpperCase();
+}
 
 // Notificador preseleccionado al abrir el modal desde la fila de una carga pendiente del detalle de
 // ventana. `cargaArchivoId` es la carga de esa fila: si todavía no hay conversación, el primer
@@ -206,7 +212,7 @@ function ListaConversaciones({ entradas, seleccionadoId, cargando, error, onSele
   }
 
   return (
-    <ul className="divide-y divide-gob-accent/60">
+    <ul>
       {entradas.map((entrada) => (
         <li key={entrada.notificadorId}>
           <BotonConversacion
@@ -232,19 +238,18 @@ function BotonConversacion({ entrada, seleccionado, onSeleccionar }: BotonConver
       type="button"
       aria-pressed={seleccionado}
       onClick={() => onSeleccionar(entrada.notificadorId)}
-      className={`flex w-full items-start justify-between gap-2 px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gob-primary ${
-        seleccionado ? "bg-gob-primary/10" : "hover:bg-gob-neutral"
-      }`}
+      className={`${estilos.conversacion} ${seleccionado ? estilos.conversacionSeleccionada : ""}`}
     >
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold text-gob-black">{entrada.nombreCompleto}</span>
-        <span className="block text-xs tabular-nums text-gob-gray-a">{entrada.rut}</span>
-        <span className="mt-0.5 block text-xs text-gob-gray-a">
+      <span aria-hidden="true" className={estilos.avatar}>{inicialesNombre(entrada.nombreCompleto)}</span>
+      <span className={estilos.datosContacto}>
+        <span className={estilos.nombreContacto}>{entrada.nombreCompleto}</span>
+        <span className={estilos.detalleContacto}>{entrada.rut}</span>
+        <span className={estilos.detalleContacto}>
           {entrada.ultimoMensajeEn ? formatearFechaHora(new Date(entrada.ultimoMensajeEn)) : "Sin mensajes"}
         </span>
       </span>
       {entrada.noLeidos > 0 ? (
-        <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gob-danger px-1.5 text-xs font-bold text-white">
+        <span className={estilos.sinLeer}>
           {entrada.noLeidos}
           <span className="sr-only">{entrada.noLeidos === 1 ? " respuesta sin leer" : " respuestas sin leer"}</span>
         </span>
@@ -264,9 +269,12 @@ type ColumnaConversacionProps = {
 function ColumnaConversacion({ seleccionado, hilo, error, puedeEscribir, onEnviar }: ColumnaConversacionProps) {
   return (
     <>
-      <div className="border-b border-gob-accent px-4 py-2">
-        <p className="text-sm font-semibold text-gob-black">{seleccionado.nombreCompleto}</p>
-        <p className="text-xs tabular-nums text-gob-gray-a">{seleccionado.rut}</p>
+      <div className={estilos.cabeceraContacto}>
+        <span aria-hidden="true" className={estilos.avatar}>{inicialesNombre(seleccionado.nombreCompleto)}</span>
+        <div className={estilos.datosContacto}>
+          <p className={estilos.nombreContacto}>{seleccionado.nombreCompleto}</p>
+          <p className={estilos.detalleContacto}>{seleccionado.rut}</p>
+        </div>
       </div>
       <HiloMensajes
         mensajes={hilo?.mensajes ?? []}
@@ -356,31 +364,18 @@ export function ModalConversacionesRevisor({
       ref={referenciaDialogo}
       aria-labelledby={idTitulo}
       onClose={onCerrar}
-      className="m-auto w-[calc(100vw-2rem)] max-w-5xl overflow-hidden rounded-lg border border-gob-accent bg-white p-0 text-left text-gob-black shadow-2xl backdrop:bg-slate-950/55"
+      className={`${estilos.modal} ${estilos.modalRevisor}`}
     >
-      <div className="flex h-[80vh] flex-col md:h-[70vh]">
-        <header className="flex items-start justify-between gap-4 border-b border-gob-accent px-5 py-4">
-          <div className="min-w-0">
-            <h2 id={idTitulo} className="text-lg font-semibold text-gob-tertiary">
-              Mensajes con notificadores
-            </h2>
-            <p className="mt-0.5 truncate text-sm text-gob-gray-a">{tituloVentana}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onCerrar}
-            aria-label="Cerrar mensajes con notificadores"
-            className="inline-flex size-8 items-center justify-center rounded text-2xl leading-none text-gob-gray-a hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-          >
-            ×
-          </button>
-        </header>
+      <div className={estilos.contenidoModal}>
+        <EncabezadoChat idTitulo={idTitulo} titulo="Mensajes con notificadores" subtitulo={tituloVentana}
+          etiquetaCerrar="Cerrar mensajes con notificadores" onCerrar={onCerrar} />
 
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className={estilos.columnas}>
           <nav
             aria-label="Notificadores con mensajes"
-            className="max-h-40 shrink-0 overflow-y-auto border-b border-gob-accent md:max-h-none md:w-72 md:border-r md:border-b-0"
+            className={estilos.barraConversaciones}
           >
+            <p className={estilos.etiquetaLista}>Conversaciones</p>
             <ListaConversaciones
               entradas={entradas}
               seleccionadoId={seleccionadoId}
@@ -390,7 +385,7 @@ export function ModalConversacionesRevisor({
             />
           </nav>
 
-          <section aria-label="Conversación" className="flex min-h-0 flex-1 flex-col">
+          <section aria-label="Conversación" className={estilos.columnaHilo}>
             {seleccionado ? (
               <ColumnaConversacion
                 key={seleccionado.notificadorId}
@@ -401,7 +396,9 @@ export function ModalConversacionesRevisor({
                 onEnviar={enviar}
               />
             ) : (
-              <p className="px-4 py-3 text-sm text-gob-gray-a">Selecciona un notificador para ver la conversación.</p>
+              <div className={estilos.historial}>
+                <div className={estilos.estado}><p>Selecciona un notificador para ver la conversación.</p></div>
+              </div>
             )}
           </section>
         </div>

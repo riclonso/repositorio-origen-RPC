@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { enviarJson, pedirJson } from "@/shared/components/clienteMensajeria";
 import { HiloMensajes } from "@/shared/components/HiloMensajes";
+import { EncabezadoChat } from "@/shared/components/EncabezadoChat";
 import {
   fusionarMensajes,
   hastaParaMarcarLeidos,
@@ -10,6 +11,7 @@ import {
   type MensajeVista,
 } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import { useRefrescoPeriodico } from "@/shared/hooks/useRefrescoPeriodico";
+import estilos from "./Chat.module.css";
 
 type ModalConversacionNotificadorProps = {
   ventanaCargaId: string;
@@ -79,25 +81,11 @@ export function ModalConversacionNotificador({
       ref={referenciaDialogo}
       aria-labelledby={idTitulo}
       onClose={onCerrar}
-      className="m-auto w-[calc(100vw-2rem)] max-w-2xl overflow-hidden rounded-lg border border-gob-accent bg-white p-0 text-left text-gob-black shadow-2xl backdrop:bg-slate-950/55"
+      className={estilos.modal}
     >
-      <div className="flex h-[80vh] flex-col md:h-[70vh]">
-        <header className="flex items-start justify-between gap-4 border-b border-gob-accent px-5 py-4">
-          <div className="min-w-0">
-            <h2 id={idTitulo} className="text-lg font-semibold text-gob-tertiary">
-              Mensajes del equipo revisor
-            </h2>
-            <p className="mt-0.5 truncate text-sm text-gob-gray-a">{tituloVentana}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onCerrar}
-            aria-label="Cerrar mensajes del equipo revisor"
-            className="inline-flex size-8 items-center justify-center rounded text-2xl leading-none text-gob-gray-a hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-          >
-            ×
-          </button>
-        </header>
+      <div className={estilos.contenidoModal}>
+        <EncabezadoChat idTitulo={idTitulo} titulo="Mensajes del equipo revisor" subtitulo={tituloVentana}
+          etiquetaCerrar="Cerrar mensajes del equipo revisor" onCerrar={onCerrar} />
 
         <HiloMensajes
           mensajes={hilo?.mensajes ?? []}
