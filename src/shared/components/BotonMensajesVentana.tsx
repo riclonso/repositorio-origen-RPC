@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import type { LadoMensaje } from "@/modules/mensajeria/domain/entities/MensajeCarga";
-import { IconoMensaje } from "@/shared/components/iconos";
+import { IconoConversacion, IconoMensaje } from "@/shared/components/iconos";
 import { ModalMensajesVentana } from "@/shared/components/ModalMensajesVentana";
 import { useRefrescoTrasLecturas } from "@/shared/hooks/useRefrescoTrasLecturas";
+import estilosIndicador from "./IndicadorMensajes.module.css";
 
 type BotonMensajesVentanaProps = {
   lado: LadoMensaje;
@@ -12,6 +13,7 @@ type BotonMensajesVentanaProps = {
   tituloVentana: string;
   // Mensajes del lado contrario todavía sin leer en esta ventana.
   noLeidos: number;
+  variante?: "estandar" | "flotante";
 };
 
 function textoNoLeidos(lado: LadoMensaje, noLeidos: number): string {
@@ -26,7 +28,13 @@ function textoNoLeidos(lado: LadoMensaje, noLeidos: number): string {
 // se muestra si la ventana tiene mensajes: destacado cuando hay mensajes sin leer del otro lado,
 // neutro ("Mensajes") cuando no los hay. Al cerrar el modal se vuelve a pedir la página al
 // servidor para recalcular los avisos, DESPUÉS de que terminen las marcas de lectura en vuelo.
-export function BotonMensajesVentana({ lado, ventanaCargaId, tituloVentana, noLeidos }: BotonMensajesVentanaProps) {
+export function BotonMensajesVentana({
+  lado,
+  ventanaCargaId,
+  tituloVentana,
+  noLeidos,
+  variante = "estandar",
+}: BotonMensajesVentanaProps) {
   const [abierto, setAbierto] = useState(false);
   const { registrarLectura, refrescarTrasLecturas } = useRefrescoTrasLecturas();
 
@@ -35,9 +43,25 @@ export function BotonMensajesVentana({ lado, ventanaCargaId, tituloVentana, noLe
     refrescarTrasLecturas();
   }
 
+  const etiquetaFlotante = noLeidos > 0 ? `Abrir mensajes, ${textoNoLeidos(lado, noLeidos)}` : "Abrir conversación";
+
   return (
     <>
-      {noLeidos > 0 && lado === "REVISOR" ? (
+      {variante === "flotante" ? (
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          aria-label={etiquetaFlotante}
+          className={`${estilosIndicador.boton} ${noLeidos > 0 ? estilosIndicador.nuevo : ""}`}
+        >
+          <IconoConversacion />
+          {noLeidos > 0 ? (
+            <span aria-hidden="true" className={estilosIndicador.contador}>
+              {noLeidos > 99 ? "99+" : noLeidos}
+            </span>
+          ) : null}
+        </button>
+      ) : noLeidos > 0 && lado === "REVISOR" ? (
         // Revisor: "Mensajes" + chip rojo con la cantidad de respuestas nuevas. El chip es
         // decorativo para lectores de pantalla; el texto completo va en `aria-label`.
         <button

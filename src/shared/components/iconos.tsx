@@ -7,9 +7,11 @@ import {
   Archive,
   Bell,
   CalendarBlank,
+  ChatCircleDots,
   ChatCircleText,
   Check,
   CheckCircle,
+  Checks,
   Circle,
   DownloadSimple,
   Eye,
@@ -23,6 +25,7 @@ import {
   Lock,
   LockOpen,
   PencilSimple,
+  PaperPlaneTilt,
   Prohibit,
   SealCheck,
   ShieldCheck,
@@ -125,3 +128,9 @@ export const IconoPlazo = crearIcono(ShieldCheck, TAMANO_ACCION);
 // RF-31: mensajería entre el equipo revisor y los notificadores (botón "Mensaje" de una carga
 // pendiente, avisos de las tarjetas y banner de mensajes sin leer).
 export const IconoMensaje = crearIcono(ChatCircleText, TAMANO_ACCION);
+export const IconoEnviarMensaje = crearIcono(PaperPlaneTilt, TAMANO_CAMPO);
+export const IconoMensajeLeido = crearIcono(Checks, 14);
+export const IconoCerrar = crearIcono(X, TAMANO_CAMPO);
+// Indicador flotante de conversación en una tarjeta: los tres puntos se entienden mejor a tamaño
+// grande que el glifo de texto usado por los botones convencionales de mensajería.
+export const IconoConversacion = crearIcono(ChatCircleDots, TAMANO_CAMPO);

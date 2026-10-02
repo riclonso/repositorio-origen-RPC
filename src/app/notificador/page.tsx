@@ -118,7 +118,7 @@ export default async function NotificadorPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-8">
-      <section className="flex flex-col justify-between gap-6 border-b border-gob-neutral pb-8 sm:flex-row sm:items-end">
+      <section className="flex flex-col justify-between gap-6 pb-8 sm:flex-row sm:items-end">
         <div className="space-y-3">
           <p className="text-sm font-semibold uppercase tracking-wide text-gob-primary">Registro Poblacional de Cáncer</p>
           <h1 className="text-4xl font-bold tracking-tight text-gob-black">Hola, {usuario.nombres}</h1>

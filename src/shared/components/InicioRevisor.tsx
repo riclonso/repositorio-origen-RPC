@@ -15,6 +15,7 @@ import { IconoCalendario, IconoPlazo } from "@/shared/components/iconos";
 import { BannerMensajesSinLeer } from "@/shared/components/BannerMensajesSinLeer";
 import { BotonMensajesVentana } from "@/shared/components/BotonMensajesVentana";
 import { tituloVentanaMensajes } from "@/modules/mensajeria/schemas/vistas-mensajeria";
+import estilosIndicador from "./IndicadorMensajes.module.css";
 
 type InicioRevisorProps = {
   nombres: string;
@@ -71,6 +72,9 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
   const totalReportaron = resumenes.reduce((total, resumen) => total + resumen.totalNotificadoresReportaron, 0);
   const ventanasUrgentes = resumenes.filter((resumen) => resumen.vencimientoProximo).length;
   const porcentajeGeneral = totalAsignados === 0 ? 0 : Math.round((totalReportaron / totalAsignados) * 100);
+  const hayIconosMensajes = resumenes.some(
+    (resumen) => (mensajes.porVentana[resumen.ventanaCargaId]?.total ?? 0) > 0,
+  );
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8 pb-8">
@@ -148,7 +152,7 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
             <p className="mt-1 text-sm text-gob-gray-a">Cuando se habilite una ventana, podrás revisarla desde este espacio.</p>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className={`grid gap-4 md:grid-cols-2 xl:grid-cols-3 ${hayIconosMensajes ? `${estilosIndicador.rejillaConMensajes} pt-6 pr-6` : ""}`}>
             {resumenesOrdenados.map((resumen) => {
               const porcentaje = calcularPorcentaje(resumen);
               const mensajesVentana = mensajes.porVentana[resumen.ventanaCargaId];
@@ -156,7 +160,7 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
               return (
                 <article
                   key={resumen.ventanaCargaId}
-                  className={`flex min-h-76 flex-col rounded-xl border bg-white p-5 shadow-[0_8px_22px_rgba(23,59,105,0.05)] ${
+                  className={`${estilosIndicador.tarjeta} flex min-h-76 flex-col rounded-xl border bg-white p-5 shadow-[0_8px_22px_rgba(23,59,105,0.05)] ${
                     resumen.vencimientoProximo ? "border-[#ebc7c7]" : "border-[#d8e4f0]"
                   }`}
                 >
@@ -184,14 +188,13 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
                   </div>
 
                   {mensajesVentana && mensajesVentana.total > 0 ? (
-                    <div className="mt-4">
-                      <BotonMensajesVentana
-                        lado="REVISOR"
-                        ventanaCargaId={resumen.ventanaCargaId}
-                        tituloVentana={tituloVentanaMensajes(resumen.formatoExcelNombre, resumen.anio)}
-                        noLeidos={mensajesVentana.noLeidos}
-                      />
-                    </div>
+                    <BotonMensajesVentana
+                      lado="REVISOR"
+                      ventanaCargaId={resumen.ventanaCargaId}
+                      tituloVentana={tituloVentanaMensajes(resumen.formatoExcelNombre, resumen.anio)}
+                      noLeidos={mensajesVentana.noLeidos}
+                      variante="flotante"
+                    />
                   ) : null}
 
                   <div className="mt-auto flex items-center justify-between gap-2 border-t border-[#e6edf5] pt-4">
