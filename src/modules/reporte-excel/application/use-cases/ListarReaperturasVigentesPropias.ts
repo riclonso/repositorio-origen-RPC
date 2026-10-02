@@ -7,6 +7,9 @@ export type ReaperturaVigenteVista = {
   anio: number;
   motivo: string;
   fechaLimite: Date;
+  // El panel lo compara con `vistoBuenoEn` de la carga vigente (`rechazoPosteriorAAprobacion`)
+  // para decidir si esta reapertura habilita reemplazarla.
+  rechazadoEn: Date;
 };
 
 // Banner de `/notificador` (RF nuevo): reaperturas vigentes y todavía no consumidas del
@@ -26,6 +29,7 @@ export async function listarReaperturasVigentesPropias(
       formatoExcelNombre: rechazo.formatoExcelNombre,
       anio: rechazo.anio,
       motivo: rechazo.motivo,
+      rechazadoEn: rechazo.rechazadoEn,
       fechaLimite: fechaLimiteReapertura(rechazo, { fechaVencimiento: rechazo.ventanaFechaVencimiento }),
     }));
 }

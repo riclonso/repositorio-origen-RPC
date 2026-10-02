@@ -4,9 +4,10 @@ import { useEffect, useState, ViewTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
-  CargaArchivoResumen,
+  CargaArchivoResumenConPublicacion,
   ErrorCargaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { rechazoPosteriorAAprobacion } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import type {
   EstadoSolicitudReemplazoCarga,
   OrigenSolicitudReemplazoCarga,
@@ -40,8 +41,8 @@ import { formatearFechaHora } from "@/shared/utils/fecha";
 // `fetch` -tras subir o dar visto bueno-). Este panel ya no renderiza su propia tabla con todas las
 // cargas (se movió a "Mis cargas" en el menú lateral, `/notificador/cargas`); aquí solo se deriva de
 // ella el historial de intentos fallidos por tarjeta y qué combinaciones ya tienen una carga
-// aprobada vigente.
-export type CargaResumenVista = Omit<CargaArchivoResumen, "createdAt" | "vistoBuenoEn" | "finalizadaEn"> & {
+// aprobada vigente (`publicacionActiva` permite descartar una `APROBADA` ya superada).
+export type CargaResumenVista = Omit<CargaArchivoResumenConPublicacion, "createdAt" | "vistoBuenoEn" | "finalizadaEn"> & {
   createdAt: string;
   vistoBuenoEn: string | null;
   finalizadaEn: string | null;
@@ -52,14 +53,22 @@ type CargaDetalleVista = CargaResumenVista & { errores: ErrorCargaArchivo[] };
 
 // Vista liviana de una solicitud de reemplazo propia, mismos campos que
 // `SolicitudReemplazoPropiaDTO` que necesita este panel para decidir el estado de cada
-// combinación: sin `vencida` recalculado en el cliente, se usa el que ya resolvió el servidor.
+// combinación: sin `vencida`/`utilizable` recalculados en el cliente, se usan los que ya resolvió el
+// servidor. `utilizable` es lo que habilita subir: una `APROBADA` ya consumida no está vencida pero
+// tampoco habilita nada. Llegan ordenadas de la más reciente a la más antigua.
 export type SolicitudReemplazoPropiaVista = {
   id: string;
   cargaArchivoId: string;
   estado: EstadoSolicitudReemplazoCarga;
   origen: OrigenSolicitudReemplazoCarga;
   vencida: boolean;
+  utilizable: boolean;
 };
+
+// Qué habilita reemplazar la `APROBADA` vigente de una combinación: una solicitud de reemplazo
+// aprobada y utilizable, o una reapertura posterior a esa aprobación (se rechazó la carga de
+// reemplazo). `null` = no hay habilitación: la tarjeta ofrece solicitar el reemplazo.
+type HabilitacionReemplazo = "SOLICITUD" | "REAPERTURA" | null;
 
 // RF-15 (ampliación): una combinación (formato asignado, ventana disponible) cuyo tipo de archivo
 // coincide, resuelta en el Server Component (`app/notificador/page.tsx`). Reemplaza a los dos
@@ -77,8 +86,10 @@ function formatearFechaHoraIso(iso: string): string {
   return formatearFechaHora(new Date(iso));
 }
 
+// `vista=panel`: misma fuente que el Server Component (intentos recientes + cargas que determinan el
+// estado de cada tarjeta), para que el refresco no dependa del corte de una página.
 async function obtenerMisCargas(): Promise<CargaResumenVista[] | null> {
-  const respuesta = await fetch("/api/notificador/cargas");
+  const respuesta = await fetch("/api/notificador/cargas?vista=panel");
   if (!respuesta.ok) return null;
   const datos = (await respuesta.json()) as { datos: CargaResumenVista[] };
   return datos.datos;
@@ -117,10 +128,14 @@ function avisoMensajesDeCombinacion(
 }
 
 // La carga vigente de una combinación (formato, ventana) es su APROBADA más reciente por
-// `vistoBuenoEn`, mismo criterio que `agruparCargasAprobadasPorVentana` del servidor: un
-// notificador puede tener varias cargas APROBADA sucesivas en la misma ventana.
+// `vistoBuenoEn` cuya publicación no fue desactivada, mismo criterio que
+// `obtenerAprobadaVigentePorUsuarioYVentana` del servidor: una aprobación ya superada por un
+// reemplazo (`publicacionActiva = false`) nunca vuelve a bloquear la tarjeta.
 function cargaAprobadaVigente(cargas: CargaResumenVista[], ventanaCargaId: string): CargaResumenVista | null {
-  const aprobadas = cargas.filter((carga) => carga.ventanaCargaId === ventanaCargaId && carga.estado === "APROBADA");
+  const aprobadas = cargas.filter(
+    (carga) =>
+      carga.ventanaCargaId === ventanaCargaId && carga.estado === "APROBADA" && carga.publicacionActiva !== false,
+  );
   if (aprobadas.length === 0) return null;
 
   return aprobadas.reduce((vigente, actual) => {
@@ -144,6 +159,94 @@ function cargaPendienteFinalizada(cargas: CargaResumenVista[], ventanaCargaId: s
         carga.estado === "PENDIENTE_VISTO_BUENO" &&
         carga.finalizadaEn !== null,
     ) ?? null
+  );
+}
+
+// Mismo criterio que `resolverAutorizacionReemplazo` del servidor: se prefiere la solicitud
+// utilizable sobre la carga vigente; si no hay, una reapertura (ya filtrada como vigente por el
+// servidor) de esa ventana cuyo rechazo sea posterior a la aprobación vigente.
+function resolverHabilitacionReemplazo(
+  cargaAprobada: CargaResumenVista,
+  solicitudesDeLaCarga: SolicitudReemplazoPropiaVista[],
+  reaperturas: ReaperturaVigentePropiaVista[],
+): HabilitacionReemplazo {
+  if (solicitudesDeLaCarga.some((solicitud) => solicitud.utilizable)) return "SOLICITUD";
+
+  const vistoBuenoEn = cargaAprobada.vistoBuenoEn ? new Date(cargaAprobada.vistoBuenoEn) : null;
+  const reaperturaHabilitante = reaperturas.some(
+    (reapertura) =>
+      reapertura.ventanaCargaId === cargaAprobada.ventanaCargaId &&
+      rechazoPosteriorAAprobacion(new Date(reapertura.rechazadoEn), vistoBuenoEn),
+  );
+
+  return reaperturaHabilitante ? "REAPERTURA" : null;
+}
+
+type EstadoTarjetaCombinacion = {
+  cargaAprobada: CargaResumenVista | null;
+  habilitacionReemplazo: HabilitacionReemplazo;
+  solicitudPendiente: boolean;
+  cargaPendienteDecision: CargaResumenVista | null;
+  solicitudPendienteDeCargaPendiente: boolean;
+  intentosFallidos: CargaResumenVista[];
+};
+
+// Deriva, sin consultas nuevas, el estado de la tarjeta de una combinación a partir de lo que el
+// panel ya tiene cargado. Se consideran TODAS las solicitudes de la carga (no solo la primera): si
+// la más reciente está consumida o vencida y no hay una `PENDIENTE`, la tarjeta vuelve a ofrecer el
+// formulario de solicitud.
+function derivarEstadoTarjeta(
+  ventanaCargaId: string,
+  cargas: CargaResumenVista[],
+  solicitudes: SolicitudReemplazoPropiaVista[],
+  reaperturas: ReaperturaVigentePropiaVista[],
+): EstadoTarjetaCombinacion {
+  const cargaAprobada = cargaAprobadaVigente(cargas, ventanaCargaId);
+  const solicitudesDeLaAprobada = cargaAprobada
+    ? solicitudes.filter((solicitud) => solicitud.cargaArchivoId === cargaAprobada.id)
+    : [];
+
+  // Puede convivir con `cargaAprobada`: durante un reemplazo, la carga nueva queda finalizada y
+  // pendiente mientras la aprobada anterior sigue vigente. `TarjetaCargaArchivo` evalúa primero la
+  // pendiente: mientras exista, la tarjeta se bloquea por ella.
+  const cargaPendienteDecision = cargaPendienteFinalizada(cargas, ventanaCargaId);
+  const solicitudPendienteDeCargaPendiente = cargaPendienteDecision
+    ? solicitudes.some(
+        (solicitud) => solicitud.cargaArchivoId === cargaPendienteDecision.id && solicitud.estado === "PENDIENTE",
+      )
+    : false;
+
+  return {
+    cargaAprobada,
+    habilitacionReemplazo: cargaAprobada
+      ? resolverHabilitacionReemplazo(cargaAprobada, solicitudesDeLaAprobada, reaperturas)
+      : null,
+    solicitudPendiente: solicitudesDeLaAprobada.some((solicitud) => solicitud.estado === "PENDIENTE"),
+    cargaPendienteDecision,
+    solicitudPendienteDeCargaPendiente,
+    intentosFallidos: cargas.filter(
+      (carga) => carga.ventanaCargaId === ventanaCargaId && carga.estado === "CON_ERRORES",
+    ),
+  };
+}
+
+// Aviso de que la tarjeta admite subir el archivo de reemplazo, con el texto según qué lo habilita.
+function AvisoReemplazoHabilitado({
+  habilitacion,
+  nombreArchivoVigente,
+}: {
+  habilitacion: Exclude<HabilitacionReemplazo, null>;
+  nombreArchivoVigente: string;
+}) {
+  const motivo =
+    habilitacion === "SOLICITUD"
+      ? "Tu solicitud de reemplazo fue aprobada"
+      : "Tu carga anterior fue rechazada";
+
+  return (
+    <p className="mt-2 text-sm font-medium text-gob-primary">
+      {motivo}: puedes subir un archivo que reemplazará a <strong>{nombreArchivoVigente}</strong>.
+    </p>
   );
 }
 
@@ -371,17 +474,17 @@ type TarjetaCargaArchivoProps = {
   combinacion: CombinacionCargaVista;
   resultado: CargaDetalleVista | null;
   intentosFallidos: CargaResumenVista[];
-  // `null` cuando la combinación nunca tuvo una carga aprobada. Cuando no es `null`, la tarjeta
-  // muestra la subida normal solo si `reemplazoHabilitado` es `true` (autorización de reemplazo
-  // vigente); si no, la tarjeta reducida con el formulario de solicitud.
+  // `null` cuando la combinación no tiene una carga aprobada vigente. Cuando no es `null`, la
+  // tarjeta muestra la subida normal solo si hay `habilitacionReemplazo` (solicitud utilizable o
+  // reapertura posterior a la aprobación); si no, la tarjeta reducida con el formulario de solicitud.
   cargaAprobada: CargaResumenVista | null;
-  reemplazoHabilitado: boolean;
+  habilitacionReemplazo: HabilitacionReemplazo;
   solicitudPendiente: boolean;
   // `null` cuando la combinación no tiene ninguna carga `PENDIENTE_VISTO_BUENO` finalizada y
   // todavía sin decidir. Cuando no es `null`, la tarjeta se bloquea (sin subida nueva) y ofrece
-  // solicitar su reemplazo, mutuamente excluyente con `cargaAprobada`/`reemplazoHabilitado`: una
-  // combinación no puede tener a la vez una carga `APROBADA` vigente y otra `PENDIENTE_VISTO_BUENO`
-  // ya finalizada.
+  // solicitar su reemplazo. Puede convivir con `cargaAprobada` (durante un reemplazo, la carga nueva
+  // está pendiente mientras la aprobada anterior sigue vigente): por eso se evalúa ANTES que
+  // `cargaAprobada`/`habilitacionReemplazo`, y tiene prioridad sobre ellas.
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`), visible en los tres
@@ -398,7 +501,7 @@ function TarjetaCargaArchivo({
   resultado,
   intentosFallidos,
   cargaAprobada,
-  reemplazoHabilitado,
+  habilitacionReemplazo,
   solicitudPendiente,
   cargaPendienteDecision,
   solicitudPendienteDeCargaPendiente,
@@ -413,10 +516,6 @@ function TarjetaCargaArchivo({
   const idBase = `carga-${claveCombinacion(combinacion)}`;
   const idTitulo = `${idBase}-titulo`;
   const idArchivo = `${idBase}-archivo`;
-
-  // Estado "b": ya existe una carga aprobada para esta combinación y no hay ninguna autorización
-  // de reemplazo vigente. La tarjeta se reduce: no se ofrece subir un archivo nuevo.
-  const requiereSolicitudDeReemplazo = cargaAprobada !== null && !reemplazoHabilitado;
 
   async function subirArchivo() {
     if (!archivo) return;
@@ -475,9 +574,9 @@ function TarjetaCargaArchivo({
     );
   }
 
-  // Estado "b": ya existe una carga aprobada para esta combinación y no hay ninguna autorización
-  // de reemplazo vigente. La tarjeta se reduce: no se ofrece subir un archivo nuevo.
-  if (requiereSolicitudDeReemplazo && cargaAprobada) {
+  // Estado "b": ya existe una carga aprobada vigente para esta combinación y no hay ninguna
+  // habilitación de reemplazo. La tarjeta se reduce: no se ofrece subir un archivo nuevo.
+  if (cargaAprobada && habilitacionReemplazo === null) {
     return (
       <TarjetaCargaBloqueada
         idTitulo={idTitulo}
@@ -519,11 +618,11 @@ function TarjetaCargaArchivo({
         Descargar plantilla
       </a>
 
-      {reemplazoHabilitado && cargaAprobada ? (
-        <p className="mt-2 text-sm font-medium text-gob-primary">
-          Tu solicitud de reemplazo fue aprobada: puedes subir el archivo que reemplazará a{" "}
-          <strong>{cargaAprobada.nombreArchivoOriginal}</strong>.
-        </p>
+      {cargaAprobada && habilitacionReemplazo ? (
+        <AvisoReemplazoHabilitado
+          habilitacion={habilitacionReemplazo}
+          nombreArchivoVigente={cargaAprobada.nombreArchivoOriginal}
+        />
       ) : null}
 
       <div className="mt-4 flex flex-col gap-4 sm:max-w-md">
@@ -691,15 +790,18 @@ export function PanelCargaArchivo({
         const datos = await respuesta.json().catch(() => null);
         setErrorFinalizar(datos?.error ?? MENSAJE_ERROR_GENERICO);
         setProcesandoFinalizar(false);
+        // Si la autorización de reemplazo venció entre la subida y la finalización, la tarjeta debe
+        // volver a ofrecer "Solicitar reemplazo" al cerrar el modal.
+        if (datos?.codigo === "REEMPLAZO_NO_AUTORIZADO") refrescarSolicitudes();
         return;
       }
 
       const datos = (await respuesta.json()) as { carga: CargaDetalleVista };
 
-      // El servidor consume cualquier reapertura pendiente de esta combinación (usuario, ventana)
-      // al finalizar con éxito (ver `CargaArchivoRepository.finalizar()`); se refleja aquí de
-      // inmediato para que `BannerReaperturaCarga` deje de mostrarse sin esperar a recargar la
-      // página.
+      // El servidor consume las reaperturas pendientes de esta combinación (usuario, ventana) y la
+      // solicitud de reemplazo utilizable al finalizar con éxito (ver
+      // `CargaArchivoRepository.finalizar()`); se refleja aquí de inmediato para que
+      // `BannerReaperturaCarga` deje de mostrarse sin esperar a recargar la página.
       setReaperturas((actual) =>
         actual.filter((reapertura) => reapertura.ventanaCargaId !== cargaExitosa.ventanaCargaId),
       );
@@ -752,21 +854,12 @@ export function PanelCargaArchivo({
         </section>
       ) : (
         combinaciones.map((combinacion) => {
-          const cargaAprobada = cargaAprobadaVigente(misCargas, combinacion.ventanaCargaId);
-          const solicitudDeEstaCarga = cargaAprobada
-            ? misSolicitudes.find((solicitud) => solicitud.cargaArchivoId === cargaAprobada.id)
-            : undefined;
-          const reemplazoHabilitado =
-            solicitudDeEstaCarga?.estado === "APROBADA" && !solicitudDeEstaCarga.vencida;
-          const solicitudPendiente = solicitudDeEstaCarga?.estado === "PENDIENTE";
-
-          // Mutuamente excluyente con `cargaAprobada`: una combinación no puede tener a la vez una
-          // `APROBADA` vigente y una `PENDIENTE_VISTO_BUENO` ya finalizada.
-          const cargaPendienteDecision = cargaPendienteFinalizada(misCargas, combinacion.ventanaCargaId);
-          const solicitudDeCargaPendiente = cargaPendienteDecision
-            ? misSolicitudes.find((solicitud) => solicitud.cargaArchivoId === cargaPendienteDecision.id)
-            : undefined;
-          const solicitudPendienteDeCargaPendiente = solicitudDeCargaPendiente?.estado === "PENDIENTE";
+          const estadoTarjeta = derivarEstadoTarjeta(
+            combinacion.ventanaCargaId,
+            misCargas,
+            misSolicitudes,
+            reaperturas,
+          );
 
           const claveTarjeta = claveCombinacion(combinacion);
           return (
@@ -774,14 +867,12 @@ export function PanelCargaArchivo({
               key={claveTarjeta}
               combinacion={combinacion}
               resultado={resultados[claveTarjeta] ?? null}
-              intentosFallidos={misCargas.filter(
-                (carga) => carga.ventanaCargaId === combinacion.ventanaCargaId && carga.estado === "CON_ERRORES",
-              )}
-              cargaAprobada={cargaAprobada}
-              reemplazoHabilitado={reemplazoHabilitado}
-              solicitudPendiente={solicitudPendiente}
-              cargaPendienteDecision={cargaPendienteDecision}
-              solicitudPendienteDeCargaPendiente={solicitudPendienteDeCargaPendiente}
+              intentosFallidos={estadoTarjeta.intentosFallidos}
+              cargaAprobada={estadoTarjeta.cargaAprobada}
+              habilitacionReemplazo={estadoTarjeta.habilitacionReemplazo}
+              solicitudPendiente={estadoTarjeta.solicitudPendiente}
+              cargaPendienteDecision={estadoTarjeta.cargaPendienteDecision}
+              solicitudPendienteDeCargaPendiente={estadoTarjeta.solicitudPendienteDeCargaPendiente}
               avisoMensajes={avisoMensajesDeCombinacion(combinacion, mensajesPorVentana)}
               onSubidaExitosa={registrarResultado}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}

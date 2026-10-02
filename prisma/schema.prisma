@@ -485,7 +485,9 @@ model CargaArchivo {
   // El notificador ya no aprueba: solo "finaliza y envía" una `PENDIENTE_VISTO_BUENO` para que un
   // tercero (ADMIN/REVISOR_REPOSITORIO) la decida. No nulo = ya no admite una subida nueva para la
   // misma combinación (usuarioId, formatoExcelId, ventanaCargaId) hasta que se decida (aprobar o
-  // rechazar). No cambia `estado`: solo marca que el paso del notificador ya se completó.
+  // rechazar). No cambia `estado`: solo marca que el paso del notificador ya se completó. Índice
+  // único parcial (SQL a mano en la migración, Prisma no lo expresa): a lo más UNA
+  // `PENDIENTE_VISTO_BUENO` con `finalizadaEn` no nulo por (usuarioId, ventanaCargaId).
   finalizadaEn          DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
@@ -608,9 +610,11 @@ model CargaArchivoRechazo {
   rechazadoPorId String
   rechazadoPor   Usuario  @relation("RechazosDecididosPor", fields: [rechazadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
 
-  // Se completan cuando el notificador consume la reapertura subiendo un archivo nuevo para esa
-  // combinación (formato, ventana) — exista o no error de validación en ese intento —, en la MISMA
-  // transacción que crea esa nueva `CargaArchivo`. Mismo patrón que
+  // Se completan al FINALIZAR Y ENVIAR (no al subir) una carga de esa combinación (usuario,
+  // ventana), con la ventana abierta o cerrada, en la MISMA transacción que fija su `finalizadaEn`:
+  // la reapertura pendiente más reciente queda enlazada a esa carga (`...PorCargaArchivoId`, 1:1) y
+  // las demás pendientes solo reciben `reaperturaConsumidaEn`. Un intento con errores, o uno que el
+  // notificador no finalizó, no consume nada. Mismo patrón que
   // `SolicitudReemplazoCarga.utilizadaEn`/`nuevaCargaArchivoId`.
   reaperturaConsumidaEn                DateTime?
   reaperturaConsumidaPorCargaArchivoId String?       @unique
@@ -644,8 +648,9 @@ enum OrigenSolicitudReemplazoCarga {
 
 // Autoriza a un notificador a volver a subir un archivo para una combinación (formato, ventana) que
 // ya tiene una carga APROBADA vigente, o que tiene una carga PENDIENTE_VISTO_BUENO ya finalizada y
-// todavía sin decisión (ver `origen`). La autorización se CONSUME al subir el archivo de reemplazo
-// (`utilizadaEn`/`nuevaCargaArchivoId`) y EXPIRA 5 días después de aprobada si no se usa (calculado
+// todavía sin decisión (ver `origen`). La autorización se CONSUME al finalizar y enviar el archivo
+// de reemplazo (`utilizadaEn`/`nuevaCargaArchivoId`), no al subirlo: el notificador puede
+// reintentar la subida mientras siga vigente. EXPIRA 5 días después de aprobada si no se usa (calculado
 // en lectura, nunca persistido como estado propio — mismo patrón que
 // `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`).
 model SolicitudReemplazoCarga {
@@ -668,8 +673,9 @@ model SolicitudReemplazoCarga {
   revisadoEn         DateTime?
   comentarioRevision String?
 
-  // Se completan al CONSUMIR la autorización (subida real del archivo de reemplazo), en la misma
-  // transacción que crea esa nueva `CargaArchivo`.
+  // Se completan al CONSUMIR la autorización: cuando el notificador FINALIZA Y ENVÍA la carga de
+  // reemplazo, en la misma transacción que fija su `finalizadaEn`. `nuevaCargaArchivoId` apunta a
+  // esa carga finalizada (nunca a un intento con errores ni a un borrador sin finalizar).
   nuevaCargaArchivoId String?
   nuevaCargaArchivo   CargaArchivo? @relation("CargaOrigenDeReemplazo", fields: [nuevaCargaArchivoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   utilizadaEn         DateTime?

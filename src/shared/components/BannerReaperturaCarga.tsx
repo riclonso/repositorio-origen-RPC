@@ -34,6 +34,9 @@ export type ReaperturaVigentePropiaVista = {
   anio: number;
   motivo: string;
   fechaLimite: string;
+  // ISO. El panel lo compara con `vistoBuenoEn` de la carga vigente para saber si esta reapertura
+  // habilita reemplazarla (`rechazoPosteriorAAprobacion`).
+  rechazadoEn: string;
 };
 
 type BannerReaperturaCargaProps = {
