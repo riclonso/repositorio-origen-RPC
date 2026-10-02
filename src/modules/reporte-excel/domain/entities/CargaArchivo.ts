@@ -157,20 +157,29 @@ export type DatosNuevaCargaArchivo = {
   cantidadErrores: number;
   estado: EstadoCargaArchivo;
   errores: DatosNuevoErrorCargaArchivo[];
-  // Extensión "solicitudes de reemplazo": si la subida consume una autorización de reemplazo
-  // vigente (`SolicitudReemplazoCarga` APROBADA y utilizable), su id viaja aquí para que el
-  // repositorio marque la solicitud como usada en la MISMA operación atómica que crea esta carga
-  // (se consume por el intento en sí, exista o no error de validación en él).
-  solicitudReemplazoAConsumirId?: string | null;
-  // Nuevo (rechazo de cargas aprobadas): si la subida consume una reapertura vigente
-  // (`CargaArchivoRechazo` con `reaperturaVigente()` true), su id viaja aquí para que el
-  // repositorio marque `reaperturaConsumidaEn`/`reaperturaConsumidaPorCargaArchivoId` en la MISMA
-  // operación atómica que crea esta carga. Se consume por el intento en sí, exista o no error de
-  // validación en él, mismo criterio que `solicitudReemplazoAConsumirId`. Nunca ambos a la vez
-  // (una combinación (formato, ventana) o exige reemplazo consentido o tiene una reapertura por
-  // rechazo, no las dos: la reapertura solo se ofrece cuando `SIN_VENTANA_ABIERTA` sería el
-  // rechazo, es decir, cuando NO hay ya una carga `APROBADA` vigente).
-  cargaArchivoRechazoAConsumirId?: string | null;
+  // La subida ya NO consume ninguna autorización (ni `SolicitudReemplazoCarga` ni reapertura de
+  // `CargaArchivoRechazo`): un intento con errores, o uno sin errores que el notificador no llegó
+  // a finalizar, no debe dejarlo bloqueado. El consumo vive en `CargaArchivoRepository.finalizar()`.
+};
+
+// Desenlace de `CargaArchivoRepository.finalizar()`. `CARGA_PENDIENTE_DECISION`: otra carga de la
+// misma combinación (usuario, ventana) ya está finalizada y sin decidir. `REEMPLAZO_NO_AUTORIZADO`:
+// la solicitud de reemplazo a consumir ya fue usada por otra petición concurrente.
+export type ResultadoFinalizarCargaArchivo =
+  | { ok: true; carga: CargaArchivo }
+  | { ok: false; motivo: "NO_ENCONTRADO" | "CARGA_PENDIENTE_DECISION" | "REEMPLAZO_NO_AUTORIZADO" };
+
+// Qué autorización consume la finalización. La resuelve el servidor
+// (`resolverAutorizacionReemplazo`), nunca viaja desde el cliente. Las reaperturas pendientes de la
+// combinación se consumen siempre al finalizar, así que no necesitan id.
+export type ConsumoFinalizacionCarga = {
+  solicitudReemplazoId: string | null;
+};
+
+// Recorte de una carga usado para saber si es el intento más reciente de su combinación.
+export type UltimaCargaCombinacion = {
+  id: string;
+  createdAt: Date;
 };
 
 // Contenido binario ya resuelto, previo a dar visto bueno: lo usa `DarVistoBueno` (extensión de
@@ -193,10 +202,26 @@ export type FilaParaPublicar = {
 // transacción, la transición de estado y la publicación hacia el revisor.
 export type DatosPublicacionCarga = {
   filas: FilaParaPublicar[];
-  // No nulo cuando esta carga nació de un reemplazo consumido: identifica la carga APROBADA
-  // anterior cuya publicación debe desactivarse, con el motivo que el notificador escribió al
-  // pedir el reemplazo (`SolicitudReemplazoCarga.motivo`).
-  reemplazo: { cargaArchivoIdAnterior: string; motivo: string } | null;
+  // No nulo cuando la combinación (usuario, ventana) de esta carga ya tenía una `APROBADA` vigente:
+  // el repositorio desactiva TODAS las publicaciones activas de esa combinación distintas de la
+  // nueva, enlazadas a esta carga y con este motivo (`motivoDesactivacionTipo = REEMPLAZO`). El
+  // motivo es el que el notificador escribió al pedir el reemplazo, o uno genérico si no hay
+  // solicitud (ver `DarVistoBueno`).
+  reemplazo: { motivo: string } | null;
+};
+
+// Resumen de las cargas propias del panel del notificador: agrega si su publicación sigue activa
+// (`null` cuando la carga no tiene publicación: nunca se aprobó, o es una aprobación anterior al
+// backfill). El panel descarta como "vigente" una `APROBADA` con `publicacionActiva = false` (ya
+// superada por un reemplazo o rechazada), mismo criterio que
+// `CargaArchivoRepository.obtenerAprobadaVigentePorUsuarioYVentana`.
+export type CargaArchivoResumenConPublicacion = CargaArchivoResumen & {
+  publicacionActiva: boolean | null;
+};
+
+export type PaginaCargasConPublicacion = {
+  filas: CargaArchivoResumenConPublicacion[];
+  total: number;
 };
 
 export type FiltroListadoCargasPropias = {

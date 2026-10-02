@@ -11,9 +11,8 @@ export interface SolicitudReemplazoCargaRepository {
   // (carrera con otra solicitud `PENDIENTE` de la misma carga).
   crear(datos: DatosNuevaSolicitudReemplazoCarga): Promise<SolicitudReemplazoCarga>;
   obtenerPorId(id: string): Promise<SolicitudReemplazoCarga | null>;
-  // Ancla de "ya nació una nueva carga a partir de esta solicitud": lo usa `DarVistoBueno`
-  // (extensión de RF-14) para saber si la carga a la que se le está dando visto bueno reemplaza a
-  // otra, y con qué motivo, sin que `PrismaCargaArchivoRepository` necesite tocar esta tabla.
+  // Ancla de "esta solicitud se consumió al finalizar esa carga": lo usa `DarVistoBueno` para
+  // obtener el motivo del reemplazo de la carga a la que se le está dando visto bueno.
   obtenerPorNuevaCargaArchivoId(nuevaCargaArchivoId: string): Promise<SolicitudReemplazoCarga | null>;
   obtenerPendientePorCarga(cargaArchivoId: string): Promise<SolicitudReemplazoCarga | null>;
   // `ahora` viaja siempre como parámetro (nunca `now()` de PostgreSQL), mismo criterio que el resto
@@ -21,6 +20,11 @@ export interface SolicitudReemplazoCargaRepository {
   // vigencia por fecha (`solicitudUtilizable`) se evalúa en la capa de aplicación sobre el registro
   // ya traído, para no duplicar esa regla en SQL.
   obtenerAprobadaUtilizablePorCarga(cargaArchivoId: string, ahora: Date): Promise<SolicitudReemplazoCarga | null>;
+  // La última solicitud ya consumida (`estado = APROBADA`, `utilizadaEn` no nulo, la más reciente
+  // por `utilizadaEn`) sobre una carga. La usa `DarVistoBueno` para rescatar el motivo del
+  // reemplazo cuando la carga aprobada llegó por una reapertura tras rechazarse la carga de
+  // reemplazo (no hay solicitud enlazada a ella por `nuevaCargaArchivoId`).
+  obtenerUltimaUtilizadaPorCarga(cargaArchivoId: string): Promise<SolicitudReemplazoCarga | null>;
   listarPropias(usuarioId: string): Promise<SolicitudReemplazoCarga[]>;
   listarParaRevision(filtro: FiltroListadoSolicitudesReemplazo): Promise<PaginaSolicitudesReemplazo>;
   // Cuenta total de solicitudes `PENDIENTE` (ambos orígenes), usada para el chip del menú lateral

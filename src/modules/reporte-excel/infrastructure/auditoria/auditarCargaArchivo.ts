@@ -28,6 +28,9 @@ export type DesenlaceAuditoriaCargaArchivo = {
   // ADMIN/REVISOR o el efecto automático de aprobar una solicitud de reemplazo (ver
   // `PATCH /api/dashboard/solicitudes-reemplazo/[id]`).
   origenRechazo?: "DECISION_UNILATERAL" | "REEMPLAZO_APROBADO" | null;
+  // Solo en `CARGA_ARCHIVO_FINALIZADA` exitosa: la solicitud de reemplazo que esa finalización
+  // consumió (identificador, nunca su motivo).
+  solicitudReemplazoId?: string | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
@@ -57,6 +60,7 @@ async function construirYRegistrar(
     cantidadErrores: desenlace.cantidadErrores ?? null,
     estadoOrigenRechazo: desenlace.estadoOrigenRechazo ?? null,
     origenRechazo: desenlace.origenRechazo ?? null,
+    ...(desenlace.solicitudReemplazoId ? { solicitudReemplazoId: desenlace.solicitudReemplazoId } : {}),
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

@@ -19,3 +19,9 @@ export const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
   APROBADA: "bg-gob-primary text-white border-gob-primary",
   RECHAZADA: "bg-gob-danger text-white border-gob-danger",
 };
+
+// Variante visual de una `APROBADA` ya superada por un reemplazo (su publicación quedó
+// desactivada): no es un estado persistido propio, se deriva de la publicación. Tonos neutros para
+// que no se confunda con la aprobación vigente.
+export const ETIQUETA_REEMPLAZADA = "Reemplazada";
+export const CLASES_REEMPLAZADA = "bg-gob-neutral text-gob-gray-a border-gob-gray-b";

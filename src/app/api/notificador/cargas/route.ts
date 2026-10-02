@@ -3,6 +3,7 @@ import { logger } from "@/infrastructure/logging/logger";
 import { registrarIntentoSubida } from "@/infrastructure/logging/logUpload";
 import { validarYCargarArchivo } from "@/modules/reporte-excel/application/use-cases/ValidarYCargarArchivo";
 import { listarCargasPropias } from "@/modules/reporte-excel/application/use-cases/ListarCargasPropias";
+import { listarCargasPanelNotificador } from "@/modules/reporte-excel/application/use-cases/ListarCargasPanelNotificador";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
@@ -33,8 +34,8 @@ import {
   tipoContenidoDesdeNombre,
 } from "@/app/api/notificador/cargas/_lib/http";
 
-// Cargas propias del notificador en sesión, paginadas y filtrables por estado/formato. Lectura,
-// no se audita.
+// Cargas propias del notificador en sesión, paginadas y filtrables por estado/formato (o, con
+// `vista=panel`, las del panel `/notificador`). Incluyen `publicacionActiva`. Lectura, no se audita.
 export async function GET(request: Request) {
   const acceso = await exigirNotificador();
 
@@ -50,6 +51,16 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Refresco del panel `/notificador`: misma fuente que su Server Component, para que el estado de
+    // cada tarjeta no dependa del corte de una página.
+    if (filtro.data.vista === "panel") {
+      const cargas = await listarCargasPanelNotificador(acceso.sesion.sub, {
+        repositorio: prismaCargaArchivoRepository,
+      });
+
+      return NextResponse.json({ datos: cargas.map(aCargaArchivoResumenDTO) });
+    }
+
     const resultado = await listarCargasPropias(
       {
         usuarioId: acceso.sesion.sub,

@@ -466,6 +466,8 @@ async function publicar(reglas: ReglaValidacionFormatoExcel[], filas: Fila[]): P
 
   const repositorio = {
     obtenerPorId: async () => carga,
+    // Sin una aprobación vigente anterior: no es un reemplazo (ver `DarVistoBueno.resolverReemplazo`).
+    obtenerAprobadaVigentePorUsuarioYVentana: async () => null,
     obtenerContenidoParaProcesar: async () => ({
       contenidoArchivo: Buffer.alloc(0),
       tipoContenidoArchivo: TIPO_XLSX,

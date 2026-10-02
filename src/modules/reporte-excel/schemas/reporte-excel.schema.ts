@@ -32,7 +32,7 @@ const PAGINA_MAXIMA = 10_000;
 const TAMANOS_PERMITIDOS = [25, 50, 100] as const;
 const TAMANO_POR_DEFECTO = 25;
 
-const CLAVES_FILTRO = ["page", "pageSize", "estado", "formatoExcelId"] as const;
+const CLAVES_FILTRO = ["page", "pageSize", "estado", "formatoExcelId", "vista"] as const;
 
 // Mismo criterio que `listado-usuarios.schema.ts`: aplana `string | string[] | undefined` a
 // `string | undefined` antes de validar, para que el mismo esquema sirva tanto a un Route
@@ -68,6 +68,9 @@ export const listadoCargasSchema = z.preprocess(
     // devuelve una lista vacía, no un 400, mismo criterio que `perfil` en `listado-usuarios`.
     estado: z.enum(ESTADOS_CARGA_ARCHIVO).optional(),
     formatoExcelId: z.uuid().optional(),
+    // `panel`: el panel `/notificador` pide sus cargas recientes MÁS las que determinan el estado de
+    // cada tarjeta (ver `listarCargasPanelNotificador`), sin paginación. Ignora los demás filtros.
+    vista: z.enum(["panel"]).optional(),
   }),
 );
 export type ListadoCargasInput = z.infer<typeof listadoCargasSchema>;
