@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Boton } from "@/shared/components/Boton";
 import { CLASES_ENLACE_PUBLICO } from "@/shared/components/MarcoPublico";
 import { CampoContrasena } from "@/shared/components/CampoContrasena";
@@ -47,6 +48,16 @@ export function LoginForm() {
 
   return (
     <form action={formAction} className="flex w-full flex-col gap-5">
+      <div className="mb-2 flex justify-center">
+        <Image
+          src="/logo-seremi-biobio.jpg"
+          alt="Logo SEREMI de Salud Biobío"
+          width={160}
+          height={160}
+          priority
+        />
+      </div>
+
       <CampoTexto
         id="rut"
         name="rut"
