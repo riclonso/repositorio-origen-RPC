@@ -38,7 +38,7 @@ export async function obtenerResumenSeguimientoVentanasAbiertas(
 
   const [asignadosPorFormato, reportaronPorVentana, resumenAlertasPorVentana] = await Promise.all([
     dependencias.repositorioFormatos.contarNotificadoresAsignadosActivosPorFormato(formatoExcelIds),
-    dependencias.repositorioCargas.contarNotificadoresDistintosPorVentana(ventanaCargaIds),
+    dependencias.repositorioCargas.contarNotificadoresReportaronPorVentana(ventanaCargaIds, ahora),
     dependencias.repositorioAlertas.obtenerResumenPorVentanas(ventanaCargaIds),
   ]);
 

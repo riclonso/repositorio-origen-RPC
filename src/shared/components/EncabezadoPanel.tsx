@@ -21,10 +21,10 @@ export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: Enca
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-[#dce5ef] bg-white px-4 py-3.5 md:px-7">
+    <header className="flex items-center justify-between gap-4 border-b border-[#dce5ef] bg-[#678d6c] px-4 py-3.5 md:px-7">
       <div className="min-w-0">
-        <p className="text-sm font-semibold tracking-wide text-[#173b69]">Repositorio RPC</p>
-        <p className="text-xs text-[#6c8197]">SEREMI de Salud Biobío</p>
+        <p className="text-sm font-semibold tracking-wide text-white">Repositorio RPC</p>
+        <p className="text-xs text-white">SEREMI de Salud Biobío</p>
       </div>
 
       <div className="flex items-center gap-3">

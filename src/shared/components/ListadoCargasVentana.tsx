@@ -41,6 +41,7 @@ export async function ListadoCargasVentana({
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
     estado: carga.estado,
     superada: carga.estado === "APROBADA" && carga.publicacionActiva === false,
+    enReemplazo: carga.enReemplazo,
     fechaReporte: formatearFechaHora(carga.createdAt),
   }));
 

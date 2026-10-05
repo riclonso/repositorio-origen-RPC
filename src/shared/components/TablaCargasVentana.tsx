@@ -28,6 +28,8 @@ export type FilaCargaVentanaVista = Pick<
   // `APROBADA` ya superada por un reemplazo (publicación desactivada): se muestra "Reemplazada" y
   // NO ofrece "Rechazar" (el servidor tampoco lo acepta, ver `CargaArchivoRepository.rechazar`).
   superada: boolean;
+  // `APROBADA` vigente con un reemplazo en curso: se muestra "Se solicita reemplazo".
+  enReemplazo: boolean;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
@@ -189,7 +191,7 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                   ) : null}
                 </td>
                 <td className="px-3 py-2">
-                  <BadgeEstadoCarga estado={fila.estado} superada={fila.superada} />
+                  <BadgeEstadoCarga estado={fila.estado} superada={fila.superada} enReemplazo={fila.enReemplazo} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">

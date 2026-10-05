@@ -15,8 +15,8 @@ export type ResumenSeguimientoVentanaCarga = {
   // Notificadores NOTIFICADOR_RPC ACTIVOS asignados al formato de esta ventana (cuenta
   // ESTRUCTURAL: no filtra por `FormatoExcel.activo`, ver `contarNotificadoresAsignadosActivosPorFormato`).
   totalNotificadoresAsignados: number;
-  // Notificadores DISTINTOS (no filas de `CargaArchivo`) con al menos una carga APROBADA en esta
-  // ventana, ver `contarNotificadoresDistintosPorVentana`.
+  // Notificadores DISTINTOS con una carga APROBADA vigente que no está en reemplazo (RF-34), ver
+  // `contarNotificadoresReportaronPorVentana`.
   totalNotificadoresReportaron: number;
   diasRestantes: number;
   // 0..1: fracción de tiempo transcurrido entre `fechaApertura` y `fechaVencimiento`. La barra de

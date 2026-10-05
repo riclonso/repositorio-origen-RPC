@@ -7,6 +7,7 @@ import type { SolicitudReemplazoCargaRepository } from "@/modules/solicitudes-re
 import {
   TOPE_ERRORES_PERSISTIDOS,
   TOPE_FILAS_DATOS,
+  NUMERO_FILA_ENCABEZADO,
   type CargaArchivo,
   type DatosNuevoErrorCargaArchivo,
   type EstadoCargaArchivo,
@@ -198,7 +199,7 @@ export async function validarYCargarArchivo(
   for (const columna of formato.columnas) {
     if (!encabezadosPresentes.has(normalizarNombre(columna.nombre))) {
       errores.push({
-        numeroFila: 0,
+        numeroFila: NUMERO_FILA_ENCABEZADO,
         columna: columna.nombre,
         tipoError: "COLUMNA_FALTANTE",
         mensaje: `Falta la columna "${columna.nombre}", declarada en el formato`,
@@ -214,7 +215,7 @@ export async function validarYCargarArchivo(
 
   for (const columnaInesperada of columnasInesperadas) {
     errores.push({
-      numeroFila: 0,
+      numeroFila: NUMERO_FILA_ENCABEZADO,
       columna: columnaInesperada,
       tipoError: "COLUMNA_INESPERADA",
       mensaje: `La columna "${columnaInesperada}" no pertenece al formato`,

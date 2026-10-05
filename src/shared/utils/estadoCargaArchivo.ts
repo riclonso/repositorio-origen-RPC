@@ -25,3 +25,9 @@ export const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
 // que no se confunda con la aprobación vigente.
 export const ETIQUETA_REEMPLAZADA = "Reemplazada";
 export const CLASES_REEMPLAZADA = "bg-gob-neutral text-gob-gray-a border-gob-gray-b";
+
+// Variante de una `APROBADA` vigente con un reemplazo en curso (solicitud aprobada sin usar, archivo
+// de reemplazo pendiente o rechazado con reapertura vigente). Derivada, no persistida. Contorno en
+// vez de relleno para distinguirla de la aprobación sin reemplazo.
+export const ETIQUETA_EN_REEMPLAZO = "Se solicita reemplazo";
+export const CLASES_EN_REEMPLAZO = "bg-white text-gob-primary border-gob-primary";

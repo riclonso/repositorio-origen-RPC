@@ -382,6 +382,7 @@ async function probarCasoDeUso(): Promise<void> {
       sinEncabezados.errores.map((error) => error.tipoError),
       ["COLUMNA_FALTANTE", "COLUMNA_FALTANTE", "COLUMNA_FALTANTE"],
     );
+    assert.ok(sinEncabezados.errores.every((error) => error.numeroFila === 1));
     assert.equal(sinEncabezados.cantidadFilasDatos, 0);
   }
 
@@ -506,8 +507,9 @@ async function probarPublicacion(): Promise<void> {
 // La etiqueta de la columna "Fila" del informe depende del tipo de error cuando la fila es 0.
 function probarEtiquetaFila(): void {
   assert.equal(etiquetaFila(7, "REGLA_VALIDACION"), "7");
-  assert.equal(etiquetaFila(0, "COLUMNA_FALTANTE"), "Columna desconocida");
-  assert.equal(etiquetaFila(0, "COLUMNA_INESPERADA"), "Columna desconocida");
+  assert.equal(etiquetaFila(0, "COLUMNA_FALTANTE"), "1");
+  assert.equal(etiquetaFila(1, "COLUMNA_FALTANTE"), "1");
+  assert.equal(etiquetaFila(0, "COLUMNA_INESPERADA"), "1");
   assert.equal(etiquetaFila(0, "SIN_FILAS_DATOS"), "Archivo");
   assert.equal(etiquetaFila(0, "REGLA_VALIDACION"), "—");
 }

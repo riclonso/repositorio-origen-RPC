@@ -15,7 +15,6 @@ import type {
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import {
-  BannerReaperturaCarga,
   idTarjetaVentana,
   type ReaperturaVigentePropiaVista,
 } from "@/shared/components/BannerReaperturaCarga";
@@ -23,18 +22,18 @@ import { BannerMensajesSinLeer } from "@/shared/components/BannerMensajesSinLeer
 import { Boton } from "@/shared/components/Boton";
 import { BotonMensajesVentana } from "@/shared/components/BotonMensajesVentana";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
+import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { tituloVentanaMensajes, type VentanaMensajesSinLeerVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import type { ResumenMensajesPorVentana } from "@/modules/mensajeria/domain/entities/MensajeCarga";
 import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
-import { ResumenErroresCarga } from "@/shared/components/ResumenErroresCarga";
-import { SugerenciaErrorEstructura } from "@/shared/components/SugerenciaErrorEstructura";
+import { ModalErroresCarga } from "@/shared/components/ModalErroresCarga";
 import {
   IconoDescargar,
-  IconoRelojArena,
-  IconoSolicitudAprobada,
   IconoSubir,
 } from "@/shared/components/iconos";
 import { formatearFechaHora } from "@/shared/utils/fecha";
+import estilosIndicador from "@/shared/components/IndicadorMensajes.module.css";
+import estilosTarjeta from "./tarjeta-carga.module.css";
 
 // Vista liviana de las cargas propias del notificador: mismos campos que `CargaArchivoResumenDTO`,
 // con las fechas ya como texto (llegan así tanto desde el servidor -prop inicial- como desde
@@ -106,8 +105,8 @@ function claveCombinacion(combinacion: CombinacionCargaVista): string {
   return `${combinacion.formatoExcelId}::${combinacion.ventanaCargaId}`;
 }
 
-// RF-31: aviso de mensajes del equipo revisor para la tarjeta de una combinación. Solo aparece si
-// la ventana tiene mensajes en el hilo propio; destacado cuando hay sin leer.
+// RF-31: aviso flotante de mensajes del equipo revisor. `total` evita mostrar una burbuja en una
+// conversación inexistente; si existe pero no hay pendientes, se conserva sin contador.
 function avisoMensajesDeCombinacion(
   combinacion: CombinacionCargaVista,
   mensajesPorVentana: ResumenMensajesPorVentana,
@@ -116,14 +115,13 @@ function avisoMensajesDeCombinacion(
   if (!resumen || resumen.total === 0) return null;
 
   return (
-    <div className="mt-3">
-      <BotonMensajesVentana
-        lado="NOTIFICADOR"
-        ventanaCargaId={combinacion.ventanaCargaId}
-        tituloVentana={tituloVentanaMensajes(combinacion.formatoNombre, combinacion.anio)}
-        noLeidos={resumen.noLeidos}
-      />
-    </div>
+    <BotonMensajesVentana
+      lado="NOTIFICADOR"
+      ventanaCargaId={combinacion.ventanaCargaId}
+      tituloVentana={tituloVentanaMensajes(combinacion.formatoNombre, combinacion.anio)}
+      noLeidos={resumen.noLeidos}
+      variante="flotante"
+    />
   );
 }
 
@@ -323,6 +321,7 @@ type FormularioSolicitarReemplazoProps = {
 // `PENDIENTE_VISTO_BUENO` sin decidir): un mismo placeholder para ambos sería incorrecto en el
 // segundo caso, la carga no está aprobada.
 function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExito }: FormularioSolicitarReemplazoProps) {
+  const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -348,6 +347,7 @@ function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExi
       }
 
       setEnviada(true);
+      setAbierto(false);
       onExito();
     } catch {
       setError(MENSAJE_ERROR_GENERICO);
@@ -365,11 +365,32 @@ function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExi
     );
   }
 
+  function cerrarDialogo() {
+    if (enviando) return;
+    setAbierto(false);
+    setError(null);
+  }
+
   const idMotivo = `motivo-reemplazo-${cargaArchivoId}`;
 
   return (
-    <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4 sm:max-w-md">
-      <div className="flex flex-col gap-2">
+    <>
+      <Boton onClick={() => setAbierto(true)} className="w-fit">
+        Solicitar reemplazo
+      </Boton>
+      <DialogoConfirmacion
+        abierto={abierto}
+        titulo="Solicitar reemplazo"
+        descripcion="Explique por qué necesita cambiar el archivo enviado. Cuando se apruebe su solicitud, podrá subir un archivo nuevo."
+        textoConfirmar="Enviar solicitud"
+        textoConfirmando="Cargando la información..."
+        procesando={enviando}
+        confirmarDeshabilitado={motivo.trim().length === 0}
+        error={error}
+        onConfirmar={() => void enviarSolicitud()}
+        onCancelar={cerrarDialogo}
+      >
+      <div className="mt-4 flex flex-col gap-2">
         <label htmlFor={idMotivo} className="text-sm font-medium text-gob-black">
           Motivo del reemplazo
         </label>
@@ -380,40 +401,26 @@ function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExi
           disabled={enviando}
           maxLength={LONGITUD_MAXIMA_MOTIVO}
           rows={3}
+          required
           placeholder={placeholderMotivo}
           className="w-full rounded-md border border-gob-accent bg-white px-3 py-2 text-sm text-gob-black outline-none placeholder:text-gob-gray-b focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30 disabled:bg-gob-neutral"
         />
+        <p className="text-right text-xs tabular-nums text-gob-gray-a">{motivo.length}/{LONGITUD_MAXIMA_MOTIVO}</p>
       </div>
-
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-gob-danger">
-          {error}
-        </p>
-      ) : null}
-
-      <Boton
-        onClick={() => void enviarSolicitud()}
-        disabled={motivo.trim().length === 0}
-        cargando={enviando}
-        textoCargando="Cargando la información..."
-        className="w-fit"
-      >
-        Solicitar reemplazo
-      </Boton>
-    </div>
+      </DialogoConfirmacion>
+    </>
   );
 }
 
 type TarjetaCargaBloqueadaProps = {
   idTitulo: string;
   tituloCombinacion: string;
+  formatoExcelId: string;
   mensaje: ReactNode;
   cargaArchivoId: string;
   placeholderMotivo: string;
   solicitudPendiente: boolean;
-  // "pendiente": la carga original recién finalizada todavía espera decisión (reloj de arena).
-  // "aprobada": la carga original ya fue aprobada y esta tarjeta solo ofrece solicitar su
-  // reemplazo (check). El icono, no solo el color, distingue ambos estados.
+  // La etiqueta de estado distingue una carga que espera decisión de una ya aprobada.
   variante: "pendiente" | "aprobada";
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`).
   avisoMensajes: ReactNode;
@@ -422,11 +429,12 @@ type TarjetaCargaBloqueadaProps = {
 
 // Cuerpo compartido de los dos estados "bloqueados" de la tarjeta (carga `APROBADA` sin reemplazo
 // vigente, y carga `PENDIENTE_VISTO_BUENO` ya finalizada y sin decidir): mismo layout, mismo
-// formulario de solicitud, solo cambia el mensaje explicativo, el icono y a qué carga apunta la
+// formulario de solicitud, solo cambia el mensaje explicativo, el estado y a qué carga apunta la
 // solicitud.
 function TarjetaCargaBloqueada({
   idTitulo,
   tituloCombinacion,
+  formatoExcelId,
   mensaje,
   cargaArchivoId,
   placeholderMotivo,
@@ -435,37 +443,48 @@ function TarjetaCargaBloqueada({
   avisoMensajes,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaBloqueadaProps) {
-  const Icono = variante === "aprobada" ? IconoSolicitudAprobada : IconoRelojArena;
+  const estaPendienteDeAprobacion = variante === "pendiente";
+  const etiquetaEstado = estaPendienteDeAprobacion ? "Pendiente de aprobación" : "Aprobado";
 
   return (
     <section
       aria-labelledby={idTitulo}
-      className="relative rounded-lg border border-green-200 bg-green-50 p-6"
+      className={`${estilosIndicador.tarjeta} flex h-full w-full max-w-md flex-col rounded-lg border border-gob-accent bg-white p-5`}
     >
-      <Icono className="absolute right-4 top-4 text-gob-success" />
-
-      <h3 id={idTitulo} className="pr-8 text-base font-semibold text-gob-tertiary">
-        {tituloCombinacion}
-      </h3>
+      <div className={estilosTarjeta.cabecera}>
+        <h3 id={idTitulo} className={estilosTarjeta.titulo}>
+          {tituloCombinacion}
+        </h3>
+        <span className={`${estilosTarjeta.estado} ${estaPendienteDeAprobacion ? estilosTarjeta.pendiente : estilosTarjeta.aprobado}`}>
+          {etiquetaEstado}
+        </span>
+      </div>
 
       <p className="mt-2 text-sm text-gob-gray-a">{mensaje}</p>
 
       {avisoMensajes}
 
-      {solicitudPendiente ? (
-        <p
-          role="status"
-          className="mt-4 inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-blue-500"
+      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-gob-accent pt-4">
+        <a
+          href={`/api/formatos-excel/${formatoExcelId}/plantilla`}
+          className="inline-flex w-fit items-center gap-2 rounded-md border border-green-600 bg-green-800 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
-          Se envió una solicitud para reemplazar el archivo enviado. Está pendiente de revisión.
-        </p>
-      ) : (
-        <FormularioSolicitarReemplazo
-          cargaArchivoId={cargaArchivoId}
-          placeholderMotivo={placeholderMotivo}
-          onExito={onSolicitudReemplazoEnviada}
-        />
-      )}
+          <IconoDescargar className="shrink-0" />
+          Descargar plantilla
+        </a>
+
+        {solicitudPendiente ? (
+          <p role="status" className="text-sm font-semibold text-[#075d9b]">
+            Solicitud de reemplazo pendiente.
+          </p>
+        ) : (
+          <FormularioSolicitarReemplazo
+            cargaArchivoId={cargaArchivoId}
+            placeholderMotivo={placeholderMotivo}
+            onExito={onSolicitudReemplazoEnviada}
+          />
+        )}
+      </div>
     </section>
   );
 }
@@ -487,6 +506,9 @@ type TarjetaCargaArchivoProps = {
   // `cargaAprobada`/`habilitacionReemplazo`, y tiene prioridad sobre ellas.
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
+  // Si existe, la combinación tiene una reapertura vigente por rechazo. El cargador se mantiene
+  // habilitado, pero la tarjeta explica claramente el motivo y su plazo real de corrección.
+  reapertura: ReaperturaVigentePropiaVista | null;
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`), visible en los tres
   // estados de la tarjeta.
   avisoMensajes: ReactNode;
@@ -505,6 +527,7 @@ function TarjetaCargaArchivo({
   solicitudPendiente,
   cargaPendienteDecision,
   solicitudPendienteDeCargaPendiente,
+  reapertura,
   avisoMensajes,
   onSubidaExitosa,
   onSolicitudReemplazoEnviada,
@@ -512,6 +535,7 @@ function TarjetaCargaArchivo({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [errorSubida, setErrorSubida] = useState<string | null>(null);
+  const [erroresAbiertos, setErroresAbiertos] = useState(false);
 
   const idBase = `carga-${claveCombinacion(combinacion)}`;
   const idTitulo = `${idBase}-titulo`;
@@ -557,11 +581,11 @@ function TarjetaCargaArchivo({
       <TarjetaCargaBloqueada
         idTitulo={idTitulo}
         tituloCombinacion={tituloCombinacion}
+        formatoExcelId={combinacion.formatoExcelId}
         mensaje={
           <>
-            Ya enviaste <strong>{cargaPendienteDecision.nombreArchivoOriginal}</strong> para esta combinación y está
-            pendiente de que un administrador o el revisor del repositorio la apruebe o la rechace. Si detectaste un
-            error y necesitas corregirlo, solicita su reemplazo.
+            El archivo <strong>{cargaPendienteDecision.nombreArchivoOriginal}</strong> fue enviado y está esperando
+            aprobación. Si necesita corregirlo, presione <strong>Solicitar reemplazo</strong>.
           </>
         }
         cargaArchivoId={cargaPendienteDecision.id}
@@ -581,11 +605,12 @@ function TarjetaCargaArchivo({
       <TarjetaCargaBloqueada
         idTitulo={idTitulo}
         tituloCombinacion={tituloCombinacion}
+        formatoExcelId={combinacion.formatoExcelId}
         mensaje={
           <>
-            Ya existe una carga aprobada para esta combinación: <strong>{cargaAprobada.nombreArchivoOriginal}</strong>.
-            Si necesitas corregirla, solicita su reemplazo. Un administrador o el revisor del repositorio debe
-            aprobarlo antes de que puedas subir el archivo nuevo.
+            El archivo <strong>{cargaAprobada.nombreArchivoOriginal}</strong> ya fue aprobado. Si necesita
+            corregirlo, presione <strong>Solicitar reemplazo</strong>. Cuando su solicitud sea aprobada, podrá subir
+            un archivo nuevo.
           </>
         }
         cargaArchivoId={cargaAprobada.id}
@@ -602,21 +627,39 @@ function TarjetaCargaArchivo({
     <section
       id={idTarjetaVentana(combinacion.ventanaCargaId)}
       aria-labelledby={idTitulo}
-      className="scroll-mt-6 rounded-lg border border-gob-accent bg-white p-6"
+      className={`${estilosIndicador.tarjeta} flex h-full w-full max-w-md flex-col scroll-mt-6 rounded-lg border bg-white p-5 transition-colors ${
+        reapertura ? "border-[#dfadb4] bg-[#fff8f8] shadow-[0_6px_18px_rgba(161,31,31,0.06)]" : "border-gob-accent"
+      }`}
     >
-      <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
-        {combinacion.formatoNombre} · {combinacion.anio}
-      </h3>
+      {reapertura ? (
+        <div role="alert" className={estilosTarjeta.cabecera}>
+          <div className="min-w-0">
+            <h3 id={idTitulo} className={estilosTarjeta.titulo}>
+              {combinacion.formatoNombre} · {combinacion.anio}
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-gob-gray-a">
+              <span className="font-semibold text-gob-tertiary">Motivo:</span> {reapertura.motivo}
+            </p>
+          </div>
+          <div className="flex flex-col items-end text-right">
+            <span className={`${estilosTarjeta.estado} ${estilosTarjeta.rechazado}`}>
+              Rechazado
+            </span>
+            <p className="mt-2 max-w-28 text-xs leading-4 text-gob-gray-a">
+              Plazo para subirlo
+              <time dateTime={reapertura.fechaLimite} className="mt-0.5 block font-semibold tabular-nums text-gob-danger">
+                {formatearFechaHoraIso(reapertura.fechaLimite)}
+              </time>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
+          {combinacion.formatoNombre} · {combinacion.anio}
+        </h3>
+      )}
 
       {avisoMensajes}
-
-      <a
-        href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
-        className="mt-3 bg-green-800 inline-flex w-fit items-center gap-2 rounded-md border border-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-gob-neutral active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-      >
-        <IconoDescargar className="shrink-0" />
-        Descargar plantilla
-      </a>
 
       {cargaAprobada && habilitacionReemplazo ? (
         <AvisoReemplazoHabilitado
@@ -625,7 +668,7 @@ function TarjetaCargaArchivo({
         />
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-4 sm:max-w-md">
+      <div className="mt-4 flex flex-col gap-4">
         <CargadorArchivo
           id={idArchivo}
           archivo={archivo}
@@ -641,6 +684,20 @@ function TarjetaCargaArchivo({
           </p>
         ) : null}
 
+      </div>
+
+      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-gob-accent pt-4">
+        <a
+          href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
+          className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
+            reapertura
+              ? "border-[#cf8d97] bg-white text-gob-danger hover:bg-[#fff0f1]"
+              : "border-green-600 bg-green-800 text-white hover:bg-gob-neutral"
+          }`}
+        >
+          <IconoDescargar className="shrink-0" />
+          Descargar plantilla
+        </a>
         <Boton
           onClick={() => void subirArchivo()}
           disabled={!archivo}
@@ -665,21 +722,21 @@ function TarjetaCargaArchivo({
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="text-sm text-gob-gray-a">
-                  <BadgeEstadoCarga estado={resultado.estado} /> · {resultado.cantidadFilasDatos} filas de datos,{" "}
-                  {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
-                </p>
-                <a
-                  href={`/api/notificador/cargas/${resultado.id}/errores`}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+              <p role="alert" className="text-sm text-gob-gray-a">
+                <BadgeEstadoCarga estado={resultado.estado} /> ·{" "}
+                <button
+                  type="button"
+                  onClick={() => setErroresAbiertos(true)}
+                  className="font-semibold text-gob-danger underline underline-offset-2 hover:text-gob-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
                 >
-                  <IconoDescargar className="shrink-0" />
-                  Descargar errores (Excel)
-                </a>
-              </div>
-              <SugerenciaErrorEstructura errores={resultado.errores} />
-              <ResumenErroresCarga errores={resultado.errores} />
+                  {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
+                </button>
+              </p>
+              <ModalErroresCarga
+                abierto={erroresAbiertos}
+                carga={resultado}
+                onCerrar={() => setErroresAbiertos(false)}
+              />
             </>
           )}
 
@@ -829,14 +886,19 @@ export function PanelCargaArchivo({
     }
   }
 
+  // Una corrección con plazo es la tarea más urgente del notificador. Se prioriza sin mutar las
+  // props originales y las tarjetas restantes preservan el orden que ya entregaba el servidor.
+  const combinacionesOrdenadas = [...combinaciones].toSorted((izquierda, derecha) => {
+    const izquierdaRechazada = reaperturas.some((reapertura) => reapertura.ventanaCargaId === izquierda.ventanaCargaId);
+    const derechaRechazada = reaperturas.some((reapertura) => reapertura.ventanaCargaId === derecha.ventanaCargaId);
+    return Number(derechaRechazada) - Number(izquierdaRechazada);
+  });
+  const hayIconosMensajes = combinaciones.some(
+    (combinacion) => (mensajesPorVentana[combinacion.ventanaCargaId]?.total ?? 0) > 0,
+  );
+
   return (
     <div className="flex flex-col gap-6">
-      <BannerReaperturaCarga
-        reaperturas={reaperturas.filter((reapertura) =>
-          combinaciones.some((combinacion) => combinacion.ventanaCargaId === reapertura.ventanaCargaId),
-        )}
-      />
-
       <BannerMensajesSinLeer lado="NOTIFICADOR" ventanas={ventanasMensajesSinLeer} />
 
       {combinaciones.length === 0 ? (
@@ -853,13 +915,15 @@ export function PanelCargaArchivo({
           </p>
         </section>
       ) : (
-        combinaciones.map((combinacion) => {
+        <div className={`grid auto-rows-fr grid-cols-1 items-stretch gap-5 md:grid-cols-2 xl:grid-cols-3 ${hayIconosMensajes ? estilosIndicador.rejillaConMensajes : ""}`}>
+          {combinacionesOrdenadas.map((combinacion) => {
           const estadoTarjeta = derivarEstadoTarjeta(
             combinacion.ventanaCargaId,
             misCargas,
             misSolicitudes,
             reaperturas,
           );
+          const reapertura = reaperturas.find((candidata) => candidata.ventanaCargaId === combinacion.ventanaCargaId) ?? null;
 
           const claveTarjeta = claveCombinacion(combinacion);
           return (
@@ -873,12 +937,14 @@ export function PanelCargaArchivo({
               solicitudPendiente={estadoTarjeta.solicitudPendiente}
               cargaPendienteDecision={estadoTarjeta.cargaPendienteDecision}
               solicitudPendienteDeCargaPendiente={estadoTarjeta.solicitudPendienteDeCargaPendiente}
+              reapertura={reapertura}
               avisoMensajes={avisoMensajesDeCombinacion(combinacion, mensajesPorVentana)}
               onSubidaExitosa={registrarResultado}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
             />
           );
-        })
+          })}
+        </div>
       )}
 
       <ModalCargaExitosa

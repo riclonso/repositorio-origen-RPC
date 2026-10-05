@@ -28,6 +28,15 @@ export const TIPOS_ERROR_CARGA_ARCHIVO = [
 ] as const;
 export type TipoErrorCargaArchivo = (typeof TIPOS_ERROR_CARGA_ARCHIVO)[number];
 
+// El lector toma siempre la primera fila de la hoja como encabezados: los errores de nombres de
+// columna (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`) se informan en esta fila.
+export const NUMERO_FILA_ENCABEZADO = 1;
+
+export const TIPOS_ERROR_DE_COLUMNA: ReadonlySet<TipoErrorCargaArchivo> = new Set([
+  "COLUMNA_FALTANTE",
+  "COLUMNA_INESPERADA",
+]);
+
 // Tope de filas de DATOS validadas por carga (defensa adicional al límite de 10 MB de tamaño de
 // archivo, ya existente en RF-13): filas más allá de este número no se validan.
 export const TOPE_FILAS_DATOS = 20_000;

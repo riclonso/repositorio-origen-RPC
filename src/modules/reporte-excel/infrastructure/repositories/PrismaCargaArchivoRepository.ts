@@ -17,7 +17,11 @@ import type {
   ResultadoFinalizarCargaArchivo,
   ValorCeldaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
-import type { CargaArchivoRechazo } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
+import {
+  reaperturaAutorizaReemplazo,
+  type CargaArchivoRechazo,
+} from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
+import { solicitudUtilizable } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 
 // Filas de detalle insertadas por sentencia `createMany`: `TOPE_FILAS_DATOS` (20.000, ver
 // `domain/entities/CargaArchivo.ts`) por hasta ~4 columnas de parámetros por fila se acerca al
@@ -371,6 +375,78 @@ function datosCreacionCargaArchivo(datos: DatosNuevaCargaArchivo) {
       })),
     },
   };
+}
+
+// La APROBADA vigente de cada par (ventana, notificador) y si está en reemplazo: solicitud de
+// reemplazo utilizable sobre ella, archivo de reemplazo finalizado y pendiente, o reapertura que
+// autoriza reemplazarla (mismas reglas que `resolverAutorizacionReemplazo`). Tres consultas para
+// todas las ventanas, nunca una por notificador. Las aprobadas llegan por `vistoBuenoEn` desc: la
+// primera de cada par es la vigente (criterio de `obtenerAprobadaVigentePorUsuarioYVentana`).
+async function resolverAprobadasVigentesEnReemplazo(
+  ventanaCargaIds: string[],
+  ahora: Date,
+): Promise<{ cargaArchivoId: string; ventanaCargaId: string; enReemplazo: boolean }[]> {
+  if (ventanaCargaIds.length === 0) return [];
+
+  const [aprobadas, pendientesFinalizadas, rechazosPendientes] = await Promise.all([
+    prisma.cargaArchivo.findMany({
+      where: { ventanaCargaId: { in: ventanaCargaIds }, ...FILTRO_APROBADA_NO_SUPERADA },
+      orderBy: { vistoBuenoEn: "desc" },
+      select: {
+        id: true,
+        usuarioId: true,
+        ventanaCargaId: true,
+        vistoBuenoEn: true,
+        solicitudesReemplazo: {
+          where: { estado: "APROBADA", utilizadaEn: null },
+          select: { estado: true, utilizadaEn: true, revisadoEn: true },
+        },
+      },
+    }),
+    prisma.cargaArchivo.groupBy({
+      by: ["ventanaCargaId", "usuarioId"],
+      where: { ventanaCargaId: { in: ventanaCargaIds }, estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } },
+    }),
+    prisma.cargaArchivoRechazo.findMany({
+      where: { reaperturaConsumidaEn: null, cargaArchivo: { ventanaCargaId: { in: ventanaCargaIds } } },
+      orderBy: { rechazadoEn: "desc" },
+      select: {
+        rechazadoEn: true,
+        reaperturaConsumidaEn: true,
+        cargaArchivo: { select: { usuarioId: true, ventanaCargaId: true, ventanaCarga: { select: { fechaVencimiento: true } } } },
+      },
+    }),
+  ]);
+
+  const clavePar = (ventanaCargaId: string, usuarioId: string) => `${ventanaCargaId}|${usuarioId}`;
+  const paresConPendiente = new Set(
+    pendientesFinalizadas.map((grupo) => clavePar(grupo.ventanaCargaId, grupo.usuarioId)),
+  );
+  // Solo el rechazo pendiente más reciente de cada par, igual que `resolverAutorizacionReemplazo`.
+  const ultimoRechazoPorPar = new Map<string, (typeof rechazosPendientes)[number]>();
+  for (const rechazo of rechazosPendientes) {
+    const clave = clavePar(rechazo.cargaArchivo.ventanaCargaId, rechazo.cargaArchivo.usuarioId);
+    if (!ultimoRechazoPorPar.has(clave)) ultimoRechazoPorPar.set(clave, rechazo);
+  }
+
+  const paresVistos = new Set<string>();
+  const vigentes: { cargaArchivoId: string; ventanaCargaId: string; enReemplazo: boolean }[] = [];
+  for (const aprobada of aprobadas) {
+    const clave = clavePar(aprobada.ventanaCargaId, aprobada.usuarioId);
+    if (paresVistos.has(clave)) continue;
+    paresVistos.add(clave);
+
+    const rechazo = ultimoRechazoPorPar.get(clave);
+    const enReemplazo =
+      paresConPendiente.has(clave) ||
+      aprobada.solicitudesReemplazo.some((solicitud) => solicitudUtilizable(solicitud, ahora)) ||
+      (rechazo !== undefined &&
+        reaperturaAutorizaReemplazo(rechazo, { fechaVencimiento: rechazo.cargaArchivo.ventanaCarga.fechaVencimiento }, aprobada, ahora));
+
+    vigentes.push({ cargaArchivoId: aprobada.id, ventanaCargaId: aprobada.ventanaCargaId, enReemplazo });
+  }
+
+  return vigentes;
 }
 
 export const prismaCargaArchivoRepository: CargaArchivoRepository = {
@@ -772,28 +848,19 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return { ok: true, carga: await leerDetalleTrasEscritura(id) };
   },
 
-  async contarNotificadoresDistintosPorVentana(ventanaCargaIds) {
-    if (ventanaCargaIds.length === 0) return {};
-
-    // Se agrupa por el PAR (ventanaCargaId, usuarioId) y NO se usa un `_count` plano de filas por
-    // `ventanaCargaId`: `CargaArchivo` no tiene restricción de unicidad sobre
-    // `(usuarioId, ventanaCargaId)`, así que un mismo notificador puede tener varias cargas
-    // APROBADA en la misma ventana (correcciones sucesivas). Agrupar solo por `ventanaCargaId`
-    // sobre-contaría a ese notificador una vez por cada carga aprobada que tenga. Agrupar por el
-    // par produce como mucho una fila por combinación (ventana, usuario) realmente existente, así
-    // que reducir contando filas por `ventanaCargaId` en JS sí refleja usuarios DISTINTOS. No
-    // "simplificar" esto a un `_count` directo: reintroduciría el sobre-conteo.
-    const grupos = await prisma.cargaArchivo.groupBy({
-      by: ["ventanaCargaId", "usuarioId"],
-      where: { ventanaCargaId: { in: ventanaCargaIds }, estado: "APROBADA" },
-    });
-
+  async contarNotificadoresReportaronPorVentana(ventanaCargaIds, ahora) {
     const conteoPorVentana: Record<string, number> = {};
-    for (const grupo of grupos) {
-      conteoPorVentana[grupo.ventanaCargaId] = (conteoPorVentana[grupo.ventanaCargaId] ?? 0) + 1;
+    for (const vigente of await resolverAprobadasVigentesEnReemplazo(ventanaCargaIds, ahora)) {
+      if (!vigente.enReemplazo) {
+        conteoPorVentana[vigente.ventanaCargaId] = (conteoPorVentana[vigente.ventanaCargaId] ?? 0) + 1;
+      }
     }
-
     return conteoPorVentana;
+  },
+
+  async listarIdsAprobadasEnReemplazo(ventanaCargaId, ahora) {
+    const vigentes = await resolverAprobadasVigentesEnReemplazo([ventanaCargaId], ahora);
+    return vigentes.filter((vigente) => vigente.enReemplazo).map((vigente) => vigente.cargaArchivoId);
   },
 
   async obtenerParaDescarga(id) {

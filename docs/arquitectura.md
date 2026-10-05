@@ -1452,6 +1452,15 @@ formato dado de baja después de crear la ventana sigue contando a sus notificad
 "deben reportar" (decisión explícita del usuario, para no tener que decidir además si mostrar 0 en
 ese caso).
 
+**Actualizado por RF-34:** el método ahora es
+`contarNotificadoresReportaronPorVentana(ventanaCargaIds, ahora)` y solo cuenta al notificador cuya
+APROBADA vigente (más reciente por `vistoBuenoEn`, sin superar) no está en reemplazo: sin solicitud
+utilizable sobre ella, sin carga `PENDIENTE_VISTO_BUENO` finalizada en la combinación y sin una
+reapertura que autorice reemplazarla (`solicitudUtilizable` y `reaperturaAutorizaReemplazo`, las
+mismas reglas de RF-33). Hace tres consultas en paralelo para todas las ventanas (aprobadas con sus
+solicitudes sin usar, `groupBy` de pendientes finalizadas y rechazos con reapertura sin consumir) y
+deduplica por par en JS. Las alertas de RF-17 no usan este conteo. Texto original de RF-16:
+
 `CargaArchivoRepository.contarNotificadoresDistintosPorVentana(ventanaCargaIds)` (nuevo,
 `PrismaCargaArchivoRepository.ts`) SÍ necesita `DISTINCT` real, y a propósito no usa un `_count`
 simple: `CargaArchivo` no tiene ninguna restricción de unicidad sobre `(usuarioId, ventanaCargaId)`,

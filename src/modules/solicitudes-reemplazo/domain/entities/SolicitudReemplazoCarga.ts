@@ -81,7 +81,10 @@ export type PaginaSolicitudesReemplazo = {
 // `true` solo si la solicitud está `APROBADA`, no se ha usado todavía, y no pasaron más de
 // `DIAS_VIGENCIA_SOLICITUD_APROBADA` desde que se aprobó. Es la autorización real para subir el
 // archivo de reemplazo (`ValidarYCargarArchivo`, extensión de RF-14).
-export function solicitudUtilizable(solicitud: SolicitudReemplazoCarga, ahora: Date): boolean {
+export function solicitudUtilizable(
+  solicitud: Pick<SolicitudReemplazoCarga, "estado" | "utilizadaEn" | "revisadoEn">,
+  ahora: Date,
+): boolean {
   if (solicitud.estado !== "APROBADA") return false;
   if (solicitud.utilizadaEn !== null) return false;
   // No debería ocurrir: toda solicitud `APROBADA` fija `revisadoEn` en la misma escritura

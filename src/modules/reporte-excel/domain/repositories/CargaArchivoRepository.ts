@@ -119,13 +119,16 @@ export interface CargaArchivoRepository {
   // sin restricción de `estado` (aprobada, pendiente de decisión o rechazada, todas descargables por
   // su dueño), pero con `usuarioId` en el mismo `WHERE` — ownership, nunca filtrado después en JS.
   obtenerPropiaParaDescarga(id: string, usuarioId: string): Promise<CargaArchivoParaDescarga | null>;
-  // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS tienen al menos una carga APROBADA
-  // en cada ventana ("ya reportaron"). `CargaArchivo` no tiene restricción de unicidad sobre
-  // `(usuarioId, ventanaCargaId)` — un notificador puede tener varias cargas APROBADA en la misma
-  // ventana (correcciones sucesivas) — así que la implementación debe deduplicar por usuario,
-  // nunca contar filas. Devuelve un mapa `ventanaCargaId -> cantidad`; los ids sin ningún
-  // notificador que haya reportado no aparecen como clave.
-  contarNotificadoresDistintosPorVentana(ventanaCargaIds: string[]): Promise<Record<string, number>>;
+  // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS "ya reportaron" en cada ventana:
+  // tienen una APROBADA vigente que NO está en reemplazo (RF-34). En reemplazo = solicitud de
+  // reemplazo utilizable sobre la vigente, archivo de reemplazo finalizado y pendiente de visto
+  // bueno, o reapertura que autoriza reemplazarla (mismas reglas que `resolverAutorizacionReemplazo`).
+  // Deduplica por usuario, nunca cuenta filas. Devuelve `ventanaCargaId -> cantidad`; las ventanas
+  // sin nadie que haya reportado no aparecen como clave.
+  contarNotificadoresReportaronPorVentana(ventanaCargaIds: string[], ahora: Date): Promise<Record<string, number>>;
+  // Ids de las APROBADA vigentes de la ventana que están en reemplazo (misma regla que el conteo
+  // de arriba), para mostrarlas como "Se solicita reemplazo" en el detalle de la ventana.
+  listarIdsAprobadasEnReemplazo(ventanaCargaId: string, ahora: Date): Promise<string[]>;
 
   // Rechazo de cargas aprobadas, ampliado (RF-20) a también cubrir una `PENDIENTE_VISTO_BUENO` ya
   // finalizada (antes de que alguien la apruebe): transición condicional y atómica hacia
