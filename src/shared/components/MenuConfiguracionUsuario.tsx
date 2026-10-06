@@ -8,13 +8,14 @@ type MenuConfiguracionUsuarioProps = {
   // Base de ruta del área actual ("/dashboard" | "/notificador" | "/revisor"), mismo patrón
   // `rutaBase` ya usado por `TablaUsuarios`/`TablaFormatosExcel`: cada layout aporta la suya.
   rutaBase: string;
+  altoContraste?: boolean;
 };
 
 // Patrón WAI-ARIA "menu button" (https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/), nuevo en
 // el proyecto: un botón que abre un panel `role="menu"` con `role="menuitem"`, en vez de
 // `<details>/<summary>` (que no expone la semántica de menú a un lector de pantalla ni deja
 // posicionar el foco en el primer ítem al abrir).
-export function MenuConfiguracionUsuario({ rutaBase }: MenuConfiguracionUsuarioProps) {
+export function MenuConfiguracionUsuario({ rutaBase, altoContraste = false }: MenuConfiguracionUsuarioProps) {
   const [abierto, setAbierto] = useState(false);
   const referenciaContenedor = useRef<HTMLDivElement>(null);
   const referenciaBoton = useRef<HTMLButtonElement>(null);
@@ -72,7 +73,7 @@ export function MenuConfiguracionUsuario({ rutaBase }: MenuConfiguracionUsuarioP
         aria-expanded={abierto}
         aria-controls={idMenu}
         onClick={() => setAbierto((estabaAbierto) => !estabaAbierto)}
-        className="inline-flex size-9 items-center justify-center rounded-full border border-gob-accent bg-white text-gob-primary transition-colors hover:border-gob-primary hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        className={`inline-flex size-9 items-center justify-center rounded-full border bg-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${altoContraste ? "border-white text-[#173b69] hover:border-white hover:bg-[#e8f2fb] focus-visible:outline-white" : "border-gob-accent text-gob-primary hover:border-gob-primary hover:bg-gob-neutral focus-visible:outline-gob-primary"}`}
       >
         <IconoConfiguracion />
         <span className="sr-only">Configuración de la cuenta</span>

@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
@@ -124,10 +123,6 @@ export default async function NotificadorPage() {
           <p className="text-sm font-semibold uppercase tracking-wide text-gob-primary">Registro Poblacional de Cáncer</p>
           <h1 className="text-4xl font-bold tracking-tight text-gob-black">Hola, {usuario.nombres}</h1>
           <p className="text-base text-gob-gray-a max-w-2xl leading-relaxed">Centro de notificación y reporte de información del RPC.</p>
-        </div>
-        <div className="flex items-center gap-2 self-start rounded-xl border border-gob-primary bg-gob-primary px-4 py-3 text-sm font-semibold text-white shadow-sm sm:self-auto">
-          <ShieldCheck size={18} weight="duotone" aria-hidden="true" className="text-white" />
-          Acceso autorizado
         </div>
       </section>
 

@@ -22,14 +22,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   );
 
   return (
-    <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#173b69] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
         <EncabezadoPanel rutaBase="/dashboard" />
       </div>
       {/* En escritorio la navegación es la primera columna para que llegue al borde superior,
           como el shell analítico de referencia. Bajo md vuelve a ser una barra horizontal bajo
           el encabezado y no resta ancho al contenido. */}
-      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#173b69] bg-[#173b69] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
           enlaces={enlaces}
           titulo="Administración"
@@ -41,7 +41,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           de cualquier tabla) toma como contenedor el `<body>` en vez de este `<main>` que scrollea,
           y su posición estática se calcula con el layout sin scrollear — inflando la altura del
           documento y dejando un espacio en blanco al hacer scroll de la ventana del navegador. */}
-      <main className="relative min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:p-7">{children}</main>
+      <main className="relative min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:rounded-tl-3xl md:p-7">{children}</main>
     </div>
   );
 }

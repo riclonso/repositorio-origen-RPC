@@ -13,13 +13,13 @@ export default async function NotificadorLayout({ children }: { children: ReactN
   const identidad = await obtenerIdentidadPanel();
 
   return (
-    <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#edf3f8] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
+    <div className="grid h-dvh grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-[#678d6c] md:grid-cols-[15rem_minmax(0,1fr)] md:grid-rows-[auto_minmax(0,1fr)]">
       <div className="md:col-start-2 md:row-start-1">
         <EncabezadoPanel rutaBase="/notificador" />
       </div>
       {/* La navegación ocupa la columna completa en escritorio; en móvil se mantiene bajo el
           encabezado como barra horizontal para preservar el área de trabajo. */}
-      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#244d7d] bg-[#678d6c] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-[#678d6c] bg-[#678d6c] md:col-start-1 md:row-span-2 md:row-start-1 md:border-b-0 md:border-r">
         <BarraLateralPanel
           enlaces={ENLACES_NOTIFICADOR}
           titulo="Notificación"
@@ -31,7 +31,7 @@ export default async function NotificadorLayout({ children }: { children: ReactN
           de cualquier tabla) toma como contenedor el `<body>` en vez de este `<main>` que scrollea,
           y su posición estática se calcula con el layout sin scrollear — inflando la altura del
           documento y dejando un espacio en blanco al hacer scroll de la ventana del navegador. */}
-      <main className="relative min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:p-7">{children}</main>
+      <main className="relative min-h-0 min-w-0 overflow-y-auto bg-[#f4f7fb] p-4 md:col-start-2 md:row-start-2 md:rounded-tl-3xl md:p-7">{children}</main>
     </div>
   );
 }

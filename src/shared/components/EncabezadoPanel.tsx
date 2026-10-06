@@ -19,20 +19,24 @@ type EncabezadoPanelProps = {
 // (`BarraLateralPanel`).
 export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: EncabezadoPanelProps) {
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
+  const esNotificador = rutaBase === "/notificador";
+  const esRevisor = rutaBase === "/revisor";
+  const colorFondo = esNotificador ? "bg-[#678d6c]" : esRevisor ? "bg-[#3f84d8]" : "bg-[#173b69]";
+  const colorSubtitulo = esNotificador ? "text-white" : "text-white/60";
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-[#dce5ef] bg-[#678d6c] px-4 py-3.5 md:px-7">
+    <header className={`flex items-center justify-between gap-4 border-b border-transparent px-4 py-3.5 md:px-7 ${colorFondo}`}>
       <div className="min-w-0">
         <p className="text-sm font-semibold tracking-wide text-white">Repositorio RPC</p>
-        <p className="text-xs text-white">SEREMI de Salud Biobío</p>
+        <p className={`text-xs ${colorSubtitulo}`}>SEREMI de Salud Biobío</p>
       </div>
 
       <div className="flex items-center gap-3">
-        {sesionAdministradorOrigen ? <VolverSesionAdministrador /> : null}
+        {sesionAdministradorOrigen ? <VolverSesionAdministrador altoContraste /> : null}
         {rutaBase === "/revisor" && cantidadNotificaciones !== undefined ? (
           <MenuNotificacionesRevisor cantidad={cantidadNotificaciones} />
         ) : null}
-        <MenuConfiguracionUsuario rutaBase={rutaBase} />
+        <MenuConfiguracionUsuario rutaBase={rutaBase} altoContraste />
       </div>
     </header>
   );

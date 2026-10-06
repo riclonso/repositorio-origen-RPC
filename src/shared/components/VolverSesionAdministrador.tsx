@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function VolverSesionAdministrador() {
+export function VolverSesionAdministrador({ altoContraste = false }: { altoContraste?: boolean }) {
   const router = useRouter();
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export function VolverSesionAdministrador() {
         type="button"
         onClick={volver}
         disabled={procesando}
-        className="rounded-md border border-gob-primary px-3 py-1.5 text-xs font-semibold text-gob-primary transition-colors hover:bg-gob-neutral disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 ${altoContraste ? "border-white bg-white text-[#173b69] hover:bg-[#e8f2fb] focus-visible:outline-white" : "border-gob-primary text-gob-primary hover:bg-gob-neutral focus-visible:outline-gob-primary"}`}
       >
         {procesando ? "Volviendo..." : "Volver a mi sesión"}
       </button>

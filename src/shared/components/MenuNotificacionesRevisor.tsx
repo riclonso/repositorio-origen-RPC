@@ -62,7 +62,7 @@ export function MenuNotificacionesRevisor({ cantidad }: MenuNotificacionesReviso
         aria-expanded={abierto}
         aria-controls={idMenu}
         onClick={() => setAbierto((estabaAbierto) => !estabaAbierto)}
-        className="relative inline-flex size-9 items-center justify-center rounded-full border border-gob-accent bg-white text-gob-primary transition-colors hover:border-gob-primary hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        className="relative inline-flex size-9 items-center justify-center rounded-full border border-white bg-white text-[#173b69] transition-colors hover:bg-[#e8f2fb] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
         <span className={hayNotificaciones ? "animate-campana" : undefined}>
           <IconoNotificaciones />
