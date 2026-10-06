@@ -34,10 +34,9 @@ function modoReglaRut(regla: ReglaValidacionEditable): ModoReglaRut {
 // filtrar por tipo de dato (RF-15).
 export type ColumnaDisponible = { nombre: string; tipoDato: string };
 
-// Tipos de dato que `FECHA_DENTRO_DE_VENTANA_VIGENTE` y `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`
-// pueden evaluar: ambas reglas comparan la celda como fecha, así que solo tiene sentido ofrecer
-// columnas que el sistema sabe parsear como tal.
-const TIPOS_DATO_FECHA = new Set(["FECHA", "FECHA_HORA"]);
+// Tipos de dato que `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` puede evaluar: compara la celda como
+// fecha, así que solo tiene sentido ofrecer columnas que el sistema sabe parsear como tal.
+const TIPOS_DATO_FECHA = new Set(["FECHA"]);
 
 // Mismo orden que `TIPOS_REGLA_VALIDACION`, con las etiquetas compartidas con los mensajes del
 // esquema (`shared/utils/reglasValidacion.ts`).
@@ -101,8 +100,6 @@ type EditorReglasValidacionFormatoExcelProps = {
 
 // Un formato puede tener varias reglas. `ALGUNA_COLUMNA_CON_VALOR`: de un subconjunto de
 // columnas, al menos una debe traer valor; si todas vienen vacías, se rechaza.
-// `FECHA_DENTRO_DE_VENTANA_VIGENTE` (RF-15): una única columna de fecha debe caer dentro del
-// rango de la ventana de carga elegida por el notificador para esa subida.
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (ampliación posterior): una columna principal + al
 // menos una alternativa, todas de fecha; se usa la principal si trae valor, o la más antigua de
 // las alternativas si está vacía, y el año resultante debe coincidir con el de la ventana.
@@ -146,8 +143,6 @@ export function EditorReglasValidacionFormatoExcel({
         <p className="text-xs text-gob-gray-a">
           &ldquo;Al menos una columna con valor&rdquo; exige que, de un conjunto de columnas, al
           menos una venga con valor en el registro; si todas vienen vacías, se rechaza.
-          &ldquo;Fecha dentro de la ventana de carga vigente&rdquo; exige que una columna de fecha
-          caiga dentro del rango de la ventana elegida por el notificador al subir el archivo.
           &ldquo;Fecha efectiva dentro del año de la ventana&rdquo; usa la columna principal si
           trae valor; si viene vacía, usa la más antigua de las columnas alternativas que sí
           traigan una fecha, y exige que el año de esa fecha efectiva coincida con el año de la
@@ -222,26 +217,6 @@ export function EditorReglasValidacionFormatoExcel({
                     columnasFaltantes={columnasFaltantes}
                     onCambiar={(cambios) => actualizarRegla(indice, cambios)}
                   />
-                ) : regla.tipo === "FECHA_DENTRO_DE_VENTANA_VIGENTE" ? (
-                  <CampoSelect
-                    id={`regla-${indice}-columna-fecha`}
-                    etiqueta="Columna de fecha"
-                    opciones={[{ valor: "", etiqueta: "Selecciona una columna" }, ...opcionesColumnasFecha]}
-                    value={regla.columnas[0] ?? ""}
-                    onChange={(evento) =>
-                      actualizarRegla(indice, {
-                        columnas: evento.target.value ? [evento.target.value] : [],
-                      })
-                    }
-                    ayuda="Solo se listan las columnas de tipo Fecha o Fecha y hora de este formato."
-                    error={
-                      columnasFaltantes.length > 0
-                        ? `Hace referencia a una columna que ya no existe en este formato: "${columnasFaltantes[0]}"`
-                        : opcionesColumnasFecha.length === 0
-                          ? "Este formato no tiene ninguna columna de tipo Fecha o Fecha y hora"
-                          : null
-                    }
-                  />
                 ) : regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA" ? (
                   <>
                     <CampoSelect
@@ -261,10 +236,10 @@ export function EditorReglasValidacionFormatoExcel({
                           columnas: nuevaPrincipal ? [nuevaPrincipal, ...alternativasSinPrincipal] : alternativasSinPrincipal,
                         });
                       }}
-                      ayuda="Se usa esta fecha si trae valor. Solo se listan columnas de tipo Fecha o Fecha y hora."
+                      ayuda="Se usa esta fecha si trae valor. Solo se listan columnas de tipo Fecha."
                       error={
                         opcionesColumnasFecha.length === 0
-                          ? "Este formato no tiene ninguna columna de tipo Fecha o Fecha y hora"
+                          ? "Este formato no tiene ninguna columna de tipo Fecha"
                           : null
                       }
                     />

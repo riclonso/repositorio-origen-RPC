@@ -9,6 +9,7 @@ import type {
   FormatoExcel,
   FormatoExcelResumen,
   ReglaValidacionFormatoExcel,
+  TipoEnumeradoFormatoExcel,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { FormatoDuplicadoError } from "@/modules/formatos-excel/domain/errors/FormatoDuplicadoError";
 import { ConflictoConcurrenteError } from "@/modules/formatos-excel/domain/errors/ConflictoConcurrenteError";
@@ -28,6 +29,14 @@ const SELECCION_COLUMNA = {
   nombre: true,
   requerida: true,
   tipoDato: true,
+  tipoEnumeradoNombre: true,
+} as const;
+
+const SELECCION_TIPO_ENUMERADO = {
+  id: true,
+  orden: true,
+  nombre: true,
+  valores: true,
 } as const;
 
 const SELECCION_REGLA = {
@@ -51,6 +60,8 @@ const SELECCION_DETALLE = {
   updatedAt: true,
   columnas: { select: SELECCION_COLUMNA, orderBy: { orden: "asc" } },
   reglasValidacion: { select: SELECCION_REGLA, orderBy: { orden: "asc" } },
+  // Anidado en la misma lectura (sin N+1). Nunca en `listar()`, que solo cuenta hijos.
+  tiposEnumerados: { select: SELECCION_TIPO_ENUMERADO, orderBy: { orden: "asc" } },
 } as const;
 
 type RegistroDetalle = {
@@ -66,6 +77,7 @@ type RegistroDetalle = {
   updatedAt: Date;
   columnas: ColumnaFormatoExcel[];
   reglasValidacion: ReglaValidacionFormatoExcel[];
+  tiposEnumerados: TipoEnumeradoFormatoExcel[];
 };
 
 function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
@@ -82,7 +94,26 @@ function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
     updatedAt: registro.updatedAt,
     columnas: registro.columnas,
     reglasValidacion: registro.reglasValidacion,
+    tiposEnumerados: registro.tiposEnumerados,
   };
+}
+
+function aCreacionColumnas(
+  columnas: DatosNuevoFormatoExcel["columnas"],
+): Prisma.ColumnaFormatoExcelCreateWithoutFormatoExcelInput[] {
+  return columnas.map((columna) => ({
+    orden: columna.orden,
+    nombre: columna.nombre,
+    requerida: columna.requerida,
+    tipoDato: columna.tipoDato,
+    tipoEnumeradoNombre: columna.tipoEnumeradoNombre,
+  }));
+}
+
+function aCreacionTiposEnumerados(
+  tiposEnumerados: DatosNuevoFormatoExcel["tiposEnumerados"],
+): Prisma.TipoEnumeradoFormatoExcelCreateWithoutFormatoExcelInput[] {
+  return tiposEnumerados.map((tipo) => ({ orden: tipo.orden, nombre: tipo.nombre, valores: tipo.valores }));
 }
 
 const CODIGO_UNIQUE_VIOLADO = "P2002";
@@ -263,14 +294,8 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
           // que exige el campo `Bytes` generado por Prisma; el `Buffer<ArrayBufferLike>` de Node
           // es más amplio (admite `SharedArrayBuffer`) y por eso no encaja directo.
           contenidoPlantilla: Uint8Array.from(datos.contenidoPlantilla),
-          columnas: {
-            create: datos.columnas.map((columna) => ({
-              orden: columna.orden,
-              nombre: columna.nombre,
-              requerida: columna.requerida,
-              tipoDato: columna.tipoDato,
-            })),
-          },
+          columnas: { create: aCreacionColumnas(datos.columnas) },
+          tiposEnumerados: { create: aCreacionTiposEnumerados(datos.tiposEnumerados) },
           reglasValidacion: {
             create: datos.reglasValidacion.map((regla) => ({
               orden: regla.orden,
@@ -300,15 +325,9 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
           nombre: datos.nombre,
           descripcion: datos.descripcion,
           separadorCsv: datos.separadorCsv,
-          columnas: {
-            deleteMany: {},
-            create: datos.columnas.map((columna) => ({
-              orden: columna.orden,
-              nombre: columna.nombre,
-              requerida: columna.requerida,
-              tipoDato: columna.tipoDato,
-            })),
-          },
+          columnas: { deleteMany: {}, create: aCreacionColumnas(datos.columnas) },
+          // Mismo reemplazo completo, en la misma escritura atómica que columnas y reglas.
+          tiposEnumerados: { deleteMany: {}, create: aCreacionTiposEnumerados(datos.tiposEnumerados) },
           reglasValidacion: {
             deleteMany: {},
             create: datos.reglasValidacion.map((regla) => ({

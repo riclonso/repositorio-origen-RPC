@@ -6,11 +6,21 @@ import type {
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { FormatoDuplicadoError } from "@/modules/formatos-excel/domain/errors/FormatoDuplicadoError";
+import {
+  resolverTiposEnumerados,
+  type RechazoTiposEnumerados,
+} from "@/modules/formatos-excel/application/resolverTiposEnumerados";
 
 export type DatosColumnaEdicion = {
   nombre: string;
   requerida: boolean;
   tipoDato: TipoDatoColumna;
+  tipoEnumeradoNombre: string | null;
+};
+
+export type DatosTipoEnumeradoEdicion = {
+  nombre: string;
+  valores: string[];
 };
 
 export type DatosReglaValidacionEdicion = {
@@ -26,10 +36,31 @@ export type DatosEdicionFormatoExcel = {
   separadorCsv?: SeparadorCsv | null;
   columnas: DatosColumnaEdicion[];
   reglasValidacion: DatosReglaValidacionEdicion[];
+  tiposEnumerados: DatosTipoEnumeradoEdicion[];
 };
 
+// Igualdad estructural (nombre y valores, en orden) entre el set persistido y el recibido. Solo
+// alimenta la auditoría (`campos: ["tiposEnumerados"]`), nunca la lista de valores.
+function mismosTiposEnumerados(
+  anteriores: readonly { nombre: string; valores: readonly string[] }[],
+  nuevos: readonly { nombre: string; valores: readonly string[] }[],
+): boolean {
+  return (
+    anteriores.length === nuevos.length &&
+    anteriores.every((anterior, indice) => {
+      const nuevo = nuevos[indice];
+      return (
+        anterior.nombre === nuevo.nombre &&
+        anterior.valores.length === nuevo.valores.length &&
+        anterior.valores.every((valor, posicion) => valor === nuevo.valores[posicion])
+      );
+    })
+  );
+}
+
 export type ResultadoActualizarFormatoExcel =
-  | { ok: true; formato: FormatoExcel; separadorCsvCambiado: boolean }
+  | { ok: true; formato: FormatoExcel; separadorCsvCambiado: boolean; tiposEnumeradosCambiados: boolean }
+  | RechazoTiposEnumerados
   | { ok: false; motivo: "NO_ENCONTRADO" }
   // Separador incoherente con el `tipoArchivo` persistido (inmutable): falta en un CSV o viene
   // en un EXCEL.
@@ -43,6 +74,14 @@ export async function actualizarFormatoExcel(
   datos: DatosEdicionFormatoExcel,
   dependencias: { repositorio: FormatoExcelRepository },
 ): Promise<ResultadoActualizarFormatoExcel> {
+  // Antes de consultar la base de datos: una referencia inválida no necesita ninguna lectura.
+  // También fija el orden de columnas y tipos enumerados por posición.
+  const resueltos = resolverTiposEnumerados(datos.columnas, datos.tiposEnumerados);
+
+  if (!resueltos.ok) {
+    return resueltos;
+  }
+
   const actual = await dependencias.repositorio.obtenerPorId(id);
 
   if (!actual) {
@@ -63,7 +102,6 @@ export async function actualizarFormatoExcel(
     }
   }
 
-  const columnasConOrden = datos.columnas.map((columna, indice) => ({ ...columna, orden: indice + 1 }));
   const reglasValidacionConOrden = datos.reglasValidacion.map((regla, indice) => ({
     ...regla,
     orden: indice + 1,
@@ -74,11 +112,17 @@ export async function actualizarFormatoExcel(
       nombre: datos.nombre,
       descripcion: datos.descripcion,
       separadorCsv,
-      columnas: columnasConOrden,
+      columnas: resueltos.columnas,
       reglasValidacion: reglasValidacionConOrden,
+      tiposEnumerados: resueltos.tiposEnumerados,
     });
 
-    return { ok: true, formato, separadorCsvCambiado: separadorCsv !== actual.separadorCsv };
+    return {
+      ok: true,
+      formato,
+      separadorCsvCambiado: separadorCsv !== actual.separadorCsv,
+      tiposEnumeradosCambiados: !mismosTiposEnumerados(actual.tiposEnumerados, resueltos.tiposEnumerados),
+    };
   } catch (error) {
     // Cierra la ventana de carrera entre `buscarPorNombre` y el UPDATE.
     if (error instanceof FormatoDuplicadoError) {

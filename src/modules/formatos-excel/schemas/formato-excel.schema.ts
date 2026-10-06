@@ -9,6 +9,14 @@ import {
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { ETIQUETAS_TIPO_REGLA_VALIDACION } from "@/shared/utils/reglasValidacion";
 import { MAXIMO_CAMBIOS_ASIGNACION_MASIVA } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
+import {
+  LARGO_MAXIMO_NOMBRE_ENUMERADO,
+  LARGO_MAXIMO_VALOR_ENUMERADO,
+  MAXIMO_TIPOS_ENUMERADOS,
+  MAXIMO_VALORES_ENUMERADO,
+  buscarTipoEnumeradoPorNombre,
+  normalizarValorEnumerado,
+} from "@/modules/formatos-excel/domain/entities/TipoEnumerado";
 
 export const tipoDatoColumnaSchema = z.enum(TIPOS_DATO_COLUMNA);
 export const tipoReglaValidacionSchema = z.enum(TIPOS_REGLA_VALIDACION);
@@ -47,11 +55,113 @@ const MENSAJE_REGLA_MAXIMO = 300;
 // Con 1 sola columna la regla sería redundante con marcarla `requerida` directamente.
 const MINIMO_COLUMNAS_POR_REGLA = 2;
 
-const columnaFormatoExcelSchema = z.object({
-  nombre: z.string().trim().min(1, "El nombre de la columna no puede estar vacío"),
-  requerida: z.boolean(),
-  tipoDato: tipoDatoColumnaSchema,
-});
+// Saltos de línea, tabuladores y demás caracteres de control: un valor enumerado es una sola línea
+// de texto visible (el textarea del editor usa un valor por línea).
+const PATRON_CARACTER_CONTROL = /\p{Cc}/u;
+
+// Nombre de un tipo enumerado. Mismo NFC + trim que sus valores, para que la comparación sin
+// mayúsculas (`buscarTipoEnumeradoPorNombre`) vea exactamente lo que se guarda.
+const nombreTipoEnumeradoSchema = z
+  .string()
+  .normalize("NFC")
+  .trim()
+  .min(1, "Ingresa el nombre del tipo enumerado")
+  .max(LARGO_MAXIMO_NOMBRE_ENUMERADO, `El nombre del tipo enumerado no puede superar los ${LARGO_MAXIMO_NOMBRE_ENUMERADO} caracteres`)
+  .refine((nombre) => !PATRON_CARACTER_CONTROL.test(nombre), "El nombre del tipo enumerado no puede tener saltos de línea");
+
+// Se guarda tal como lo escribió el usuario, solo con NFC + trim (ver `normalizarValorEnumerado`).
+const valorTipoEnumeradoSchema = z
+  .string()
+  .normalize("NFC")
+  .trim()
+  .min(1, "Los valores de un tipo enumerado no pueden estar vacíos")
+  .max(LARGO_MAXIMO_VALOR_ENUMERADO, `Cada valor puede tener como máximo ${LARGO_MAXIMO_VALOR_ENUMERADO} caracteres`)
+  .refine(
+    (valor) => !PATRON_CARACTER_CONTROL.test(valor),
+    "Los valores no pueden tener saltos de línea ni caracteres de control",
+  );
+
+export const tipoEnumeradoSchema = z
+  .object({
+    nombre: nombreTipoEnumeradoSchema,
+    valores: z
+      .array(valorTipoEnumeradoSchema)
+      .min(1, "Agrega al menos un valor permitido")
+      .max(MAXIMO_VALORES_ENUMERADO, `Un tipo enumerado admite como máximo ${MAXIMO_VALORES_ENUMERADO} valores`),
+  })
+  .superRefine((tipo, contexto) => {
+    // Duplicados con la MISMA regla de comparación que se usa al validar una carga: "SI" y "si"
+    // serían indistinguibles para la validación, así que no pueden convivir en la lista.
+    const vistos = new Set<string>();
+
+    tipo.valores.forEach((valor, indice) => {
+      const normalizado = normalizarValorEnumerado(valor);
+
+      if (vistos.has(normalizado)) {
+        contexto.addIssue({
+          code: "custom",
+          path: ["valores", indice],
+          message: `El tipo «${tipo.nombre}» repite el valor "${valor}" (no se distinguen mayúsculas)`,
+        });
+      }
+      vistos.add(normalizado);
+    });
+  });
+export type TipoEnumeradoInput = z.infer<typeof tipoEnumeradoSchema>;
+
+export const tiposEnumeradosSchema = z
+  .array(tipoEnumeradoSchema)
+  .max(MAXIMO_TIPOS_ENUMERADOS, `Se permiten como máximo ${MAXIMO_TIPOS_ENUMERADOS} tipos enumerados por formato`)
+  .default([])
+  .superRefine((tipos, contexto) => {
+    const vistos = new Set<string>();
+
+    tipos.forEach((tipo, indice) => {
+      const normalizado = normalizarValorEnumerado(tipo.nombre);
+
+      if (vistos.has(normalizado)) {
+        contexto.addIssue({
+          code: "custom",
+          path: [indice, "nombre"],
+          message: `Ya existe un tipo enumerado llamado «${tipo.nombre}»`,
+        });
+      }
+      vistos.add(normalizado);
+    });
+  });
+
+const columnaFormatoExcelSchema = z
+  .object({
+    nombre: z.string().trim().min(1, "El nombre de la columna no puede estar vacío"),
+    requerida: z.boolean(),
+    tipoDato: tipoDatoColumnaSchema,
+    // Opcional para no romper clientes que aún no lo envían; vacío u omitido equivale a `null`.
+    tipoEnumeradoNombre: z
+      .string()
+      .normalize("NFC")
+      .trim()
+      .max(LARGO_MAXIMO_NOMBRE_ENUMERADO, "El nombre del tipo enumerado es demasiado largo")
+      .nullish()
+      .transform((valor) => (valor && valor.length > 0 ? valor : null)),
+  })
+  .superRefine((columna, contexto) => {
+    // Invariante `tipoDato = ENUMERADO` ⇔ `tipoEnumeradoNombre` no nulo (también CHECK en BD).
+    if (columna.tipoDato === "ENUMERADO" && columna.tipoEnumeradoNombre === null) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["tipoEnumeradoNombre"],
+        message: `Selecciona el tipo enumerado de la columna "${columna.nombre}"`,
+      });
+    }
+
+    if (columna.tipoDato !== "ENUMERADO" && columna.tipoEnumeradoNombre !== null) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["tipoEnumeradoNombre"],
+        message: `La columna "${columna.nombre}" solo puede indicar un tipo enumerado si su tipo de dato es enumerado`,
+      });
+    }
+  });
 
 function nombresDeColumnaUnicos(columnas: { nombre: string }[]): boolean {
   const vistos = new Set(columnas.map((columna) => columna.nombre.trim().toLowerCase()));
@@ -64,12 +174,10 @@ const columnasFormatoExcelSchema = z
   .max(COLUMNAS_MAXIMO, `Se permiten como máximo ${COLUMNAS_MAXIMO} columnas`)
   .refine(nombresDeColumnaUnicos, "Los nombres de columna no pueden repetirse");
 
-// Cuatro tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
+// Tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
 // `ALGUNA_COLUMNA_CON_VALOR` exige un conjunto de columnas del que al menos una debe traer valor;
-// `FECHA_DENTRO_DE_VENTANA_VIGENTE` exige exactamente una columna de tipo `FECHA`/`FECHA_HORA`
-// cuyo valor debe caer dentro de la ventana de carga elegida por el notificador (RF-15);
 // `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` exige una columna principal + al menos una alternativa
-// (todas `FECHA`/`FECHA_HORA`) cuya "fecha efectiva" resultante debe caer dentro del AÑO
+// (todas `FECHA`) cuya "fecha efectiva" resultante debe caer dentro del AÑO
 // calendario de esa ventana (ampliación posterior); `FILA_DUPLICADA` exige al menos una columna
 // (sin restricción de tipo de dato) cuya combinación de valores no puede repetirse entre filas del
 // mismo archivo (ampliación posterior). El evaluador que las ejecuta contra un archivo real vive
@@ -119,12 +227,13 @@ const camposFormatoExcelSchema = {
     .transform((valor) => (valor && valor.length > 0 ? valor : null)),
   columnas: columnasFormatoExcelSchema,
   reglasValidacion: reglasValidacionFormatoExcelSchema,
+  // `.default([])`: un cliente que no lo envía (formatos sin enumerados) sigue siendo válido.
+  tiposEnumerados: tiposEnumeradosSchema,
 };
 
-// Tipos de columna admitidos por `FECHA_DENTRO_DE_VENTANA_VIGENTE` y por
-// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: ambas reglas comparan la celda como fecha, así que la
-// columna referenciada debe ser una de las dos que el sistema sabe parsear como tal.
-const TIPOS_DATO_FECHA: readonly string[] = ["FECHA", "FECHA_HORA"];
+// Tipos de columna admitidos por `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: compara la celda como
+// fecha, así que la columna referenciada debe ser una que el sistema sabe parsear como tal.
+const TIPOS_DATO_FECHA: readonly string[] = ["FECHA"];
 
 // Principal + al menos una alternativa (ver convención de `columnas[]` en
 // `domain/entities/FormatoExcel.ts`), sin tope fijo de alternativas.
@@ -229,26 +338,6 @@ function validarReferenciasDeReglas(
       });
     }
 
-    if (regla.tipo === "FECHA_DENTRO_DE_VENTANA_VIGENTE") {
-      if (regla.columnas.length !== 1) {
-        contexto.addIssue({
-          code: "custom",
-          path: ["reglasValidacion", indiceRegla, "columnas"],
-          message: `La regla ${indiceRegla + 1} debe tener exactamente una columna`,
-        });
-      } else {
-        const columna = columnasPorNombre.get(regla.columnas[0].trim().toLowerCase());
-
-        if (columna && !TIPOS_DATO_FECHA.includes(columna.tipoDato)) {
-          contexto.addIssue({
-            code: "custom",
-            path: ["reglasValidacion", indiceRegla, "columnas", 0],
-            message: `La regla ${indiceRegla + 1} exige una columna de tipo FECHA o FECHA_HORA`,
-          });
-        }
-      }
-    }
-
     if (regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA") {
       if (regla.columnas.length < MINIMO_COLUMNAS_FECHA_EFECTIVA) {
         contexto.addIssue({
@@ -258,8 +347,7 @@ function validarReferenciasDeReglas(
         });
       }
 
-      // Todas las columnas referenciadas (principal Y alternativas) deben ser de tipo fecha, no
-      // solo `columnas[0]` como en `FECHA_DENTRO_DE_VENTANA_VIGENTE`.
+      // Todas las columnas referenciadas (principal Y alternativas) deben ser de tipo fecha.
       regla.columnas.forEach((nombreColumna, indiceColumna) => {
         const columna = columnasPorNombre.get(nombreColumna.trim().toLowerCase());
 
@@ -267,7 +355,7 @@ function validarReferenciasDeReglas(
           contexto.addIssue({
             code: "custom",
             path: ["reglasValidacion", indiceRegla, "columnas", indiceColumna],
-            message: `La regla ${indiceRegla + 1} exige que todas sus columnas sean de tipo FECHA o FECHA_HORA`,
+            message: `La regla ${indiceRegla + 1} exige que todas sus columnas sean de tipo Fecha`,
           });
         }
       });
@@ -275,7 +363,38 @@ function validarReferenciasDeReglas(
   });
 }
 
-export const crearFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDeReglas);
+// Cada columna `ENUMERADO` debe apuntar a un tipo enumerado definido en el MISMO payload
+// (comparación sin mayúsculas, `buscarTipoEnumeradoPorNombre`). Los tipos que ninguna columna usa
+// se permiten.
+function validarReferenciasDeTiposEnumerados(
+  datos: {
+    columnas: { nombre: string; tipoEnumeradoNombre: string | null }[];
+    tiposEnumerados: { nombre: string }[];
+  },
+  contexto: z.RefinementCtx,
+): void {
+  datos.columnas.forEach((columna, indice) => {
+    if (columna.tipoEnumeradoNombre === null) return;
+
+    if (!buscarTipoEnumeradoPorNombre(datos.tiposEnumerados, columna.tipoEnumeradoNombre)) {
+      contexto.addIssue({
+        code: "custom",
+        path: ["columnas", indice, "tipoEnumeradoNombre"],
+        message: `La columna "${columna.nombre}" usa un tipo enumerado que no existe: "${columna.tipoEnumeradoNombre}"`,
+      });
+    }
+  });
+}
+
+function validarReferenciasDelFormato(
+  datos: Parameters<typeof validarReferenciasDeReglas>[0] & Parameters<typeof validarReferenciasDeTiposEnumerados>[0],
+  contexto: z.RefinementCtx,
+): void {
+  validarReferenciasDeReglas(datos, contexto);
+  validarReferenciasDeTiposEnumerados(datos, contexto);
+}
+
+export const crearFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDelFormato);
 export type CrearFormatoExcelInput = z.infer<typeof crearFormatoExcelSchema>;
 
 // La edición comparte los campos de la creación (la plantilla no se reemplaza al editar) y agrega
@@ -284,7 +403,7 @@ export type CrearFormatoExcelInput = z.infer<typeof crearFormatoExcelSchema>;
 // `ActualizarFormatoExcel`, que es quien lo conoce.
 export const editarFormatoExcelSchema = z
   .object({ ...camposFormatoExcelSchema, separadorCsv: separadorCsvSchema.nullable().optional() })
-  .superRefine(validarReferenciasDeReglas);
+  .superRefine(validarReferenciasDelFormato);
 export type EditarFormatoExcelInput = z.infer<typeof editarFormatoExcelSchema>;
 
 export const cambiarEstadoFormatoExcelSchema = z.object({ activo: z.boolean() });

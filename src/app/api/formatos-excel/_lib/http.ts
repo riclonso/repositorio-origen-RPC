@@ -5,6 +5,7 @@ import type {
   TipoArchivo,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { BloqueoFormatoUnico } from "@/modules/formatos-excel/domain/entities/AsignacionFormato";
+import type { RechazoTiposEnumerados } from "@/modules/formatos-excel/application/resolverTiposEnumerados";
 import {
   exigirAdminORevisor,
   idRutaSchema,
@@ -161,6 +162,17 @@ export function leerTipoArchivoYSeparador(
   }
 
   return { ok: true, datos: resultado.data };
+}
+
+// 400 cuando `application/` rechaza los tipos enumerados (el esquema Zod ya lo exige, así que en
+// la práctica solo se alcanza con un payload que lo esquive). No se audita: es un 400 de validación.
+export function respuestaTipoEnumeradoInvalido(rechazo: RechazoTiposEnumerados): NextResponse {
+  const mensaje =
+    rechazo.motivo === "TIPO_ENUMERADO_DUPLICADO"
+      ? `Ya existe un tipo enumerado llamado «${rechazo.nombreTipo}»`
+      : `La columna "${rechazo.nombreColumna}" usa un tipo enumerado que no existe`;
+
+  return respuestaError(mensaje, 400, { campo: "tiposEnumerados", codigo: rechazo.motivo });
 }
 
 export const MENSAJE_TIPO_NO_COINCIDE = "El archivo no corresponde al tipo seleccionado";

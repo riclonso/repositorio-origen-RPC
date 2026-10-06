@@ -9,6 +9,11 @@ import { CampoTexto } from "@/shared/components/CampoTexto";
 import type { SeparadorCsv, TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { useEliminarColumnaFormato } from "@/shared/components/useEliminarColumnaFormato";
 import {
+  useTiposEnumeradosFormato,
+  type TipoEnumeradoEditable,
+} from "@/shared/components/useTiposEnumeradosFormato";
+import { GestorTiposEnumeradosFormatoExcel } from "@/shared/components/GestorTiposEnumeradosFormatoExcel";
+import {
   PasoSubirPlantillaFormato,
   PasoTipoArchivoFormato,
   ResumenTipoArchivoFormato,
@@ -35,6 +40,11 @@ const CARACTER_SEPARADOR: Record<SeparadorCsv, string> = {
 
 type ColumnaDetectada = { orden: number; nombre: string };
 
+// Un formato nuevo nace sin tipos enumerados.
+function sinTiposEnumerados(): TipoEnumeradoEditable[] {
+  return [];
+}
+
 type PasoAsistente = "tipo" | "subir" | "configurar";
 
 function detectarOtroSeparador(columnas: ColumnaDetectada[], elegido: SeparadorCsv): SeparadorCsv | null {
@@ -58,7 +68,8 @@ type AsistenteFormatoExcelProps = {
 
 // Asistente de tres pasos: (0) elige el tipo de archivo (Excel o CSV) y, si es CSV, su
 // separador; (1) sube una plantilla de ese tipo y detecta sus columnas sin persistir nada; (2)
-// permite marcar cuáles son requeridas y su tipo de dato antes de enviarlo todo junto —el
+// permite definir tipos enumerados y marcar cuáles columnas son requeridas y su tipo de dato
+// antes de enviarlo todo junto —el
 // archivo original incluido— a `POST /api/formatos-excel`. No se mantiene estado de sesión entre
 // pasos: si se recarga la página hay que volver a subir el archivo.
 export function AsistenteFormatoExcel({
@@ -84,6 +95,11 @@ export function AsistenteFormatoExcel({
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const { columnaPendienteEliminacion, solicitarEliminarColumna, confirmarEliminarColumna, cancelarEliminarColumna } =
     useEliminarColumnaFormato(reglasValidacion, setColumnas, setReglasValidacion);
+  const { tiposEnumerados, columnasQueUsan, guardarTipo, eliminarTipo } = useTiposEnumeradosFormato(
+    sinTiposEnumerados,
+    columnas,
+    setColumnas,
+  );
 
   async function subirPlantilla(evento: ChangeEvent<HTMLInputElement>) {
     const seleccionado = evento.target.files?.[0] ?? null;
@@ -122,6 +138,7 @@ export function AsistenteFormatoExcel({
           ...columna,
           requerida: false,
           tipoDato: TIPO_DATO_POR_DEFECTO,
+          tipoEnumeradoNombre: null,
         })),
       );
       setNombre((actual) => (actual.length > 0 ? actual : seleccionado.name.replace(/\.[^./\\]+$/, "")));
@@ -166,13 +183,15 @@ export function AsistenteFormatoExcel({
       formData.append(
         "columnas",
         JSON.stringify(
-          columnas.map(({ nombre: nombreColumna, requerida, tipoDato }) => ({
+          columnas.map(({ nombre: nombreColumna, requerida, tipoDato, tipoEnumeradoNombre }) => ({
             nombre: nombreColumna,
             requerida,
             tipoDato,
+            tipoEnumeradoNombre,
           })),
         ),
       );
+      formData.append("tiposEnumerados", JSON.stringify(tiposEnumerados));
       formData.append(
         "reglasValidacion",
         JSON.stringify(
@@ -262,8 +281,17 @@ export function AsistenteFormatoExcel({
         />
       </div>
 
+      <GestorTiposEnumeradosFormatoExcel
+        tiposEnumerados={tiposEnumerados}
+        columnasQueUsan={columnasQueUsan}
+        onGuardar={guardarTipo}
+        onEliminar={eliminarTipo}
+        error={errores.tiposEnumerados}
+      />
+
       <TablaColumnasFormatoExcel
         columnas={columnas}
+        nombresTiposEnumerados={tiposEnumerados.map((tipo) => tipo.nombre)}
         onCambiar={setColumnas}
         onEliminarColumna={solicitarEliminarColumna}
         permitirEditarNombres={permitirEditarNombresColumnas}

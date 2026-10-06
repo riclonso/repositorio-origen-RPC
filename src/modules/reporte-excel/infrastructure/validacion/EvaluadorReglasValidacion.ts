@@ -17,19 +17,15 @@ function aTextoRut(valor: ValorCeldaArchivo): string {
   return String(valor ?? "").trim();
 }
 
-// Contexto adicional que necesitan `FECHA_DENTRO_DE_VENTANA_VIGENTE` y
-// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, a diferencia de `ALGUNA_COLUMNA_CON_VALOR`: el rango
-// (o el año) no se deriva de la fila, sino de la ventana de carga elegida para la subida completa
-// (RF-15). `anio` es el año calendario de la ventana (`VentanaCarga.anio`), distinto del rango
-// exacto `fechaApertura`/`fechaVencimiento` que usa la primera regla.
+// Contexto adicional que necesita `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: el año no se deriva
+// de la fila, sino de la ventana de carga elegida para la subida completa (`VentanaCarga.anio`).
 export type ContextoEvaluacionReglas = {
   ventana: { fechaApertura: Date; fechaVencimiento: Date; anio: number };
 };
 
 // Tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
-// fila), `FECHA_DENTRO_DE_VENTANA_VIGENTE` (una columna de fecha debe caer dentro del rango de la
-// ventana vigente), `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
+// fila), `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
 // partir de varias columnas debe caer dentro del AÑO calendario de la ventana), `FILA_DUPLICADA`,
 // `RUT_VALIDO`, y (RF-32) `CONTENIDO_HTML` y `FILA_VACIA`.
 // Un tipo de regla nuevo exige agregar su propio `case` aquí, mismo criterio que
@@ -50,20 +46,6 @@ export function cumpleReglaValidacion(
   switch (regla.tipo) {
     case "ALGUNA_COLUMNA_CON_VALOR":
       return regla.columnas.some((nombreColumna) => !celdaVacia(fila[nombreColumna] ?? null));
-    case "FECHA_DENTRO_DE_VENTANA_VIGENTE": {
-      const nombreColumna = regla.columnas[0];
-      if (!nombreColumna) return true;
-
-      const valor = fila[nombreColumna] ?? null;
-      const fecha = parsearFecha(valor);
-
-      // Una celda que no es una fecha válida ya quedó reportada como `TIPO_DATO_INVALIDO` en un
-      // paso anterior de `ValidarYCargarArchivo`: esta regla no reporta nada más para no
-      // duplicar el error.
-      if (!fecha) return true;
-
-      return fecha >= contexto.ventana.fechaApertura && fecha <= contexto.ventana.fechaVencimiento;
-    }
     // `columnas[0]` = principal, `columnas[1..]` = alternativas (convención documentada en
     // `domain/entities/FormatoExcel.ts`). Prioridad: (1) principal con valor parseable → esa es
     // la fecha efectiva; (2) principal vacía → la MÁS ANTIGUA de las alternativas con valor

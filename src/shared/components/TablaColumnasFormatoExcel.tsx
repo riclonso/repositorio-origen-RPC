@@ -13,26 +13,49 @@ export type ColumnaEditable = {
   nombre: string;
   requerida: boolean;
   tipoDato: string;
+  // Nombre del tipo enumerado del formato; no nulo si y solo si `tipoDato === "ENUMERADO"`.
+  tipoEnumeradoNombre: string | null;
   // Una fila agregada manualmente necesita un campo de nombre antes de guardarse. Las pantallas
   // que habiliten `permitirEditarNombres` también pueden modificar las cabeceras detectadas.
   agregadaManualmente?: boolean;
 };
 
-// Las siete opciones fijas del enum `TipoDatoColumna` (`prisma/schema.prisma`), en el orden en el
-// que tiene sentido presentarlas a quien configura el formato. El RUT ya no es un tipo de dato:
-// se valida con la regla "Validar RUT" (`EditorReglasValidacionFormatoExcel`).
+// Opciones de `TIPOS_DATO_COLUMNA`, en el orden en el que tiene sentido presentarlas a quien
+// configura el formato. El RUT ya no es un tipo de dato: se valida con la regla "Validar RUT"
+// (`EditorReglasValidacionFormatoExcel`).
 const OPCIONES_TIPO_DATO: OpcionSelect[] = [
   { valor: "TEXTO", etiqueta: "Texto" },
   { valor: "ENTERO", etiqueta: "Entero" },
   { valor: "DECIMAL", etiqueta: "Decimal" },
   { valor: "BOOLEANO", etiqueta: "Booleano" },
   { valor: "FECHA", etiqueta: "Fecha" },
-  { valor: "FECHA_HORA", etiqueta: "Fecha y hora" },
   { valor: "EMAIL", etiqueta: "Email" },
 ];
 
+// Codificación INTERNA del `value` de las opciones enumeradas en el `<select>`: el payload nunca la
+// lleva, sino los dos campos separados (`tipoDato: "ENUMERADO"` + `tipoEnumeradoNombre`).
+const PREFIJO_OPCION_ENUMERADO = "ENUMERADO::";
+
+function valorOpcionTipo(columna: Pick<ColumnaEditable, "tipoDato" | "tipoEnumeradoNombre">): string {
+  return columna.tipoDato === "ENUMERADO" && columna.tipoEnumeradoNombre !== null
+    ? `${PREFIJO_OPCION_ENUMERADO}${columna.tipoEnumeradoNombre}`
+    : columna.tipoDato;
+}
+
+function cambiosDesdeOpcionTipo(valor: string): Pick<ColumnaEditable, "tipoDato" | "tipoEnumeradoNombre"> {
+  return valor.startsWith(PREFIJO_OPCION_ENUMERADO)
+    ? { tipoDato: "ENUMERADO", tipoEnumeradoNombre: valor.slice(PREFIJO_OPCION_ENUMERADO.length) }
+    : { tipoDato: valor, tipoEnumeradoNombre: null };
+}
+
+// Referencia estable para el valor por defecto (un `[]` literal en la firma sería un arreglo nuevo
+// en cada render).
+const SIN_TIPOS_ENUMERADOS: string[] = [];
+
 type TablaColumnasFormatoExcelProps = {
   columnas: ColumnaEditable[];
+  // Nombres de los tipos enumerados del formato, en el orden en que se definieron.
+  nombresTiposEnumerados?: string[];
   onCambiar: (columnas: ColumnaEditable[]) => void;
   onEliminarColumna?: (columna: ColumnaEditable) => void;
   permitirEditarNombres?: boolean;
@@ -44,6 +67,7 @@ type EstadoArrastre = "reposo" | "arrastrando" | "destino";
 type FilaColumnaFormatoExcelProps = {
   columna: ColumnaEditable;
   indice: number;
+  nombresTiposEnumerados: string[];
   onActualizar: (cambios: Partial<ColumnaEditable>) => void;
   onReordenar: (indiceOrigen: number, indiceDestino: number) => void;
   onEliminar: () => void;
@@ -57,6 +81,7 @@ type FilaColumnaFormatoExcelProps = {
 function FilaColumnaFormatoExcel({
   columna,
   indice,
+  nombresTiposEnumerados,
   onActualizar,
   onReordenar,
   onEliminar,
@@ -174,8 +199,8 @@ function FilaColumnaFormatoExcel({
       <td className="px-3 py-2">
         <select
           aria-label={`Tipo de dato de ${columna.nombre}`}
-          value={columna.tipoDato}
-          onChange={(evento) => onActualizar({ tipoDato: evento.target.value })}
+          value={valorOpcionTipo(columna)}
+          onChange={(evento) => onActualizar(cambiosDesdeOpcionTipo(evento.target.value))}
           className="w-full rounded-md border border-gob-accent bg-white px-2 py-1.5 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30"
         >
           {OPCIONES_TIPO_DATO.map((opcion) => (
@@ -183,6 +208,15 @@ function FilaColumnaFormatoExcel({
               {opcion.etiqueta}
             </option>
           ))}
+          {nombresTiposEnumerados.length > 0 ? (
+            <optgroup label="Enumerados">
+              {nombresTiposEnumerados.map((nombreTipo) => (
+                <option key={nombreTipo} value={`${PREFIJO_OPCION_ENUMERADO}${nombreTipo}`}>
+                  {nombreTipo}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
       </td>
       <td className="px-3 py-2 text-center">
@@ -206,6 +240,7 @@ function FilaColumnaFormatoExcel({
 // referencia no contiene todavía toda la estructura requerida.
 export function TablaColumnasFormatoExcel({
   columnas,
+  nombresTiposEnumerados = SIN_TIPOS_ENUMERADOS,
   onCambiar,
   onEliminarColumna,
   permitirEditarNombres = false,
@@ -227,6 +262,7 @@ export function TablaColumnasFormatoExcel({
         nombre: "",
         requerida: false,
         tipoDato: "TEXTO",
+        tipoEnumeradoNombre: null,
         agregadaManualmente: true,
       },
     ]);
@@ -289,6 +325,7 @@ export function TablaColumnasFormatoExcel({
                 key={columna.orden}
                 columna={columna}
                 indice={indice}
+                nombresTiposEnumerados={nombresTiposEnumerados}
                 onActualizar={(cambios) => actualizarColumna(indice, cambios)}
                 onReordenar={reordenarColumnas}
                 onEliminar={() => eliminarColumna(columna)}

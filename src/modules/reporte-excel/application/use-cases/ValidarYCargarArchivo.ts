@@ -1,5 +1,13 @@
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
-import type { TipoArchivo } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type {
+  ColumnaFormatoExcel,
+  FormatoExcel,
+  TipoArchivo,
+} from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import {
+  buscarTipoEnumeradoPorNombre,
+  mensajeValorNoPermitidoEnumerado,
+} from "@/modules/formatos-excel/domain/entities/TipoEnumerado";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
@@ -15,7 +23,10 @@ import {
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { resolverAutorizacionReemplazo } from "@/modules/reporte-excel/application/resolverAutorizacionReemplazo";
 import { resolverVentanaHabilitada } from "@/modules/reporte-excel/application/resolverVentanaHabilitada";
-import { ValidadoresTipoDato } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
+import {
+  crearValidadorColumna,
+  type ValidadorCelda,
+} from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 import {
   columnasConContenidoHtml,
   crearRastreadorFilasDuplicadas,
@@ -93,6 +104,44 @@ function acotarErrores(errores: DatosNuevoErrorCargaArchivo[]): DatosNuevoErrorC
   });
 
   return acotados;
+}
+
+type ValidacionColumna = {
+  columna: ColumnaFormatoExcel;
+  validador: ValidadorCelda;
+  // El mensaje no depende de la celda (nunca incluye el valor recibido), así que se arma una vez.
+  mensajeTipoInvalido: string;
+};
+
+function prepararValidacionesColumnas(
+  formato: FormatoExcel,
+  columnas: ColumnaFormatoExcel[],
+): ValidacionColumna[] {
+  return columnas.map((columna) => {
+    let validador: ValidadorCelda;
+
+    try {
+      validador = crearValidadorColumna(columna, formato.tiposEnumerados);
+    } catch (error) {
+      // Dato corrupto (columna ENUMERADO sin su tipo): se relanza con el id del formato para que el
+      // Route Handler lo deje en `errores.txt` y responda un 500 genérico. Sin valores de celdas.
+      const detalle = error instanceof Error ? error.message : String(error);
+      throw new Error(`Formato ${formato.id}: ${detalle}`, { cause: error });
+    }
+
+    const tipoEnumerado =
+      columna.tipoDato === "ENUMERADO" && columna.tipoEnumeradoNombre !== null
+        ? buscarTipoEnumeradoPorNombre(formato.tiposEnumerados, columna.tipoEnumeradoNombre)
+        : undefined;
+
+    return {
+      columna,
+      validador,
+      mensajeTipoInvalido: tipoEnumerado
+        ? mensajeValorNoPermitidoEnumerado(columna.nombre, tipoEnumerado)
+        : `El valor de "${columna.nombre}" no tiene el formato esperado (${columna.tipoDato})`,
+    };
+  });
 }
 
 // Caso de uso central de RF-14: valida un archivo subido por un notificador contra el formato
@@ -270,6 +319,10 @@ export async function validarYCargarArchivo(
   const filasAValidar = validarFilas ? filasLeidas : [];
   const nombresColumnasAValidar = columnasAValidar.map((columna) => columna.nombre);
 
+  // Validador y mensaje de `TIPO_DATO_INVALIDO` de cada columna, calculados UNA vez antes del
+  // recorrido (para `ENUMERADO`, el `Set` de valores permitidos no se rearma fila por fila).
+  const validacionesColumnas = prepararValidacionesColumnas(formato, columnasAValidar);
+
   // Reglas `FILA_DUPLICADA` del formato: a diferencia del resto, necesitan memoria entre filas
   // (ver comentario en `EvaluadorReglasValidacion.ts`). El rastreador se crea una sola vez, antes
   // del recorrido, y se reutiliza fila a fila dentro del mismo `forEach` de abajo: sin una segunda
@@ -295,7 +348,7 @@ export async function validarYCargarArchivo(
       return;
     }
 
-    for (const columna of columnasAValidar) {
+    for (const { columna, validador, mensajeTipoInvalido } of validacionesColumnas) {
       const valor = fila[columna.nombre] ?? null;
 
       if (celdaVacia(valor)) {
@@ -310,12 +363,12 @@ export async function validarYCargarArchivo(
         continue;
       }
 
-      if (!ValidadoresTipoDato[columna.tipoDato](valor)) {
+      if (!validador(valor)) {
         errores.push({
           numeroFila,
           columna: columna.nombre,
           tipoError: "TIPO_DATO_INVALIDO",
-          mensaje: `El valor de "${columna.nombre}" no tiene el formato esperado (${columna.tipoDato})`,
+          mensaje: mensajeTipoInvalido,
         });
       }
     }

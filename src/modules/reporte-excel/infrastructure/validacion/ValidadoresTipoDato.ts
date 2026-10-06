@@ -1,5 +1,13 @@
 import { z } from "zod";
-import type { TipoDatoColumna } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type {
+  ColumnaFormatoExcel,
+  TipoDatoColumnaFijo,
+  TipoEnumeradoFormatoExcel,
+} from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import {
+  buscarTipoEnumeradoPorNombre,
+  normalizarValorEnumerado,
+} from "@/modules/formatos-excel/domain/entities/TipoEnumerado";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { aTextoCelda, celdaVacia } from "@/modules/reporte-excel/domain/reglas/filasArchivo";
 
@@ -41,29 +49,6 @@ function esFechaValida(valor: ValorCeldaArchivo): boolean {
   return esFechaCalendarioValida(Number(anioTexto), Number(mesTexto), Number(diaTexto));
 }
 
-// `.xlsx`: exceljs entrega siempre un `Date` nativo para una celda de fecha, tenga o no
-// componente de hora en Excel — a nivel de valor no hay forma de distinguir "solo fecha" de
-// "fecha y hora", así que en xlsx este validador acepta lo mismo que `esFechaValida`. La
-// distinción real solo aplica a `.csv`, donde el texto sí declara si trae hora: aquí se exige
-// `DD-MM-AAAA HH:mm` o `DD-MM-AAAA HH:mm:ss` (con `/` o espacio/`T` como separadores), a
-// diferencia de `FECHA` que en texto exige que NO traiga hora.
-function esFechaHoraValida(valor: ValorCeldaArchivo): boolean {
-  if (valor instanceof Date) {
-    return !Number.isNaN(valor.getTime());
-  }
-
-  const coincidencia = PATRON_FECHA_HORA_TEXTO.exec(aTextoCelda(valor));
-  if (!coincidencia) return false;
-
-  const [, diaTexto, mesTexto, anioTexto, horaTexto, minutoTexto, segundoTexto] = coincidencia;
-  if (!esFechaCalendarioValida(Number(anioTexto), Number(mesTexto), Number(diaTexto))) return false;
-
-  const hora = Number(horaTexto);
-  const minuto = Number(minutoTexto);
-  const segundo = segundoTexto ? Number(segundoTexto) : 0;
-  return hora <= 23 && minuto <= 59 && segundo <= 59;
-}
-
 function esBooleanoValido(valor: ValorCeldaArchivo): boolean {
   if (typeof valor === "boolean") return true;
 
@@ -77,9 +62,9 @@ function esBooleanoValido(valor: ValorCeldaArchivo): boolean {
 // (texto `DD-MM-AAAA[ HH:mm[:ss]]`, construido aquí también en UTC con `Date.UTC`). Es
 // deliberado: `VentanaCarga.fechaApertura/fechaVencimiento` se coercionan con `z.coerce.date()`
 // a partir de un string de fecha simple, que JavaScript interpreta como medianoche UTC — si esta
-// función construyera con hora LOCAL del servidor, la comparación de rango en
+// función construyera con hora LOCAL del servidor, la comparación en
 // `EvaluadorReglasValidacion` quedaría corrida por el huso horario del proceso. La usa
-// `EvaluadorReglasValidacion` para `FECHA_DENTRO_DE_VENTANA_VIGENTE` (RF-15). Nunca se invoca
+// `EvaluadorReglasValidacion` para `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`. Nunca se invoca
 // sobre una celda que no haya pasado ya la validación de tipo correspondiente: si la celda no es
 // una fecha válida, devuelve `null` en vez de lanzar, para que el llamador decida qué hacer (en
 // la práctica, ese caso ya quedó reportado como `TIPO_DATO_INVALIDO` en un paso anterior).
@@ -135,17 +120,49 @@ export function serializarValorParaClaveDuplicado(valor: ValorCeldaArchivo): str
   return valor.trim();
 }
 
-// Un validador por cada uno de los siete tipos de dato (el RUT ya no es un tipo de dato: se valida
+export type ValidadorCelda = (valor: ValorCeldaArchivo) => boolean;
+
+// Un validador por cada tipo de dato FIJO (el RUT ya no es un tipo de dato: se valida
 // con la regla `RUT_VALIDO`, ver `EvaluadorReglasValidacion.ts`). Se invoca únicamente sobre celdas que ya
 // pasaron `celdaVacia` (una celda vacía se reporta como `VALOR_REQUERIDO_VACIO`, nunca como
-// `TIPO_DATO_INVALIDO`).
-export const ValidadoresTipoDato: Record<TipoDatoColumna, (valor: ValorCeldaArchivo) => boolean> = {
+// `TIPO_DATO_INVALIDO`). `ENUMERADO` no está aquí: su validador depende de los valores definidos
+// en cada formato y lo arma `crearValidadorColumna`.
+export const ValidadoresTipoDato: Record<TipoDatoColumnaFijo, ValidadorCelda> = {
   // Cualquier valor no vacío es un texto válido: no tiene un formato propio que incumplir.
   TEXTO: () => true,
   ENTERO: (valor) => PATRON_ENTERO.test(aTextoCelda(valor)),
   DECIMAL: (valor) => PATRON_DECIMAL.test(aTextoCelda(valor)),
   BOOLEANO: esBooleanoValido,
   FECHA: esFechaValida,
-  FECHA_HORA: esFechaHoraValida,
   EMAIL: (valor) => ESQUEMA_EMAIL.safeParse(aTextoCelda(valor)).success,
 };
+
+// Validador de una columna concreta. Se llama UNA vez por columna antes de recorrer las filas: para
+// `ENUMERADO` arma un `Set` con los valores permitidos ya normalizados, así cada celda cuesta una
+// búsqueda O(1) en vez de recorrer la lista. La celda se pasa primero a texto con `aTextoCelda`
+// (número 1 → "1", booleano → "true", fecha → ISO) y se compara con `normalizarValorEnumerado`
+// (sin mayúsculas, con acentos).
+//
+// Una columna `ENUMERADO` cuyo tipo no existe en el formato es un dato corrupto (la BD, Zod y
+// `application/` lo impiden): se lanza en vez de aceptar o rechazar todas las celdas en silencio.
+// El mensaje lleva solo el nombre de la columna, nunca valores de celdas.
+export function crearValidadorColumna(
+  columna: Pick<ColumnaFormatoExcel, "nombre" | "tipoDato" | "tipoEnumeradoNombre">,
+  tiposEnumerados: readonly TipoEnumeradoFormatoExcel[],
+): ValidadorCelda {
+  if (columna.tipoDato !== "ENUMERADO") {
+    return ValidadoresTipoDato[columna.tipoDato];
+  }
+
+  const tipoEnumerado =
+    columna.tipoEnumeradoNombre === null
+      ? undefined
+      : buscarTipoEnumeradoPorNombre(tiposEnumerados, columna.tipoEnumeradoNombre);
+
+  if (!tipoEnumerado) {
+    throw new Error(`La columna "${columna.nombre}" es de tipo enumerado pero su tipo no existe en el formato`);
+  }
+
+  const valoresPermitidos = new Set(tipoEnumerado.valores.map(normalizarValorEnumerado));
+  return (valor) => valoresPermitidos.has(normalizarValorEnumerado(aTextoCelda(valor)));
+}

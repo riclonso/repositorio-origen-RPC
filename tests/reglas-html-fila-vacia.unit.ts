@@ -209,7 +209,6 @@ function probarEsquema(): void {
 
   const tiposExistentes: TipoReglaValidacion[] = [
     "ALGUNA_COLUMNA_CON_VALOR",
-    "FECHA_DENTRO_DE_VENTANA_VIGENTE",
     "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
     "FILA_DUPLICADA",
     "RUT_VALIDO",
@@ -243,11 +242,12 @@ function formatoCon(reglas: ReglaValidacionFormatoExcel[]): FormatoExcel {
     createdAt: new Date(),
     updatedAt: new Date(),
     columnas: [
-      { id: "c1", orden: 1, nombre: "Nombre", requerida: true, tipoDato: "TEXTO" },
-      { id: "c2", orden: 2, nombre: "Edad", requerida: true, tipoDato: "ENTERO" },
-      { id: "c3", orden: 3, nombre: "Comentario", requerida: false, tipoDato: "TEXTO" },
+      { id: "c1", orden: 1, nombre: "Nombre", requerida: true, tipoDato: "TEXTO", tipoEnumeradoNombre: null },
+      { id: "c2", orden: 2, nombre: "Edad", requerida: true, tipoDato: "ENTERO", tipoEnumeradoNombre: null },
+      { id: "c3", orden: 3, nombre: "Comentario", requerida: false, tipoDato: "TEXTO", tipoEnumeradoNombre: null },
     ],
     reglasValidacion: reglas,
+    tiposEnumerados: [],
   };
 }
 

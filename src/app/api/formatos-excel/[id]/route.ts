@@ -18,6 +18,7 @@ import {
   respuestaError,
   respuestaFormatoUnicoDeNotificadores,
   respuestaSinAcceso,
+  respuestaTipoEnumeradoInvalido,
 } from "@/app/api/formatos-excel/_lib/http";
 
 export async function GET(_request: Request, contexto: { params: Promise<{ id: string }> }) {
@@ -93,6 +94,13 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
         return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
       }
 
+      if (
+        resultado.motivo === "TIPO_ENUMERADO_DUPLICADO" ||
+        resultado.motivo === "REFERENCIA_TIPO_ENUMERADO_INVALIDA"
+      ) {
+        return respuestaTipoEnumeradoInvalido(resultado);
+      }
+
       if (resultado.motivo === "SEPARADOR_INVALIDO") {
         auditarFormatoExcel(acceso.sesion, request, {
           accion: "FORMATO_EXCEL_ACTUALIZADO",
@@ -116,12 +124,18 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       return respuestaDuplicado(resultado.nombre);
     }
 
+    // Solo NOMBRES de campos, nunca valores: la lista de valores de un tipo enumerado no se audita.
+    const camposCambiados = [
+      ...(resultado.separadorCsvCambiado ? ["separadorCsv"] : []),
+      ...(resultado.tiposEnumeradosCambiados ? ["tiposEnumerados"] : []),
+    ];
+
     auditarFormatoExcel(acceso.sesion, request, {
       accion: "FORMATO_EXCEL_ACTUALIZADO",
       resultado: "EXITO",
       formatoExcelId: resultado.formato.id,
       formatoExcelNombre: resultado.formato.nombre,
-      ...(resultado.separadorCsvCambiado ? { campos: ["separadorCsv"] } : {}),
+      ...(camposCambiados.length > 0 ? { campos: camposCambiados } : {}),
     });
 
     return NextResponse.json({ formato: aFormatoExcelDTO(resultado.formato) });

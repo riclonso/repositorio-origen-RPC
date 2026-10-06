@@ -9,11 +9,17 @@ export const TIPOS_DATO_COLUMNA = [
   "DECIMAL",
   "BOOLEANO",
   "FECHA",
-  "FECHA_HORA",
   "EMAIL",
+  // Único tipo configurable: sus valores permitidos los define quien configura el formato
+  // (`TipoEnumeradoFormatoExcel`). Una columna `ENUMERADO` lleva siempre `tipoEnumeradoNombre`.
+  "ENUMERADO",
 ] as const;
 
 export type TipoDatoColumna = (typeof TIPOS_DATO_COLUMNA)[number];
+
+// Tipos con un validador fijo (un parser propio). `ENUMERADO` queda fuera porque su validador se
+// arma a partir de los valores definidos en cada formato.
+export type TipoDatoColumnaFijo = Exclude<TipoDatoColumna, "ENUMERADO">;
 
 // RF-15 (ampliación): tipo de archivo que este formato acepta. Se deriva del
 // `tipoContenidoPlantilla` real detectado al crear (nunca recibido del cliente) y es inmutable:
@@ -41,6 +47,18 @@ export type ColumnaFormatoExcel = {
   nombre: string;
   requerida: boolean;
   tipoDato: TipoDatoColumna;
+  // Nombre de un `TipoEnumeradoFormatoExcel` del mismo formato. No nulo si y solo si
+  // `tipoDato === "ENUMERADO"` (CHECK en BD, Zod y `application/`).
+  tipoEnumeradoNombre: string | null;
+};
+
+// Tipo enumerado propio de un formato. Las columnas lo referencian por NOMBRE (no por id), mismo
+// motivo que las reglas referencian columnas por nombre: `actualizar()` regenera los ids.
+export type TipoEnumeradoFormatoExcel = {
+  id: string;
+  orden: number;
+  nombre: string;
+  valores: string[];
 };
 
 // Cuatro tipos de regla: de un conjunto de columnas, al menos una debe traer valor (si todas
@@ -56,7 +74,6 @@ export type ColumnaFormatoExcel = {
 // `TIPOS_DATO_COLUMNA`.
 export const TIPOS_REGLA_VALIDACION = [
   "ALGUNA_COLUMNA_CON_VALOR",
-  "FECHA_DENTRO_DE_VENTANA_VIGENTE",
   "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
   "FILA_DUPLICADA",
   "RUT_VALIDO",
@@ -119,6 +136,7 @@ export type FormatoExcel = {
   updatedAt: Date;
   columnas: ColumnaFormatoExcel[];
   reglasValidacion: ReglaValidacionFormatoExcel[];
+  tiposEnumerados: TipoEnumeradoFormatoExcel[];
 };
 
 // Vista liviana para el listado: evita traer el arreglo completo de columnas de cada fila cuando
@@ -145,6 +163,7 @@ export type DatosColumnaNueva = {
   nombre: string;
   requerida: boolean;
   tipoDato: TipoDatoColumna;
+  tipoEnumeradoNombre: string | null;
 };
 
 // Sin `id`: el orden lo fija el servidor por la posición del elemento en el arreglo recibido,
@@ -154,6 +173,13 @@ export type DatosReglaValidacionNueva = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
+};
+
+// Sin `id`: mismo criterio que `DatosColumnaNueva`.
+export type DatosTipoEnumeradoNuevo = {
+  orden: number;
+  nombre: string;
+  valores: string[];
 };
 
 export type DatosNuevoFormatoExcel = {
@@ -166,15 +192,17 @@ export type DatosNuevoFormatoExcel = {
   contenidoPlantilla: Buffer;
   columnas: DatosColumnaNueva[];
   reglasValidacion: DatosReglaValidacionNueva[];
+  tiposEnumerados: DatosTipoEnumeradoNuevo[];
 };
 
 // La plantilla persistida NO se reemplaza al editar (decisión ya tomada): editar solo toca
 // nombre, descripción, el separador CSV (solo en formatos CSV), el conjunto de columnas y el de
-// reglas de validación. `tipoArchivo` es inmutable.
+// reglas de validación (y el de tipos enumerados). `tipoArchivo` es inmutable.
 export type DatosEdicionFormatoExcel = {
   nombre: string;
   descripcion: string | null;
   separadorCsv: SeparadorCsv | null;
   columnas: DatosColumnaNueva[];
   reglasValidacion: DatosReglaValidacionNueva[];
+  tiposEnumerados: DatosTipoEnumeradoNuevo[];
 };

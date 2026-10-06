@@ -18,6 +18,7 @@ import {
   respuestaDuplicado,
   respuestaError,
   respuestaSinAcceso,
+  respuestaTipoEnumeradoInvalido,
   respuestaTipoNoCoincide,
   tipoArchivoDesdeTipoContenido,
   tipoContenidoDesdeArchivo,
@@ -46,7 +47,8 @@ export async function GET() {
 
 // La plantilla se reenvía completa en este POST (no hay estado de sesión entre los pasos del
 // asistente): `archivo` es el binario, `nombre`/`descripcion`/`columnas` son el resto del
-// formulario, `columnas` viaja como JSON dentro del campo multipart.
+// formulario; `columnas`, `reglasValidacion` y `tiposEnumerados` viajan como JSON dentro de su
+// campo multipart.
 export async function POST(request: Request) {
   const acceso = await exigirAdminORevisor();
 
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
   const descripcion = formData?.get("descripcion");
   const columnasBruto = formData?.get("columnas");
   const reglasValidacionBruto = formData?.get("reglasValidacion");
+  const tiposEnumeradosBruto = formData?.get("tiposEnumerados");
 
   if (!(archivo instanceof File)) {
     auditarFormatoExcel(acceso.sesion, request, {
@@ -119,11 +122,24 @@ export async function POST(request: Request) {
     }
   }
 
+  // Mismo criterio que `reglasValidacion`: ausente → `undefined` (aplica `.default([])`); JSON
+  // malformado → `null` (falla la validación con 400).
+  let tiposEnumeradosJson: unknown = undefined;
+
+  if (typeof tiposEnumeradosBruto === "string") {
+    try {
+      tiposEnumeradosJson = JSON.parse(tiposEnumeradosBruto);
+    } catch {
+      tiposEnumeradosJson = null;
+    }
+  }
+
   const datos = crearFormatoExcelSchema.safeParse({
     nombre: typeof nombre === "string" ? nombre : "",
     descripcion: typeof descripcion === "string" ? descripcion : undefined,
     columnas: columnasJson,
     reglasValidacion: reglasValidacionJson,
+    tiposEnumerados: tiposEnumeradosJson,
   });
 
   if (!datos.success) {
@@ -210,11 +226,19 @@ export async function POST(request: Request) {
         contenidoPlantilla: plantillaConCabecera,
         columnas: datos.data.columnas,
         reglasValidacion: datos.data.reglasValidacion,
+        tiposEnumerados: datos.data.tiposEnumerados,
       },
       { repositorio: prismaFormatoExcelRepository },
     );
 
     if (!resultado.ok) {
+      if (
+        resultado.motivo === "TIPO_ENUMERADO_DUPLICADO" ||
+        resultado.motivo === "REFERENCIA_TIPO_ENUMERADO_INVALIDA"
+      ) {
+        return respuestaTipoEnumeradoInvalido(resultado);
+      }
+
       if (resultado.motivo === "TIPO_NO_COINCIDE") {
         auditarFormatoExcel(acceso.sesion, request, {
           accion: "FORMATO_EXCEL_CREADO",

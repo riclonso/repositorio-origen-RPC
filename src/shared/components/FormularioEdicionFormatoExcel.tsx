@@ -6,6 +6,8 @@ import Link from "next/link";
 import type { FormatoExcel, SeparadorCsv } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { CampoSelect } from "@/shared/components/CampoSelect";
 import { useEliminarColumnaFormato } from "@/shared/components/useEliminarColumnaFormato";
+import { useTiposEnumeradosFormato } from "@/shared/components/useTiposEnumeradosFormato";
+import { GestorTiposEnumeradosFormatoExcel } from "@/shared/components/GestorTiposEnumeradosFormatoExcel";
 import {
   ETIQUETA_TIPO_ARCHIVO,
   OPCIONES_SEPARADOR_CSV,
@@ -37,8 +39,9 @@ export function FormularioEdicionFormatoExcel({
   permitirEditarNombresColumnas = false,
 }: FormularioEdicionFormatoExcelProps) {
   const router = useRouter();
-  const [nombre, setNombre] = useState(formato.nombre);
-  const [descripcion, setDescripcion] = useState(formato.descripcion ?? "");
+  // Valores iniciales del formulario (la página remonta el componente con `key={formato.id}`).
+  const [nombre, setNombre] = useState(() => formato.nombre);
+  const [descripcion, setDescripcion] = useState(() => formato.descripcion ?? "");
   // Solo aplica a formatos CSV; `tipoArchivo` es inmutable y se muestra de solo lectura. Valor
   // inicial del formulario (la página remonta el componente con `key={formato.id}`).
   const [separadorCsv, setSeparadorCsv] = useState<SeparadorCsv | null>(() => formato.separadorCsv);
@@ -50,7 +53,13 @@ export function FormularioEdicionFormatoExcel({
       nombre: columna.nombre,
       requerida: columna.requerida,
       tipoDato: columna.tipoDato,
+      tipoEnumeradoNombre: columna.tipoEnumeradoNombre,
     })),
+  );
+  const { tiposEnumerados, columnasQueUsan, guardarTipo, eliminarTipo } = useTiposEnumeradosFormato(
+    () => formato.tiposEnumerados.map((tipo) => ({ nombre: tipo.nombre, valores: tipo.valores })),
+    columnas,
+    setColumnas,
   );
   const [reglasValidacion, setReglasValidacion] = useState<ReglaValidacionEditable[]>(() =>
     formato.reglasValidacion.map((regla) => ({
@@ -78,11 +87,13 @@ export function FormularioEdicionFormatoExcel({
           nombre,
           descripcion: descripcion.trim().length > 0 ? descripcion : null,
           separadorCsv: formato.tipoArchivo === "CSV" ? separadorCsv : null,
-          columnas: columnas.map(({ nombre: nombreColumna, requerida, tipoDato }) => ({
+          columnas: columnas.map(({ nombre: nombreColumna, requerida, tipoDato, tipoEnumeradoNombre }) => ({
             nombre: nombreColumna,
             requerida,
             tipoDato,
+            tipoEnumeradoNombre,
           })),
+          tiposEnumerados,
           reglasValidacion: reglasValidacion.map(({ tipo, columnas: columnasRegla, mensaje }) => ({
             tipo,
             columnas: columnasRegla,
@@ -152,8 +163,17 @@ export function FormularioEdicionFormatoExcel({
         ) : null}
       </div>
 
+      <GestorTiposEnumeradosFormatoExcel
+        tiposEnumerados={tiposEnumerados}
+        columnasQueUsan={columnasQueUsan}
+        onGuardar={guardarTipo}
+        onEliminar={eliminarTipo}
+        error={errores.tiposEnumerados}
+      />
+
       <TablaColumnasFormatoExcel
         columnas={columnas}
+        nombresTiposEnumerados={tiposEnumerados.map((tipo) => tipo.nombre)}
         onCambiar={setColumnas}
         onEliminarColumna={solicitarEliminarColumna}
         permitirEditarNombres={permitirEditarNombresColumnas}

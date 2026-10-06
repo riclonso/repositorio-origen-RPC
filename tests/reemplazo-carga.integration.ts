@@ -55,8 +55,9 @@ function formato(): FormatoExcel {
     activo: true,
     createdAt: new Date(),
     updatedAt: new Date(),
-    columnas: [{ id: "c1", orden: 1, nombre: "a", requerida: true, tipoDato: "ENTERO" }],
+    columnas: [{ id: "c1", orden: 1, nombre: "a", requerida: true, tipoDato: "ENTERO", tipoEnumeradoNombre: null }],
     reglasValidacion: [],
+    tiposEnumerados: [],
   } as unknown as FormatoExcel;
 }
 

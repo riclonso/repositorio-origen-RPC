@@ -127,18 +127,22 @@ model Usuario {
   @@map("usuario")
 }
 
-// Siete tipos fijos, no configurables: agregar uno nuevo es una decisión de producto que exige
+// Tipos fijos (todos menos `ENUMERADO`): agregar uno nuevo es una decisión de producto que exige
 // código nuevo (un parser propio), así que vive en el enum y no en una tabla de catálogo. `RUT`
 // dejó de ser un tipo de dato: el RUT se valida con la regla `RUT_VALIDO`, que admite el RUT
-// completo en una columna o repartido en número + dígito verificador.
+// completo en una columna o repartido en número + dígito verificador. `FECHA_HORA` también se
+// quitó: solo se valida la fecha.
+// `ENUMERADO` es la excepción configurable: la lista de valores permitidos la define quien
+// configura el formato en `TipoEnumeradoFormatoExcel` (propio de cada formato, no un catálogo
+// global), y la columna lo referencia por nombre en `ColumnaFormatoExcel.tipoEnumeradoNombre`.
 enum TipoDatoColumna {
   TEXTO
   ENTERO
   DECIMAL
   BOOLEANO
   FECHA
-  FECHA_HORA
   EMAIL
+  ENUMERADO
 }
 
 // RF-15 (ampliación): tipo de archivo que un `FormatoExcel`/`VentanaCarga` acepta. Dos valores
@@ -182,6 +186,8 @@ model FormatoExcel {
   columnas          ColumnaFormatoExcel[]
   usuariosAsignados UsuarioFormatoExcel[]
   reglasValidacion  ReglaValidacionFormatoExcel[]
+  // Tipos enumerados propios del formato. Solo en la lectura de detalle, NUNCA en `listar()`.
+  tiposEnumerados   TipoEnumeradoFormatoExcel[]
   // Relación inversa de RF-14, exigida por Prisma. NUNCA usarla con `include` en `listar()`:
   // mismo motivo que `usuariosAsignados`.
   cargasArchivo     CargaArchivo[]
@@ -204,10 +210,33 @@ model ColumnaFormatoExcel {
   nombre         String
   requerida      Boolean         @default(false)
   tipoDato       TipoDatoColumna
+  // Nombre de un `TipoEnumeradoFormatoExcel` del MISMO formato. Por nombre y no por FK, mismo
+  // motivo que `ReglaValidacionFormatoExcel.columnas`: `actualizar()` regenera los ids de los
+  // hijos en cada edición. No nulo si y solo si `tipoDato = ENUMERADO` (CHECK en la migración).
+  tipoEnumeradoNombre String?
 
   @@unique([formatoExcelId, orden])
   @@unique([formatoExcelId, nombre])
   @@map("columna_formato_excel")
+}
+
+// Tipo de dato enumerado definido por quien configura el formato (ADMIN o REVISOR_REPOSITORIO):
+// un nombre y la lista de valores permitidos. Propio de cada formato, no un catálogo global. Se
+// reemplaza completo al editar (`deleteMany` + `create`), igual que columnas y reglas.
+model TipoEnumeradoFormatoExcel {
+  id             String       @id @default(uuid())
+  formatoExcelId String
+  formatoExcel   FormatoExcel @relation(fields: [formatoExcelId], references: [id], onDelete: Cascade)
+  // Posición fijada por el servidor a partir del arreglo recibido.
+  orden          Int
+  nombre         String
+  // Valores tal como los escribió el usuario (con trim y NFC). La comparación contra la celda
+  // ignora mayúsculas y distingue acentos (`normalizarValorEnumerado`).
+  valores        String[]
+
+  @@unique([formatoExcelId, orden])
+  @@unique([formatoExcelId, nombre])
+  @@map("tipo_enumerado_formato_excel")
 }
 
 // Un solo tipo por ahora: de un conjunto de columnas, al menos una debe traer valor; si todas
@@ -223,7 +252,6 @@ model ColumnaFormatoExcel {
 // CALENDARIO de la ventana (`VentanaCarga.anio`), no contra su rango exacto de fechas.
 enum TipoReglaValidacionFormatoExcel {
   ALGUNA_COLUMNA_CON_VALOR
-  FECHA_DENTRO_DE_VENTANA_VIGENTE
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
   FILA_DUPLICADA
   RUT_VALIDO

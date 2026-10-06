@@ -7,11 +7,21 @@ import type {
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { FormatoDuplicadoError } from "@/modules/formatos-excel/domain/errors/FormatoDuplicadoError";
+import {
+  resolverTiposEnumerados,
+  type RechazoTiposEnumerados,
+} from "@/modules/formatos-excel/application/resolverTiposEnumerados";
 
 export type DatosColumnaCreacion = {
   nombre: string;
   requerida: boolean;
   tipoDato: TipoDatoColumna;
+  tipoEnumeradoNombre: string | null;
+};
+
+export type DatosTipoEnumeradoCreacion = {
+  nombre: string;
+  valores: string[];
 };
 
 export type DatosReglaValidacionCreacion = {
@@ -33,12 +43,14 @@ export type DatosCreacionFormatoExcel = {
   contenidoPlantilla: Buffer;
   columnas: DatosColumnaCreacion[];
   reglasValidacion: DatosReglaValidacionCreacion[];
+  tiposEnumerados: DatosTipoEnumeradoCreacion[];
 };
 
 export type ResultadoCrearFormatoExcel =
   | { ok: true; formato: FormatoExcel }
   | { ok: false; motivo: "TIPO_NO_COINCIDE" }
-  | { ok: false; motivo: "DUPLICADO"; nombre: string };
+  | { ok: false; motivo: "DUPLICADO"; nombre: string }
+  | RechazoTiposEnumerados;
 
 export async function crearFormatoExcel(
   datos: DatosCreacionFormatoExcel,
@@ -46,6 +58,14 @@ export async function crearFormatoExcel(
 ): Promise<ResultadoCrearFormatoExcel> {
   if (datos.tipoArchivoDeclarado !== datos.tipoArchivo) {
     return { ok: false, motivo: "TIPO_NO_COINCIDE" };
+  }
+
+  // Antes de consultar la base de datos: una referencia inválida no necesita ninguna lectura.
+  // También fija el orden de columnas y tipos enumerados por posición.
+  const resueltos = resolverTiposEnumerados(datos.columnas, datos.tiposEnumerados);
+
+  if (!resueltos.ok) {
+    return resueltos;
   }
 
   const existente = await dependencias.repositorio.buscarPorNombre(datos.nombre);
@@ -56,7 +76,6 @@ export async function crearFormatoExcel(
 
   // El orden lo fija el servidor por la posición del elemento en el arreglo recibido: nunca se
   // confía en un valor de orden enviado por el cliente.
-  const columnasConOrden = datos.columnas.map((columna, indice) => ({ ...columna, orden: indice + 1 }));
   const reglasValidacionConOrden = datos.reglasValidacion.map((regla, indice) => ({
     ...regla,
     orden: indice + 1,
@@ -73,8 +92,9 @@ export async function crearFormatoExcel(
       // persiste separador.
       separadorCsv: datos.tipoArchivo === "CSV" ? datos.separadorCsv : null,
       contenidoPlantilla: datos.contenidoPlantilla,
-      columnas: columnasConOrden,
+      columnas: resueltos.columnas,
       reglasValidacion: reglasValidacionConOrden,
+      tiposEnumerados: resueltos.tiposEnumerados,
     });
 
     return { ok: true, formato };

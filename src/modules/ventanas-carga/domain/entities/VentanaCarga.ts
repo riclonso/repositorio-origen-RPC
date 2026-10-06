@@ -1,5 +1,5 @@
 // RF-15: ventana de tiempo (medida en año calendario) durante la cual un notificador puede subir
-// un archivo contra una regla `FECHA_DENTRO_DE_VENTANA_VIGENTE`. "Abierta" NO es un campo
+// un archivo. "Abierta" NO es un campo
 // persistido: se calcula siempre con `estaAbierta()` contra un `ahora` que viaja como parámetro,
 // mismo criterio que `TokenRecuperacion` (RF-10) usa para su vigencia.
 

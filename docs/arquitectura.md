@@ -827,6 +827,50 @@ una regla equivalente, y recreó el enum `TipoDatoColumna` sin `RUT`.
 una celda de fecha, tenga o no componente de hora en Excel — a nivel de valor no hay forma de
 distinguir "solo fecha" de "fecha y hora", así que `FECHA` y `FECHA_HORA` aceptan lo mismo en xlsx.
 La distinción real de formato solo existe en `.csv`, donde el texto sí declara si trae hora.
+**Actualización (2026-10-05):** el tipo `FECHA_HORA` se eliminó del enum `TipoDatoColumna`
+(migración `20261005120000_quitar_tipo_dato_fecha_hora`, que convierte a `FECHA` cualquier columna
+que lo tuviera). Las columnas de fecha solo validan la fecha; en `.csv` exigen `DD-MM-AAAA` o
+`DD/MM/AAAA` sin hora. Las menciones a `FECHA_HORA` más abajo son históricas.
+En la misma fecha se eliminó la regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` (migración
+`20261005130000_quitar_regla_fecha_dentro_ventana`, que borra las reglas que la usaran): se
+solapaba con `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, que queda como única regla de fecha. Las
+menciones a esa regla más abajo también son históricas.
+
+### Tipos de dato enumerados por formato (RF-35)
+
+Además de los tipos fijos, una columna puede ser `ENUMERADO`: solo acepta los valores de una lista
+que define quien crea o edita el formato. Decisiones:
+
+- **El enum es propio de cada formato, no un catálogo global.** El asistente no guarda nada hasta
+  "Crear formato"; un catálogo global obligaría a guardar el enum antes y dejaría huérfanos si se
+  cancela. Así, los enums (`tipo_enumerado_formato_excel`, `valores text[]`, FK `Cascade`) viajan en
+  el mismo payload que columnas y reglas y se reemplazan con el mismo `deleteMany + create` atómico.
+  No hay endpoints, guards ni acciones de auditoría nuevos (la edición audita
+  `campos: ["tiposEnumerados"]`, nunca los valores). Precio: un enum que usan dos formatos se define
+  dos veces.
+- **La columna referencia el enum por nombre** (`columna_formato_excel.tipoEnumeradoNombre`), no por
+  FK: `actualizar()` regenera los ids de los hijos y Prisma no deja que un hijo de un nested write
+  apunte al id de otro hijo de la misma llamada (mismo motivo que `ReglaValidacionFormatoExcel.columnas`).
+  La invariante `tipoDato = ENUMERADO` ⇔ `tipoEnumeradoNombre` no nulo vive en un `CHECK` escrito a
+  mano, en Zod y en `application/resolverTiposEnumerados.ts`, que además guarda siempre el nombre
+  tal como está en el enum.
+- **Dos migraciones** (`20261005140000_agregar_tipo_dato_enumerado`, solo `ADD VALUE`, y
+  `20261005140100_agregar_tipos_enumerados_formato`): PostgreSQL no permite usar un valor de enum
+  recién agregado en la misma transacción, y el `CHECK` lo referencia.
+- **Una sola regla de comparación:** `normalizarValorEnumerado` (`formatos-excel/domain/entities/TipoEnumerado.ts`)
+  aplica NFC + trim + `toLocaleLowerCase("es")`: ignora mayúsculas, distingue acentos, y NFC evita
+  que una "í" descompuesta (CSV de Mac) no coincida. La usan Zod (duplicados al definir) y la
+  validación de la carga. La celda pasa antes por `aTextoCelda`, así que un número `1` de Excel no
+  coincide con `"01"`.
+- **Validador parametrizado sin romper el `Record`:** `ValidadoresTipoDato` queda tipado sobre los
+  tipos fijos y `crearValidadorColumna(columna, tiposEnumerados)` arma un `Set` por columna una sola
+  vez, antes del recorrido de filas. Si una columna `ENUMERADO` no encuentra su enum (inalcanzable por
+  el CHECK y Zod), lanza: es un formato corrupto, no un dato inválido del notificador.
+- **Mensaje:** `TIPO_DATO_INVALIDO` lista los valores permitidos si son 10 o menos, nunca el valor
+  recibido.
+- **Edición:** no se puede eliminar un enum en uso; renombrarlo actualiza sus columnas
+  (`shared/components/useTiposEnumeradosFormato.ts`). Como los demás tipos, editar un enum no revalida
+  cargas ya validadas: una `PENDIENTE_VISTO_BUENO` se aprueba con el resultado que tuvo al subir.
 
 ### El evaluador de reglas reutiliza la configuración de RF-13 tal cual quedó persistida
 
