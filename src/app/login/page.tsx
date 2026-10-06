@@ -15,7 +15,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const contrasenaActualizada = motivo === "contrasena-actualizada";
 
   return (
-    <MarcoPublico titulo="Repositorio Regional de Carga de Información Oncológica" subtitulo="SEREMI de Salud Biobío">
+    <MarcoPublico titulo="Sistema RPC" subtitulo="SEREMI de Salud Biobío">
       {restablecida === "1" || contrasenaActualizada ? (
         <p
           role="status"
