@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { IconoDocumento, IconoSubir } from "@/shared/components/iconos";
+import { formatearTamanoArchivo } from "@/shared/utils/tamanoArchivo";
 
 type CargadorArchivoProps = {
   id: string;
@@ -11,20 +12,19 @@ type CargadorArchivoProps = {
   // vuelve a exigir el tipo del formato.
   extension?: string;
   descripcionTipo?: string;
+  // Tamaño máximo visible en la etiqueta (RF-37: Bioestadística admite 200 MB). Solo informativo:
+  // el servidor vuelve a medir el tamaño real.
+  tamanoMaximoTexto?: string;
   archivo?: File | null;
   onArchivo: (archivo: File | null) => void;
 };
-
-function formatearTamano(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export function CargadorArchivo({
   id,
   disabled = false,
   extension = ".xlsx,.csv",
   descripcionTipo = ".xlsx o .csv",
+  tamanoMaximoTexto = "10 MB",
   archivo = null,
   onArchivo,
 }: CargadorArchivoProps) {
@@ -64,7 +64,7 @@ export function CargadorArchivo({
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="text-sm font-medium text-gob-black">
-        Archivo ({descripcionTipo}, máximo 10 MB)
+        Archivo ({descripcionTipo}, máximo {tamanoMaximoTexto})
       </label>
 
       <div
@@ -95,7 +95,7 @@ export function CargadorArchivo({
             <IconoDocumento className="shrink-0 text-gob-primary" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-gob-black">{archivo.name}</p>
-              <p className="mt-0.5 text-xs text-gob-gray-a">Archivo adjunto · {formatearTamano(archivo.size)}</p>
+              <p className="mt-0.5 text-xs text-gob-gray-a">Archivo adjunto · {formatearTamanoArchivo(archivo.size)}</p>
             </div>
             <button type="button" onClick={quitarArchivo} disabled={disabled} className="pointer-events-auto shrink-0 text-xs font-semibold text-gob-primary underline hover:text-gob-primary-oscuro">
               Quitar

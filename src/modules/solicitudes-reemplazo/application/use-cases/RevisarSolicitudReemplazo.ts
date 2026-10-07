@@ -28,13 +28,19 @@ export async function revisarSolicitudReemplazo(
     return { ok: false, motivo: "NO_ENCONTRADO" };
   }
 
-  const estado = datos.decision === "APROBAR" ? "APROBADA" : "RECHAZADA";
-
-  const actualizada = await dependencias.repositorio.revisar(id, {
-    revisadoPorId: datos.revisadoPorId,
-    estado,
-    comentarioRevision: datos.comentario,
-  });
+  // RF-36: al aprobar se COPIA el N vigente de la ventana de la carga; editar la ventana después no
+  // cambia el plazo ya otorgado. Al rechazar no hay plazo que fijar.
+  const actualizada = await dependencias.repositorio.revisar(
+    id,
+    datos.decision === "APROBAR"
+      ? {
+          revisadoPorId: datos.revisadoPorId,
+          estado: "APROBADA",
+          comentarioRevision: datos.comentario,
+          diasVigencia: existente.diasVigenciaReemplazoVentana,
+        }
+      : { revisadoPorId: datos.revisadoPorId, estado: "RECHAZADA", comentarioRevision: datos.comentario, diasVigencia: null },
+  );
 
   if (!actualizada) {
     // Cierra la ventana de carrera de dos revisores actuando a la vez: ya no estaba `PENDIENTE`.

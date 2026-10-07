@@ -12,7 +12,6 @@ import type {
   EstadoSolicitudReemplazoCarga,
   OrigenSolicitudReemplazoCarga,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
-import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import {
   idTarjetaVentana,
@@ -22,7 +21,7 @@ import { BannerMensajesSinLeer } from "@/shared/components/BannerMensajesSinLeer
 import { Boton } from "@/shared/components/Boton";
 import { BotonMensajesVentana } from "@/shared/components/BotonMensajesVentana";
 import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
-import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
+import { FormularioSolicitudReemplazo } from "@/shared/components/FormularioSolicitudReemplazo";
 import { tituloVentanaMensajes, type VentanaMensajesSinLeerVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
 import type { ResumenMensajesPorVentana } from "@/modules/mensajeria/domain/entities/MensajeCarga";
 import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
@@ -62,6 +61,8 @@ export type SolicitudReemplazoPropiaVista = {
   origen: OrigenSolicitudReemplazoCarga;
   vencida: boolean;
   utilizable: boolean;
+  // RF-36: hasta cuándo habilita la subida (ISO), resuelto en el servidor. `null` si no está aprobada.
+  venceEl: string | null;
 };
 
 // Qué habilita reemplazar la `APROBADA` vigente de una combinación: una solicitud de reemplazo
@@ -77,6 +78,9 @@ export type CombinacionCargaVista = {
   formatoNombre: string;
   anio: number;
   ventanaCargaId: string;
+  // RF-36: ventana cerrada POR FECHA (publicada, no archivada) que se muestra solo porque el
+  // notificador tiene una solicitud de reemplazo en curso o una habilitación fuera de plazo vigente.
+  cerrada: boolean;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
@@ -183,6 +187,8 @@ function resolverHabilitacionReemplazo(
 type EstadoTarjetaCombinacion = {
   cargaAprobada: CargaResumenVista | null;
   habilitacionReemplazo: HabilitacionReemplazo;
+  // RF-36: plazo (ISO) de la solicitud utilizable, para el aviso "puedes subir hasta...".
+  venceElSolicitud: string | null;
   solicitudPendiente: boolean;
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
@@ -219,6 +225,7 @@ function derivarEstadoTarjeta(
     habilitacionReemplazo: cargaAprobada
       ? resolverHabilitacionReemplazo(cargaAprobada, solicitudesDeLaAprobada, reaperturas)
       : null,
+    venceElSolicitud: solicitudesDeLaAprobada.find((solicitud) => solicitud.utilizable)?.venceEl ?? null,
     solicitudPendiente: solicitudesDeLaAprobada.some((solicitud) => solicitud.estado === "PENDIENTE"),
     cargaPendienteDecision,
     solicitudPendienteDeCargaPendiente,
@@ -229,21 +236,36 @@ function derivarEstadoTarjeta(
 }
 
 // Aviso de que la tarjeta admite subir el archivo de reemplazo, con el texto según qué lo habilita.
+// RF-36: con una solicitud aprobada se muestra además su plazo ("vence el"), que puede ir más allá
+// del cierre de la ventana. El plazo de una reapertura ya lo muestra la cabecera de la tarjeta.
 function AvisoReemplazoHabilitado({
   habilitacion,
   nombreArchivoVigente,
+  venceElSolicitud,
 }: {
   habilitacion: Exclude<HabilitacionReemplazo, null>;
   nombreArchivoVigente: string;
+  venceElSolicitud: string | null;
 }) {
   const motivo =
     habilitacion === "SOLICITUD"
       ? "Tu solicitud de reemplazo fue aprobada"
       : "Tu carga anterior fue rechazada";
+  const plazo = habilitacion === "SOLICITUD" ? venceElSolicitud : null;
 
   return (
     <p className="mt-2 text-sm font-medium text-gob-primary">
       {motivo}: puedes subir un archivo que reemplazará a <strong>{nombreArchivoVigente}</strong>.
+      {plazo ? (
+        <>
+          {" "}
+          Plazo para subirlo y enviarlo:{" "}
+          <time dateTime={plazo} className="font-semibold tabular-nums">
+            {formatearFechaHoraIso(plazo)}
+          </time>
+          .
+        </>
+      ) : null}
     </p>
   );
 }
@@ -308,107 +330,95 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
   );
 }
 
-type FormularioSolicitarReemplazoProps = {
-  cargaArchivoId: string;
-  placeholderMotivo: string;
-  onExito: () => void;
-};
-
-// Formulario de solicitud de reemplazo (estado "b" de la tarjeta, ver `TarjetaCargaArchivo`):
-// motivo obligatorio, loading "Cargando la información" al guardar (ver diseño del RF), sin
-// componente de loading nuevo (reutiliza `Boton.cargando`/`textoCargando`). `placeholderMotivo` lo
-// fija el llamador porque el texto varía según el origen de la carga (ya `APROBADA` vs. todavía
-// `PENDIENTE_VISTO_BUENO` sin decidir): un mismo placeholder para ambos sería incorrecto en el
-// segundo caso, la carga no está aprobada.
-function FormularioSolicitarReemplazo({ cargaArchivoId, placeholderMotivo, onExito }: FormularioSolicitarReemplazoProps) {
-  const [abierto, setAbierto] = useState(false);
-  const [motivo, setMotivo] = useState("");
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [enviada, setEnviada] = useState(false);
-
-  async function enviarSolicitud() {
-    if (motivo.trim().length === 0) return;
-
-    setEnviando(true);
-    setError(null);
-
-    try {
-      const respuesta = await fetch("/api/notificador/solicitudes-reemplazo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cargaArchivoId, motivo: motivo.trim() }),
-      });
-
-      if (!respuesta.ok) {
-        const datos = await respuesta.json().catch(() => null);
-        setError(datos?.error ?? MENSAJE_ERROR_GENERICO);
-        return;
-      }
-
-      setEnviada(true);
-      setAbierto(false);
-      onExito();
-    } catch {
-      setError(MENSAJE_ERROR_GENERICO);
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  if (enviada) {
+// Cabecera de la tarjeta de subida. Con una reapertura vigente se destaca como rechazo con su motivo
+// y plazo; RF-36: una ventana cerrada por fecha (habilitada solo por una autorización) se marca como
+// "Fuera de plazo" para que no se lea como una ventana abierta. Extraída de `TarjetaCargaArchivo`
+// para acotar su complejidad.
+function CabeceraTarjetaCarga({
+  idTitulo,
+  tituloCombinacion,
+  reapertura,
+  ventanaCerrada,
+}: {
+  idTitulo: string;
+  tituloCombinacion: string;
+  reapertura: ReaperturaVigentePropiaVista | null;
+  ventanaCerrada: boolean;
+}) {
+  if (reapertura) {
     return (
-      <p role="status" className="mt-4 text-sm font-medium text-gob-primary">
-        Solicitud enviada. Un administrador o el revisor del repositorio debe aprobarla antes de que puedas subir el
-        archivo de reemplazo.
-      </p>
+      <div role="alert" className={estilosTarjeta.cabecera}>
+        <div className="min-w-0">
+          <h3 id={idTitulo} className={estilosTarjeta.titulo}>
+            {tituloCombinacion}
+          </h3>
+          <p className="mt-1 text-sm leading-5 text-gob-gray-a">
+            <span className="font-semibold text-gob-tertiary">Motivo:</span> {reapertura.motivo}
+          </p>
+        </div>
+        <div className="flex flex-col items-end text-right">
+          <span className={`${estilosTarjeta.estado} ${estilosTarjeta.rechazado}`}>Rechazado</span>
+          <p className="mt-2 max-w-28 text-xs leading-4 text-gob-gray-a">
+            Plazo para subirlo
+            <time dateTime={reapertura.fechaLimite} className="mt-0.5 block font-semibold tabular-nums text-gob-danger">
+              {formatearFechaHoraIso(reapertura.fechaLimite)}
+            </time>
+          </p>
+        </div>
+      </div>
     );
   }
 
-  function cerrarDialogo() {
-    if (enviando) return;
-    setAbierto(false);
-    setError(null);
+  if (ventanaCerrada) {
+    return (
+      <div className={estilosTarjeta.cabecera}>
+        <h3 id={idTitulo} className={estilosTarjeta.titulo}>
+          {tituloCombinacion}
+        </h3>
+        <span className={`${estilosTarjeta.estado} ${estilosTarjeta.pendiente}`}>Fuera de plazo</span>
+      </div>
+    );
   }
 
-  const idMotivo = `motivo-reemplazo-${cargaArchivoId}`;
+  return (
+    <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
+      {tituloCombinacion}
+    </h3>
+  );
+}
+
+// Resultado de la última subida de la tarjeta: errores (con su modal de detalle) o "Pendiente de
+// aprobación" tras finalizar. Extraído de `TarjetaCargaArchivo` junto con el estado del modal, que
+// solo se usa aquí.
+function ResultadoUltimaSubida({ resultado }: { resultado: CargaDetalleVista }) {
+  const [erroresAbiertos, setErroresAbiertos] = useState(false);
+
+  if (resultado.cantidadErrores === 0) {
+    if (!resultado.finalizadaEn) return null;
+
+    return (
+      <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
+        <p role="status" className="text-sm font-medium text-gob-tertiary">
+          Pendiente de aprobación.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <Boton onClick={() => setAbierto(true)} className="w-fit">
-        Solicitar reemplazo
-      </Boton>
-      <DialogoConfirmacion
-        abierto={abierto}
-        titulo="Solicitar reemplazo"
-        descripcion="Explique por qué necesita cambiar el archivo enviado. Cuando se apruebe su solicitud, podrá subir un archivo nuevo."
-        textoConfirmar="Enviar solicitud"
-        textoConfirmando="Cargando la información..."
-        procesando={enviando}
-        confirmarDeshabilitado={motivo.trim().length === 0}
-        error={error}
-        onConfirmar={() => void enviarSolicitud()}
-        onCancelar={cerrarDialogo}
-      >
-      <div className="mt-4 flex flex-col gap-2">
-        <label htmlFor={idMotivo} className="text-sm font-medium text-gob-black">
-          Motivo del reemplazo
-        </label>
-        <textarea
-          id={idMotivo}
-          value={motivo}
-          onChange={(evento) => setMotivo(evento.target.value)}
-          disabled={enviando}
-          maxLength={LONGITUD_MAXIMA_MOTIVO}
-          rows={3}
-          required
-          placeholder={placeholderMotivo}
-          className="w-full rounded-md border border-gob-accent bg-white px-3 py-2 text-sm text-gob-black outline-none placeholder:text-gob-gray-b focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30 disabled:bg-gob-neutral"
-        />
-        <p className="text-right text-xs tabular-nums text-gob-gray-a">{motivo.length}/{LONGITUD_MAXIMA_MOTIVO}</p>
-      </div>
-      </DialogoConfirmacion>
-    </>
+    <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
+      <p role="alert" className="text-sm text-gob-gray-a">
+        <BadgeEstadoCarga estado={resultado.estado} /> ·{" "}
+        <button
+          type="button"
+          onClick={() => setErroresAbiertos(true)}
+          className="font-semibold text-gob-danger underline underline-offset-2 hover:text-gob-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        >
+          {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
+        </button>
+      </p>
+      <ModalErroresCarga abierto={erroresAbiertos} carga={resultado} onCerrar={() => setErroresAbiertos(false)} />
+    </div>
   );
 }
 
@@ -478,8 +488,10 @@ function TarjetaCargaBloqueada({
             Solicitud de reemplazo pendiente.
           </p>
         ) : (
-          <FormularioSolicitarReemplazo
-            cargaArchivoId={cargaArchivoId}
+          <FormularioSolicitudReemplazo
+            rutaApi="/api/notificador/solicitudes-reemplazo"
+            cuerpo={{ cargaArchivoId }}
+            idBase={cargaArchivoId}
             placeholderMotivo={placeholderMotivo}
             onExito={onSolicitudReemplazoEnviada}
           />
@@ -498,6 +510,8 @@ type TarjetaCargaArchivoProps = {
   // reapertura posterior a la aprobación); si no, la tarjeta reducida con el formulario de solicitud.
   cargaAprobada: CargaResumenVista | null;
   habilitacionReemplazo: HabilitacionReemplazo;
+  // RF-36: plazo (ISO) de la solicitud utilizable, o `null`.
+  venceElSolicitud: string | null;
   solicitudPendiente: boolean;
   // `null` cuando la combinación no tiene ninguna carga `PENDIENTE_VISTO_BUENO` finalizada y
   // todavía sin decidir. Cuando no es `null`, la tarjeta se bloquea (sin subida nueva) y ofrece
@@ -524,6 +538,7 @@ function TarjetaCargaArchivo({
   intentosFallidos,
   cargaAprobada,
   habilitacionReemplazo,
+  venceElSolicitud,
   solicitudPendiente,
   cargaPendienteDecision,
   solicitudPendienteDeCargaPendiente,
@@ -535,7 +550,6 @@ function TarjetaCargaArchivo({
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [errorSubida, setErrorSubida] = useState<string | null>(null);
-  const [erroresAbiertos, setErroresAbiertos] = useState(false);
 
   const idBase = `carga-${claveCombinacion(combinacion)}`;
   const idTitulo = `${idBase}-titulo`;
@@ -631,33 +645,12 @@ function TarjetaCargaArchivo({
         reapertura ? "border-[#dfadb4] bg-[#fff8f8] shadow-[0_6px_18px_rgba(161,31,31,0.06)]" : "border-gob-accent"
       }`}
     >
-      {reapertura ? (
-        <div role="alert" className={estilosTarjeta.cabecera}>
-          <div className="min-w-0">
-            <h3 id={idTitulo} className={estilosTarjeta.titulo}>
-              {combinacion.formatoNombre} · {combinacion.anio}
-            </h3>
-            <p className="mt-1 text-sm leading-5 text-gob-gray-a">
-              <span className="font-semibold text-gob-tertiary">Motivo:</span> {reapertura.motivo}
-            </p>
-          </div>
-          <div className="flex flex-col items-end text-right">
-            <span className={`${estilosTarjeta.estado} ${estilosTarjeta.rechazado}`}>
-              Rechazado
-            </span>
-            <p className="mt-2 max-w-28 text-xs leading-4 text-gob-gray-a">
-              Plazo para subirlo
-              <time dateTime={reapertura.fechaLimite} className="mt-0.5 block font-semibold tabular-nums text-gob-danger">
-                {formatearFechaHoraIso(reapertura.fechaLimite)}
-              </time>
-            </p>
-          </div>
-        </div>
-      ) : (
-        <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
-          {combinacion.formatoNombre} · {combinacion.anio}
-        </h3>
-      )}
+      <CabeceraTarjetaCarga
+        idTitulo={idTitulo}
+        tituloCombinacion={tituloCombinacion}
+        reapertura={reapertura}
+        ventanaCerrada={combinacion.cerrada}
+      />
 
       {avisoMensajes}
 
@@ -665,6 +658,7 @@ function TarjetaCargaArchivo({
         <AvisoReemplazoHabilitado
           habilitacion={habilitacionReemplazo}
           nombreArchivoVigente={cargaAprobada.nombreArchivoOriginal}
+          venceElSolicitud={venceElSolicitud}
         />
       ) : null}
 
@@ -710,39 +704,7 @@ function TarjetaCargaArchivo({
         </Boton>
       </div>
 
-      {resultado && (resultado.cantidadErrores > 0 || resultado.finalizadaEn) ? (
-        <div className="mt-4 flex flex-col gap-3 border-t border-gob-accent pt-4">
-          {resultado.cantidadErrores === 0 ? (
-            <>
-              {resultado.finalizadaEn ? (
-                <p role="status" className="text-sm font-medium text-gob-tertiary">
-                  Pendiente de aprobación.
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <p role="alert" className="text-sm text-gob-gray-a">
-                <BadgeEstadoCarga estado={resultado.estado} /> ·{" "}
-                <button
-                  type="button"
-                  onClick={() => setErroresAbiertos(true)}
-                  className="font-semibold text-gob-danger underline underline-offset-2 hover:text-gob-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-                >
-                  {resultado.cantidadErrores} {resultado.cantidadErrores === 1 ? "error" : "errores"}
-                </button>
-              </p>
-              <ModalErroresCarga
-                abierto={erroresAbiertos}
-                carga={resultado}
-                onCerrar={() => setErroresAbiertos(false)}
-              />
-            </>
-          )}
-
-
-        </div>
-      ) : null}
+      {resultado ? <ResultadoUltimaSubida resultado={resultado} /> : null}
 
       <TablaIntentosFallidos intentos={intentosFallidos} />
     </section>
@@ -934,6 +896,7 @@ export function PanelCargaArchivo({
               intentosFallidos={estadoTarjeta.intentosFallidos}
               cargaAprobada={estadoTarjeta.cargaAprobada}
               habilitacionReemplazo={estadoTarjeta.habilitacionReemplazo}
+              venceElSolicitud={estadoTarjeta.venceElSolicitud}
               solicitudPendiente={estadoTarjeta.solicitudPendiente}
               cargaPendienteDecision={estadoTarjeta.cargaPendienteDecision}
               solicitudPendienteDeCargaPendiente={estadoTarjeta.solicitudPendienteDeCargaPendiente}

@@ -34,6 +34,7 @@ const SELECCION_VENTANA = {
   diasAnticipacionInicio: true,
   intervaloRepeticionDias: true,
   plantillaAlerta: true,
+  diasVigenciaReemplazo: true,
   // Cuenta solo las cargas APROBADAS de esta ventana, filtrando dentro del propio `_count`: nunca
   // trae las filas completas, evitando el N+1 de contar en JS por cada ventana del listado.
   _count: { select: { cargas: { where: { estado: "APROBADA" } } } },
@@ -58,6 +59,7 @@ type RegistroVentana = {
   diasAnticipacionInicio: number | null;
   intervaloRepeticionDias: number | null;
   plantillaAlerta: string;
+  diasVigenciaReemplazo: number;
   _count: { cargas: number };
 };
 
@@ -82,6 +84,7 @@ function aVentanaCarga(registro: RegistroVentana): VentanaCarga {
     diasAnticipacionInicio: registro.diasAnticipacionInicio,
     intervaloRepeticionDias: registro.intervaloRepeticionDias,
     plantillaAlerta: registro.plantillaAlerta,
+    diasVigenciaReemplazo: registro.diasVigenciaReemplazo,
   };
 }
 
@@ -113,6 +116,7 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
           fechaApertura: datos.fechaApertura,
           fechaVencimiento: datos.fechaVencimiento,
           formatoExcelId: datos.formatoExcelId,
+          diasVigenciaReemplazo: datos.diasVigenciaReemplazo,
           // Explícito y no confiado al default de Prisma: toda ventana nueva nace en borrador,
           // sin importar lo que el cliente haya enviado (nunca viaja en la creación).
           publicada: false,
@@ -156,6 +160,20 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
     return registro ? aVentanaCarga(registro) : null;
   },
 
+  async listarPorIds(ids) {
+    if (ids.length === 0) return [];
+
+    // Una sola consulta con `IN`, nunca una por id. Incluye eliminadas, archivadas y borradores:
+    // el llamador decide con las reglas de dominio (`ventanaAdmiteAutorizaciones`).
+    const registros = await prisma.ventanaCarga.findMany({
+      where: { id: { in: ids } },
+      select: SELECCION_VENTANA,
+      orderBy: { anio: "desc" },
+    });
+
+    return registros.map(aVentanaCarga);
+  },
+
   async listarDisponibles(ahora) {
     // Exclusión real en el `WHERE`, no solo en la UI: una ventana no publicada nunca llega hasta
     // acá, sin importar sus fechas. Las fechas son hora de pared de Chile (ver `estaAbierta`).
@@ -174,6 +192,30 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
     return registros.map(aVentanaCarga);
   },
 
+  async listarDiasVigenciaPorAnio(anios) {
+    if (anios.length === 0) return [];
+
+    // Mismo filtro que `ventanaAdmiteAutorizaciones` (dominio), expresado en el `WHERE`: publicadas,
+    // no archivadas, no eliminadas. Un `groupBy` con `_max`, nunca una consulta por año.
+    const grupos = await prisma.ventanaCarga.groupBy({
+      by: ["anio"],
+      where: { anio: { in: [...new Set(anios)] }, publicada: true, archivada: false, eliminadaEn: null },
+      _max: { fechaVencimiento: true, diasVigenciaReemplazo: true },
+    });
+
+    return grupos.flatMap((grupo) =>
+      grupo._max.fechaVencimiento && grupo._max.diasVigenciaReemplazo !== null
+        ? [
+            {
+              anio: grupo.anio,
+              fechaVencimientoMaxima: grupo._max.fechaVencimiento,
+              diasVigenciaMaximos: grupo._max.diasVigenciaReemplazo,
+            },
+          ]
+        : [],
+    );
+  },
+
   async actualizar(id, datos: DatosEdicionVentanaCarga) {
     try {
       const registro = await prisma.ventanaCarga.update({
@@ -182,6 +224,7 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
           fechaApertura: datos.fechaApertura,
           fechaVencimiento: datos.fechaVencimiento,
           formatoExcelId: datos.formatoExcelId,
+          diasVigenciaReemplazo: datos.diasVigenciaReemplazo,
         },
         select: SELECCION_VENTANA,
       });

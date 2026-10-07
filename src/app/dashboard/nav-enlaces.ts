@@ -6,6 +6,14 @@ export const ENLACES_ADMIN: readonly EnlacePanel[] = [
   { href: "/dashboard/formatos-excel", etiqueta: "Formatos de archivo" },
   { href: "/dashboard/ventanas-carga", etiqueta: "Ventanas de carga" },
   { href: "/dashboard/solicitudes", etiqueta: "Solicitudes" },
+  // RF-37: archivos de Bioestadística por año y su bandeja de solicitudes de reemplazo.
+  {
+    etiqueta: "Bioestadística",
+    subenlaces: [
+      { href: "/dashboard/bioestadistica", etiqueta: "Archivos" },
+      { href: "/dashboard/bioestadistica/solicitudes", etiqueta: "Solicitudes" },
+    ],
+  },
   {
     etiqueta: "Administración",
     subenlaces: [

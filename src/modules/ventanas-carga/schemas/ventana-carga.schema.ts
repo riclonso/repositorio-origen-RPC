@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  DIAS_VIGENCIA_REEMPLAZO_MAXIMO,
+  DIAS_VIGENCIA_REEMPLAZO_MINIMO,
+  DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO,
+} from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
 // Rango amplio y razonable: no hay un límite de negocio documentado, solo una defensa contra un
 // valor absurdo tecleado por error.
@@ -15,7 +20,15 @@ export const anioVentanaCargaSchema = z.coerce
 // `app/api/_lib/http.ts`).
 export const formatoExcelIdVentanaCargaSchema = z.uuid("Selecciona un formato de archivo válido");
 
-const fechaVentanaCargaSchema = z.coerce.date("Ingresa una fecha válida");
+// RF-36: N días de la habilitación fuera de plazo. Llega como texto desde un `<input type="number">`,
+// de ahí el `coerce`.
+export const diasVigenciaReemplazoSchema = z.coerce
+  .number("Ingresa un número de días válido")
+  .int("Ingresa un número entero de días")
+  .min(DIAS_VIGENCIA_REEMPLAZO_MINIMO, `Debe ser ${DIAS_VIGENCIA_REEMPLAZO_MINIMO} día o más`)
+  .max(DIAS_VIGENCIA_REEMPLAZO_MAXIMO, `Debe ser ${DIAS_VIGENCIA_REEMPLAZO_MAXIMO} días o menos`);
+
+export const fechaVentanaCargaSchema = z.coerce.date("Ingresa una fecha válida");
 
 // `fechaVencimiento` viaja como "AAAA-MM-DD" desde un `<input type="date">` y `z.coerce.date()` lo
 // interpreta como medianoche UTC del día elegido. Sin normalizar, la ventana se cerraría a las
@@ -23,7 +36,7 @@ const fechaVentanaCargaSchema = z.coerce.date("Ingresa una fecha válida");
 // además rechazaría como "fuera de rango" cualquier fila con `FECHA_HORA` de ese último día
 // (`EvaluadorReglasValidacion.ts` compara contra el instante exacto, no contra el día calendario).
 // Se ancla al final del día para que "vence el 31" signifique "vence al terminar el 31".
-const fechaVencimientoVentanaCargaSchema = fechaVentanaCargaSchema.transform((fecha) => {
+export const fechaVencimientoVentanaCargaSchema = fechaVentanaCargaSchema.transform((fecha) => {
   const finDeDia = new Date(fecha);
   finDeDia.setUTCHours(23, 59, 59, 999);
   return finDeDia;
@@ -34,7 +47,7 @@ const fechaVencimientoVentanaCargaSchema = fechaVentanaCargaSchema.transform((fe
 // no tiene por qué coincidir con el año calendario de las fechas de apertura/vencimiento (p.ej.
 // una ventana del año de reporte 2024 puede abrirse en diciembre de 2024 y vencer en enero de
 // 2025), así que deliberadamente no se valida esa correspondencia.
-function validarRangoVentana(
+export function validarRangoVentana(
   datos: { fechaApertura: Date; fechaVencimiento: Date },
   contexto: z.RefinementCtx,
 ): void {
@@ -54,6 +67,8 @@ export const crearVentanaCargaSchema = z
     fechaApertura: fechaVentanaCargaSchema,
     fechaVencimiento: fechaVencimientoVentanaCargaSchema,
     formatoExcelId: formatoExcelIdVentanaCargaSchema,
+    // Opcional en el body (clientes previos a RF-36): sin valor, el por defecto.
+    diasVigenciaReemplazo: diasVigenciaReemplazoSchema.default(DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO),
   })
   .superRefine(validarRangoVentana);
 export type CrearVentanaCargaInput = z.infer<typeof crearVentanaCargaSchema>;
@@ -66,6 +81,9 @@ export const editarVentanaCargaSchema = z.object({
   fechaApertura: fechaVentanaCargaSchema,
   fechaVencimiento: fechaVencimientoVentanaCargaSchema,
   formatoExcelId: formatoExcelIdVentanaCargaSchema,
+  // Obligatorio en la edición (el PUT reemplaza todos los campos editables): un default aquí
+  // pisaría en silencio un valor distinto ya configurado.
+  diasVigenciaReemplazo: diasVigenciaReemplazoSchema,
 });
 export type EditarVentanaCargaInput = z.infer<typeof editarVentanaCargaSchema>;
 

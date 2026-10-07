@@ -17,7 +17,9 @@ import {
   respuestaSinAcceso,
   respuestaSolicitudDuplicada,
   respuestaSolicitudYaAprobadaVigente,
+  respuestaVentanaNoDisponible,
 } from "@/app/api/notificador/solicitudes-reemplazo/_lib/http";
+import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 
 const ACCION = "SOLICITUD_REEMPLAZO_CREADA" as const;
 
@@ -74,6 +76,7 @@ export async function POST(request: Request) {
       {
         repositorio: prismaSolicitudReemplazoCargaRepository,
         repositorioCargas: prismaCargaArchivoRepository,
+        repositorioVentanasCarga: prismaVentanaCargaRepository,
       },
     );
 
@@ -95,6 +98,10 @@ export async function POST(request: Request) {
 
       if (resultado.motivo === "SOLICITUD_YA_APROBADA_VIGENTE") {
         return respuestaSolicitudYaAprobadaVigente();
+      }
+
+      if (resultado.motivo === "VENTANA_NO_DISPONIBLE") {
+        return respuestaVentanaNoDisponible();
       }
 
       return respuestaSolicitudDuplicada();

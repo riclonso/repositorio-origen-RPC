@@ -3,7 +3,7 @@ import type {
   OrigenSolicitudReemplazoCarga,
   SolicitudReemplazoCarga,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
-import { solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { fechaVencimientoSolicitud, solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import {
   exigirAdminORevisor,
   idRutaSchema,
@@ -37,6 +37,8 @@ export type SolicitudReemplazoRevisionDTO = {
   revisadoEn: string | null;
   comentarioRevision: string | null;
   vencida: boolean;
+  // RF-36: hasta cuándo habilita la subida una solicitud APROBADA (`null` si no lo está).
+  venceEl: string | null;
   createdAt: string;
 };
 
@@ -59,6 +61,7 @@ export function aSolicitudReemplazoRevisionDTO(
     revisadoEn: solicitud.revisadoEn ? solicitud.revisadoEn.toISOString() : null,
     comentarioRevision: solicitud.comentarioRevision,
     vencida: solicitudVencida(solicitud, ahora),
+    venceEl: fechaVencimientoSolicitud(solicitud)?.toISOString() ?? null,
     createdAt: solicitud.createdAt.toISOString(),
   };
 }

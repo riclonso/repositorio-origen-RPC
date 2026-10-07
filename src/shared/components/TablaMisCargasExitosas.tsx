@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
+import { FormularioSolicitudReemplazo } from "@/shared/components/FormularioSolicitudReemplazo";
 import { ModalHistorialRechazos } from "@/shared/components/ModalHistorialRechazos";
 import type { FilaCargaExitosaVista, GrupoCargaExitosaVista } from "@/shared/components/mis-cargas-exitosas";
 
@@ -9,6 +11,10 @@ import type { FilaCargaExitosaVista, GrupoCargaExitosaVista } from "@/shared/com
 // formato/año real, así que no pueden viajar como una de las opciones derivadas de `grupos`.
 const OPCION_TODOS_LOS_FORMATOS: OpcionSelect = { valor: "", etiqueta: "Todos" };
 const OPCION_TODOS_LOS_ANIOS: OpcionSelect = { valor: "", etiqueta: "Todos" };
+
+// Encabezados de la tabla, en el orden de las celdas de `FilaGrupoCargaExitosa` (la columna
+// "Detalle", alineada a la derecha, va aparte).
+const COLUMNAS_MIS_CARGAS = ["Archivo", "Estado", "Formato", "Año", "Aprobada el", "Reemplazo"] as const;
 
 // `FilaCargaExitosaVista` y `GrupoCargaExitosaVista` viven en `mis-cargas-exitosas.ts` (sin
 // "use client") junto con `aGrupoCargaExitosaVista`, que este componente no invoca directamente:
@@ -96,6 +102,51 @@ function DetalleHistorialRechazos({ titulo, cargas }: { titulo: string; cargas: 
   );
 }
 
+// RF-36: columna "Reemplazo" de la fila vigente. Se puede pedir aunque la ventana ya haya vencido
+// (no si fue archivada, despublicada o eliminada: `NO_DISPONIBLE`). Tras enviar la solicitud se
+// refresca la página para que la fila muestre su estado real desde el servidor.
+function CeldaReemplazo({ grupo }: { grupo: GrupoCargaExitosaVista }) {
+  const router = useRouter();
+  const estado = grupo.estadoReemplazo;
+
+  switch (estado.tipo) {
+    case "SOLICITAR":
+      return (
+        <FormularioSolicitudReemplazo
+          rutaApi="/api/notificador/solicitudes-reemplazo"
+          cuerpo={{ cargaArchivoId: grupo.vigente.id }}
+          idBase={grupo.vigente.id}
+          placeholderMotivo="Explica por qué necesitas reemplazar esta carga ya aprobada"
+          varianteBoton="texto"
+          etiquetaAccesible={`Solicitar reemplazo de ${grupo.vigente.nombreArchivoOriginal}`}
+          onExito={() => router.refresh()}
+        />
+      );
+    case "SOLICITUD_PENDIENTE":
+      return (
+        <span className="w-fit rounded-full border border-gob-primary bg-white px-2 py-0.5 text-xs font-semibold text-gob-primary">
+          Solicitud pendiente
+        </span>
+      );
+    case "REEMPLAZO_AUTORIZADO":
+      return (
+        <span className="text-xs text-gob-gray-a">
+          <span className="block w-fit rounded-full border border-gob-success bg-white px-2 py-0.5 font-semibold text-gob-success">
+            Reemplazo autorizado
+          </span>
+          <span className="mt-1 block">
+            Súbelo desde Inicio hasta el{" "}
+            <time dateTime={estado.venceElIso} className="font-semibold tabular-nums">
+              {estado.venceEl}
+            </time>
+          </span>
+        </span>
+      );
+    default:
+      return <span className="text-xs text-gob-gray-a">—</span>;
+  }
+}
+
 // La fila principal de un grupo puede ser una carga RECHAZADA todavía sin sucesora aprobada (ver
 // `FilaCargaExitosaVista`): se distingue con estado propio y fondo rojo claro para que no se lea
 // como exitosa, y no muestra su fecha de aprobación original.
@@ -133,12 +184,17 @@ function FilaGrupoCargaExitosa({ grupo }: { grupo: GrupoCargaExitosaVista }) {
       <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
         {rechazada ? "—" : grupo.vigente.vistoBuenoEl}
       </td>
+      <td className="px-3 py-2">
+        <CeldaReemplazo grupo={grupo} />
+      </td>
       <td className="whitespace-nowrap px-3 py-2 text-right">
+        {/* El enlace había quedado sin texto (invisible y sin nombre accesible). */}
         <a
           href={`/api/notificador/cargas/${grupo.vigente.id}/archivo`}
+          aria-label={`Descargar ${grupo.vigente.nombreArchivoOriginal}`}
           className="text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
         >
-          
+          Descargar
         </a>
         <DetalleHistorialRechazos titulo={`${grupo.formatoExcelNombre} · ${grupo.anio}`} cargas={historial} />
       </td>
@@ -147,8 +203,8 @@ function FilaGrupoCargaExitosa({ grupo }: { grupo: GrupoCargaExitosaVista }) {
 }
 
 // Histórico de cargas exitosas del notificador (RF nuevo: "Mis cargas" movida al menú lateral),
-// exclusivo de `/notificador/cargas`. Solo lectura: no hay acciones de escritura aquí, "Dar visto
-// bueno" se queda en Inicio. Una fila por `ventanaCargaId` (la más reciente = vigente); si hay
+// exclusivo de `/notificador/cargas`. Única escritura: "Solicitar reemplazo" de la fila vigente
+// (RF-36); la subida del reemplazo se hace en Inicio. Una fila por `ventanaCargaId` (la más reciente = vigente); si hay
 // reemplazadas para esa misma combinación, quedan como historial anidado dentro de la misma fila.
 type TablaMisCargasExitosasProps = {
   grupos: GrupoCargaExitosaVista[];
@@ -201,11 +257,11 @@ export function TablaMisCargasExitosas({ grupos }: TablaMisCargasExitosasProps) 
             <caption className="sr-only">Cargas de archivo exitosas y finalizadas</caption>
             <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
               <tr>
-                <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Formato</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Año</th>
-                <th scope="col" className="px-3 py-3 font-semibold">Aprobada el</th>
+                {COLUMNAS_MIS_CARGAS.map((columna) => (
+                  <th key={columna} scope="col" className="px-3 py-3 font-semibold">
+                    {columna}
+                  </th>
+                ))}
                 <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                   Detalle
                 </th>

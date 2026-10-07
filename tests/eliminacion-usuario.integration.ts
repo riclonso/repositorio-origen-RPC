@@ -72,6 +72,44 @@ async function crearCarga(usuarioId: string, ventanaCargaId: string, vistoBuenoP
   return carga.id;
 }
 
+// RF-37: establecimiento (y su tipo) que exige `carga_bioestadistica`, creado una sola vez.
+let establecimientoBioestadisticaId: string | null = null;
+let tipoEstablecimientoBioestadisticaId: string | null = null;
+
+async function obtenerEstablecimientoBioestadistica(): Promise<string> {
+  if (establecimientoBioestadisticaId) return establecimientoBioestadisticaId;
+
+  const tipo = await prisma.tipoEstablecimiento.create({
+    data: { nombre: `Tipo RF25 ${marca}`, nombreNormalizado: `tipo-rf25-${marca}` },
+  });
+  tipoEstablecimientoBioestadisticaId = tipo.id;
+  const establecimiento = await prisma.establecimiento.create({
+    data: { rut: `rf25-${marca}`, nombre: "Establecimiento RF25", direccion: "Calle 1", tipoId: tipo.id },
+  });
+  establecimientoBioestadisticaId = establecimiento.id;
+  return establecimiento.id;
+}
+
+async function crearCargaBioestadistica(usuarioId: string): Promise<string> {
+  const carga = await prisma.cargaBioestadistica.create({
+    data: {
+      anio: anioSiguiente++,
+      tipoArchivo: "DEFUNCIONES",
+      usuarioId,
+      establecimientoId: await obtenerEstablecimientoBioestadistica(),
+      nombreArchivoOriginal: "prueba.csv",
+      tipoContenidoArchivo: "text/csv",
+      tamanoBytes: BigInt(10),
+      sha256: "0".repeat(64),
+      encabezados: ["a"],
+      estado: "ACTIVA",
+      cantidadFilasDatos: 1,
+    },
+    select: { id: true },
+  });
+  return carga.id;
+}
+
 function crearAlerta(ventanaCargaId: string, usuarioId: string, disparadoPorId?: string) {
   return prisma.alertaNotificacionVentana.create({
     data: {
@@ -119,7 +157,12 @@ const FIXTURES: Record<string, (victima: string, ayudante: string, ventanaAyudan
     }),
   cargasRechazadas: async (victima, ayudante, ventana) =>
     prisma.cargaArchivoRechazo.create({
-      data: { cargaArchivoId: await crearCarga(ayudante, ventana), rechazadoPorId: victima, motivo: "prueba" },
+      data: {
+        cargaArchivoId: await crearCarga(ayudante, ventana),
+        rechazadoPorId: victima,
+        motivo: "prueba",
+        diasReapertura: 7,
+      },
     }),
   ventanasCargaCreadas: (victima) => crearVentana(victima),
   ventanasCargaEliminadas: (victima, ayudante) => crearVentana(ayudante, victima),
@@ -131,6 +174,24 @@ const FIXTURES: Record<string, (victima: string, ayudante: string, ventanaAyudan
     crearMensaje(await crearCarga(ayudante, ventana), ventana, ayudante, victima),
   mensajesCargaRecibidos: async (victima, ayudante, ventana) =>
     crearMensaje(await crearCarga(ayudante, ventana), ventana, victima, ayudante),
+  // RF-37: un archivo de Bioestadística de la víctima, y una solicitud de reemplazo pedida o
+  // revisada por ella sobre un archivo del ayudante.
+  cargasBioestadistica: (victima) => crearCargaBioestadistica(victima),
+  solicitudesReemplazoBioestadisticaSolicitadas: async (victima, ayudante) =>
+    prisma.solicitudReemplazoBioestadistica.create({
+      data: { cargaBioestadisticaId: await crearCargaBioestadistica(ayudante), solicitadoPorId: victima, motivo: "prueba" },
+    }),
+  solicitudesReemplazoBioestadisticaRevisadas: async (victima, ayudante) =>
+    prisma.solicitudReemplazoBioestadistica.create({
+      data: {
+        cargaBioestadisticaId: await crearCargaBioestadistica(ayudante),
+        solicitadoPorId: ayudante,
+        motivo: "prueba",
+        estado: "RECHAZADA",
+        revisadoPorId: victima,
+        revisadoEn: new Date(),
+      },
+    }),
 };
 
 function crearMensaje(cargaArchivoId: string, ventanaCargaId: string, notificadorId: string, autorId: string) {
@@ -141,6 +202,10 @@ function crearMensaje(cargaArchivoId: string, ventanaCargaId: string, notificado
 
 async function limpiar(): Promise<void> {
   const ids = usuariosCreados;
+  await prisma.solicitudReemplazoBioestadistica.deleteMany({
+    where: { OR: [{ solicitadoPorId: { in: ids } }, { revisadoPorId: { in: ids } }] },
+  });
+  await prisma.cargaBioestadistica.deleteMany({ where: { usuarioId: { in: ids } } });
   await prisma.mensajeCarga.deleteMany({
     where: { OR: [{ notificadorId: { in: ids } }, { autorId: { in: ids } }] },
   });
@@ -160,6 +225,12 @@ async function limpiar(): Promise<void> {
   });
   await prisma.usuario.deleteMany({ where: { id: { in: ids } } });
   if (formatoId) await prisma.formatoExcel.deleteMany({ where: { id: formatoId } });
+  if (establecimientoBioestadisticaId) {
+    await prisma.establecimiento.deleteMany({ where: { id: establecimientoBioestadisticaId } });
+  }
+  if (tipoEstablecimientoBioestadisticaId) {
+    await prisma.tipoEstablecimiento.deleteMany({ where: { id: tipoEstablecimientoBioestadisticaId } });
+  }
 }
 
 async function main() {

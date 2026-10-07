@@ -4,6 +4,7 @@ import type { SesionPayload } from "@/modules/auth/infrastructure/auth/JwtServic
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import {
   esPerfilAdministrador,
+  esPerfilBioestadistica,
   esPerfilNotificador,
   esPerfilRevisorRepositorio,
 } from "@/modules/perfiles/domain/entities/Perfil";
@@ -75,6 +76,27 @@ export async function exigirNotificador(): Promise<AccesoNotificador> {
   }
 
   if (!esPerfilNotificador(sesion.perfil)) {
+    return { ok: false, estado: 403, sesion };
+  }
+
+  return { ok: true, sesion };
+}
+
+export type AccesoBioestadistica =
+  | { ok: true; sesion: SesionPayload }
+  | { ok: false; estado: 401 }
+  | { ok: false; estado: 403; sesion: SesionPayload };
+
+// Guard para `/api/bioestadistica/**` (RF-37), mismo criterio que `exigirNotificador`: vive en cada
+// Route Handler. `/api/**` NO entra al matcher de `src/proxy.ts` (ver la invariante documentada ahí).
+export async function exigirBioestadistica(): Promise<AccesoBioestadistica> {
+  const sesion = await obtenerSesionActual();
+
+  if (!sesion) {
+    return { ok: false, estado: 401 };
+  }
+
+  if (!esPerfilBioestadistica(sesion.perfil)) {
     return { ok: false, estado: 403, sesion };
   }
 

@@ -9,6 +9,9 @@ export type DatosCorreoRevisionSolicitudReemplazo = {
   nombreArchivoOriginal: string;
   estado: "APROBADA" | "RECHAZADA";
   comentarioRevision: string | null;
+  // RF-36: instante real hasta el cual la aprobación habilita subir el reemplazo
+  // (`fechaVencimientoSolicitud`). `null` en un rechazo.
+  venceEl: Date | null;
 };
 
 export interface EnviadorNotificacionSolicitudReemplazo {

@@ -51,6 +51,7 @@ export async function ListadoVentanasCarga({ rutaBase }: ListadoVentanasCargaPro
     eliminadaEn: ventana.eliminadaEn ? ventana.eliminadaEn.toISOString() : null,
     abierta: ventana.abierta,
     cantidadCargas: ventana.cantidadCargas,
+    diasVigenciaReemplazo: ventana.diasVigenciaReemplazo,
     // Resuelta aquí, como string: `TablaVentanasCarga` es un Client Component ("use client", por
     // sus formularios/diálogos) y no puede recibir una función como prop desde este Server
     // Component.

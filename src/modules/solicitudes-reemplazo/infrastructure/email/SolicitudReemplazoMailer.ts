@@ -1,5 +1,6 @@
 import { configSmtp } from "@/infrastructure/config/env";
 import { correoDisponible, enviarCorreo } from "@/infrastructure/email/SmtpMailer";
+import { formatearFechaHora } from "@/shared/utils/fecha";
 import type {
   DatosCorreoRevisionSolicitudReemplazo,
   EnviadorNotificacionSolicitudReemplazo,
@@ -42,9 +43,15 @@ function copiaSegunResultado(datos: DatosCorreoRevisionSolicitudReemplazo): Copy
   const combinacion = `${datos.formatoExcelNombre} (${datos.anio})`;
 
   if (datos.estado === "APROBADA") {
+    // RF-36: plazo concreto (hora de Chile, formateado en el servidor), aunque la ventana ya haya
+    // cerrado. Sin fecha (no debería ocurrir en una aprobación) se conserva el aviso genérico.
+    const plazo = datos.venceEl
+      ? `Tienes plazo hasta el ${formatearFechaHora(datos.venceEl)} (hora de Chile) para subir y enviar el archivo de reemplazo; si no lo usas a tiempo, deberás solicitarlo nuevamente.`
+      : "La autorización de reemplazo tiene una vigencia limitada: si no la usas a tiempo, deberás solicitarla nuevamente.";
+
     return {
       intro: `Tu solicitud para reemplazar la carga "${datos.nombreArchivoOriginal}" de ${combinacion} fue aprobada. Ya puedes subir el archivo de reemplazo desde el sistema.`,
-      cierre: "El enlace de reemplazo tiene una vigencia limitada: si no lo usas a tiempo, deberás solicitarlo nuevamente.",
+      cierre: plazo,
     };
   }
 

@@ -24,6 +24,7 @@ export type DesenlaceAuditoriaVentanaCarga = {
   formatoExcelId?: string | null;
   diasAnticipacionInicio?: number | null;
   intervaloRepeticionDias?: number | null;
+  diasVigenciaReemplazo?: number | null;
   loteId?: string | null;
   destinatarioId?: string | null;
   cantidadExitos?: number | null;
@@ -62,6 +63,7 @@ async function construirYRegistrar(
     formatoExcelId: desenlace.formatoExcelId ?? null,
     diasAnticipacionInicio: desenlace.diasAnticipacionInicio ?? null,
     intervaloRepeticionDias: desenlace.intervaloRepeticionDias ?? null,
+    diasVigenciaReemplazo: desenlace.diasVigenciaReemplazo ?? null,
     loteId: desenlace.loteId ?? null,
     destinatarioId: desenlace.destinatarioId ?? null,
     cantidadExitos: desenlace.cantidadExitos ?? null,

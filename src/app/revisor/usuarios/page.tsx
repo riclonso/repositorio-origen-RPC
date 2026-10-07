@@ -15,8 +15,7 @@ import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuari
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
 import {
-  CODIGO_PERFIL_NOTIFICADOR,
-  CODIGO_PERFIL_REVISOR_REPOSITORIO,
+  PERFILES_GESTIONABLES_POR_REVISOR,
   esPerfilAdministrador,
 } from "@/modules/perfiles/domain/entities/Perfil";
 import { FiltrosUsuarios } from "@/shared/components/FiltrosUsuarios";
@@ -31,7 +30,8 @@ type UsuariosRevisorPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-// El revisor solo administra y visualiza cuentas NOTIFICADOR_RPC y REVISOR_REPOSITORIO. Las
+// El revisor solo administra y visualiza cuentas NOTIFICADOR_RPC, REVISOR_REPOSITORIO y (RF-37)
+// BIOESTADISTICA (`PERFILES_GESTIONABLES_POR_REVISOR`). Las
 // cuentas ADMIN no se incluyen en su consulta, ni aun con una URL escrita manualmente.
 export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevisorPageProps) {
   const parametros = await searchParams;
@@ -115,7 +115,7 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
           rutaBase={RUTA_USUARIOS_REVISOR}
           construirHref={(pagina) => construirRutaUsuariosRevisor(filtro, pagina)}
           actorEsAdmin={false}
-          perfilesPermitidos={[CODIGO_PERFIL_NOTIFICADOR, CODIGO_PERFIL_REVISOR_REPOSITORIO]}
+          perfilesPermitidos={PERFILES_GESTIONABLES_POR_REVISOR}
         />
       </Suspense>
     </div>

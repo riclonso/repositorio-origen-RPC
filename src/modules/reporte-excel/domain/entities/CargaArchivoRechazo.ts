@@ -2,19 +2,14 @@
 // "solicitud pendiente": quien rechaza decide directamente). Habilita una REAPERTURA de la
 // combinación (formato, ventana) para que el mismo notificador vuelva a subir un archivo. La
 // reapertura NO se consume al subir: se consume al finalizar y enviar con éxito
-// (`CargaArchivoRepository.finalizar()`), con la ventana abierta o cerrada.
+// (`CargaArchivoRepository.finalizar()`), con la ventana abierta o cerrada por fecha.
 
-import { finDelDiaChile, paredChileAInstante } from "@/shared/utils/fecha";
+import { fechaVencimientoAutorizacion } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
 // Longitud máxima del motivo de rechazo, mismo criterio y mismo valor que
 // `SolicitudReemplazoCarga.LONGITUD_MAXIMA_MOTIVO`: texto libre, sin reglas de complejidad que
 // reutilizar de `shared/schemas/` (esas son de contraseñas).
 export const LONGITUD_MAXIMA_MOTIVO_RECHAZO = 500;
-
-// Vigencia de la reapertura, en días adicionales, cuando la ventana YA había vencido al momento
-// del rechazo. Mismo valor que `DIAS_VIGENCIA_SOLICITUD_APROBADA` de solicitudes de reemplazo, sin
-// compartir la constante: son conceptos de dominio distintos que solo coinciden en el número.
-export const DIAS_REAPERTURA_TRAS_VENCIMIENTO = 5;
 
 // Vista denormalizada (join a `CargaArchivo`/`FormatoExcel`/`VentanaCarga`/`Usuario`), mismo
 // criterio que `SolicitudReemplazoCarga`: los listados (banner del notificador, sección
@@ -31,6 +26,9 @@ export type CargaArchivoRechazo = {
   rechazadoEn: Date;
   rechazadoPorId: string;
   rechazadoPorNombre: string;
+  // RF-36: copia de `VentanaCarga.diasVigenciaReemplazo` al rechazar (5 en los rechazos anteriores
+  // a RF-36), para que editar la ventana después no cambie el plazo ya otorgado.
+  diasReapertura: number;
   reaperturaConsumidaEn: Date | null;
   reaperturaConsumidaPorCargaArchivoId: string | null;
   createdAt: Date;
@@ -42,33 +40,34 @@ export type DatosNuevoRechazoCargaArchivo = {
   motivo: string;
 };
 
-// Recorte de `VentanaCarga` con lo mínimo que necesita `fechaLimiteReapertura`/`reaperturaVigente`:
-// evita que este archivo dependa del tipo completo de `modules/ventanas-carga`.
+// Recorte de `VentanaCarga` con lo mínimo que necesita `fechaLimiteReapertura`/`reaperturaVigente`.
 export type VentanaParaReapertura = {
   fechaVencimiento: Date;
 };
 
-// Fecha límite hasta la cual se puede usar la reapertura: si la ventana NO había vencido al
-// momento del rechazo, dura hasta su `fechaVencimiento` original (ni más ni menos); si ya había
-// vencido, dura `DIAS_REAPERTURA_TRAS_VENCIMIENTO` días adicionales desde el rechazo. Decisión
-// explícita del usuario, confirmada en el diseño aprobado. Ambos plazos terminan a las 23:59 hora de
-// Chile, y el resultado es un instante real (no hora de pared): se compara con `ahora` y se muestra
-// con `formatearFechaHora`.
-export function fechaLimiteReapertura(rechazo: Pick<CargaArchivoRechazo, "rechazadoEn">, ventana: VentanaParaReapertura): Date {
-  const vencimientoVentana = paredChileAInstante(ventana.fechaVencimiento);
-
-  if (vencimientoVentana.getTime() > rechazo.rechazadoEn.getTime()) {
-    return vencimientoVentana;
-  }
-
-  return finDelDiaChile(rechazo.rechazadoEn, DIAS_REAPERTURA_TRAS_VENCIMIENTO);
+// Fecha límite hasta la cual se puede usar la reapertura (RF-36, ajuste aprobado): el mismo plazo
+// único que una solicitud de reemplazo aprobada (`fechaVencimientoAutorizacion`), con el rechazo
+// como fecha de decisión y sus `diasReapertura` copiados:
+// `max(vencimiento de la ventana, fin del día Chile de rechazadoEn + diasReapertura)`. El
+// resultado es un instante real (no hora de pared): se compara con `ahora` y se muestra con
+// `formatearFechaHora`.
+export function fechaLimiteReapertura(
+  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "diasReapertura">,
+  ventana: VentanaParaReapertura,
+): Date {
+  return fechaVencimientoAutorizacion({
+    fechaDecision: rechazo.rechazadoEn,
+    diasVigencia: rechazo.diasReapertura,
+    fechaVencimientoVentana: ventana.fechaVencimiento,
+  });
 }
 
 // `true` solo si el rechazo todavía no consumió su reapertura y `ahora` no superó la fecha límite.
 // Calculado siempre en lectura contra un `ahora` recibido como parámetro, nunca persistido como
-// estado propio — mismo patrón que `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`.
+// estado propio — mismo patrón que `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`. No mira
+// si la ventana sigue publicada o archivada: esa regla vive en `resolverVentanaHabilitada`.
 export function reaperturaVigente(
-  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "reaperturaConsumidaEn">,
+  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "diasReapertura" | "reaperturaConsumidaEn">,
   ventana: VentanaParaReapertura,
   ahora: Date,
 ): boolean {
@@ -91,7 +90,7 @@ export function rechazoPosteriorAAprobacion(rechazadoEn: Date, vistoBuenoEn: Dat
 // posterior a esa aprobación (ver `rechazoPosteriorAAprobacion`). La usa
 // `resolverAutorizacionReemplazo` tanto al subir como al finalizar.
 export function reaperturaAutorizaReemplazo(
-  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "reaperturaConsumidaEn">,
+  rechazo: Pick<CargaArchivoRechazo, "rechazadoEn" | "diasReapertura" | "reaperturaConsumidaEn">,
   ventana: VentanaParaReapertura,
   vigente: { vistoBuenoEn: Date | null },
   ahora: Date,

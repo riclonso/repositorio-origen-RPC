@@ -10,7 +10,8 @@ export type ResultadoFinalizarYEnviarCarga =
   // Cubre "no existe", "no es del actor", "no está PENDIENTE_VISTO_BUENO", "ya finalizada" y "no es
   // el último intento de su combinación": indistinguibles, mismo criterio del resto del módulo.
   | { ok: false; motivo: "NO_ENCONTRADO" }
-  // La ventana cerró (sin reapertura vigente) o se despublicó entre la subida y la finalización.
+  // La ventana cerró (sin reapertura ni solicitud de reemplazo vigente), se despublicó o se archivó
+  // entre la subida y la finalización.
   | { ok: false; motivo: "SIN_VENTANA_ABIERTA" }
   | { ok: false; motivo: "VENTANA_NO_PUBLICADA" }
   // Ya hay una `APROBADA` vigente y la autorización que habilitó la subida venció o fue consumida
@@ -59,7 +60,10 @@ export async function finalizarYEnviarCarga(
 
   const motivoVentana = await resolverVentanaHabilitada(
     { ventana, usuarioId, ahora },
-    { repositorio: dependencias.repositorio },
+    {
+      repositorio: dependencias.repositorio,
+      repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo,
+    },
   );
 
   if (motivoVentana) {

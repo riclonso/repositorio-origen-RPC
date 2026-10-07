@@ -8,7 +8,7 @@ import {
   crearUsuarioFormSchema,
   editarUsuarioSchema,
 } from "@/modules/usuarios/schemas/usuario.schema";
-import { esPerfilNotificador } from "@/modules/perfiles/domain/entities/Perfil";
+import { esPerfilNotificador, perfilExigeEstablecimiento } from "@/modules/perfiles/domain/entities/Perfil";
 import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoSeleccionMultiple, type OpcionSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
@@ -96,8 +96,10 @@ export function UsuarioForm({
   // `<form action={...}>` en cuanto la acción termina, también cuando devuelve errores de
   // validación: el operador corregía un RUT mal escrito y encontraba el resto del formulario en
   // blanco. Con el valor en estado, un error deja de costar volver a teclear todo. Al crear NO hay
-  // campos de contraseña: la cuenta nace pendiente y la persona la fija por el enlace.
-  const [valores, setValores] = useState(valoresIniciales);
+  // campos de contraseña: la cuenta nace pendiente y la persona la fija por el enlace. Los valores
+  // iniciales SOLO siembran el estado al montar (inicializador perezoso, a propósito): después el
+  // formulario es la fuente de verdad mientras el operador escribe.
+  const [valores, setValores] = useState(() => valoresIniciales);
 
   function actualizarCampo(campo: keyof ValoresUsuarioForm, valor: string) {
     setValores((previos) => ({ ...previos, [campo]: valor }));
@@ -262,16 +264,18 @@ export function UsuarioForm({
               // Cambiar a un perfil que no sea Notificador RPC limpia la selección: conservarla
               // en silencio dejaría formatos asignados a un perfil que el esquema los rechaza.
               formatosExcelIds: esPerfilNotificador(perfilCodigo) ? previos.formatosExcelIds : [],
-              // RF-30: mismo criterio para el establecimiento, que solo se pide al notificador.
-              establecimientoId: esPerfilNotificador(perfilCodigo) ? previos.establecimientoId : "",
+              // RF-30/RF-37: mismo criterio para el establecimiento, que solo se pide a los perfiles
+              // que lo exigen (notificador y Bioestadística).
+              establecimientoId: perfilExigeEstablecimiento(perfilCodigo) ? previos.establecimientoId : "",
             }));
           }}
           error={estado.errores.perfilCodigo}
         />
 
-        {/* RF-30: solo el notificador pertenece a un establecimiento. Para el resto de los
-            perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a `null`. */}
-        {esPerfilNotificador(valores.perfilCodigo) ? (
+        {/* RF-30/RF-37: solo el notificador y Bioestadística pertenecen a un establecimiento. Para
+            el resto de los perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a
+            `null`. Los formatos de archivo (abajo) siguen siendo exclusivos del notificador. */}
+        {perfilExigeEstablecimiento(valores.perfilCodigo) ? (
           <CampoSelect
             id="establecimientoId"
             name="establecimientoId"

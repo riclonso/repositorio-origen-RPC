@@ -1,6 +1,6 @@
 # Arquitectura
 
-Última actualización: 2026-10-02 (RF-33: la autorización de reemplazo se consume al finalizar, `resolverAutorizacionReemplazo`, "APROBADA vigente" excluye las superadas, índice único parcial de pendientes finalizadas; antes, 2026-10-01: RF-32: tipos de regla `CONTENIDO_HTML` y `FILA_VACIA`, `domain/reglas/filasArchivo.ts`; RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
+Última actualización: 2026-10-07 (RF-36: plazo de reemplazo configurable por ventana y fórmula única; RF-37: perfil Bioestadística con archivos en disco, lectura en streaming y procesamiento asíncrono; antes, 2026-10-02: RF-33: la autorización de reemplazo se consume al finalizar, `resolverAutorizacionReemplazo`, "APROBADA vigente" excluye las superadas, índice único parcial de pendientes finalizadas; antes, 2026-10-01: RF-32: tipos de regla `CONTENIDO_HTML` y `FILA_VACIA`, `domain/reglas/filasArchivo.ts`; RF-31: módulo `mensajeria/`, guard `exigirRevisor()`, prefijo `/api/revisor/**`, hooks en `shared/hooks/`; antes, 2026-09-30: plantilla descargable generada desde la BD para todos los perfiles, `GeneradorPlantillaExcelJs`; RF-30: `usuario.establecimientoId`, regla compartida `validarEstablecimientoUsuario` en `usuarios/application/`; RF-29: eliminación física en `tipoEstablecimiento/`; RF-28: módulo `comunas/`; RF-27: módulo `provincias/`; RF-26: módulo `regiones/`; antes, 2026-09-23: RF-14 corregido: fin de la autoaprobación del notificador, aprobación/rechazo por ADMIN/REVISOR_REPOSITORIO)
 
 > Este documento se actualiza automáticamente al final del flujo `/feature` cuando un requerimiento
 > nuevo introduce un módulo, capa o patrón que no estaba documentado aquí. La fuente operativa para
@@ -92,6 +92,16 @@ src/
 │   │                         escritura recibe la INTERFAZ `ProvinciaRepository`
 │   │                         (validarProvinciaDeComuna.ts). Sin `regionId` propio: la región se
 │   │                         deriva por la provincia en el `select` anidado del listado
+│   ├── bioestadistica/     — perfil Bioestadística (RF-37): archivos de Defunciones y Egresos por
+│   │                         año. entities/ (CargaBioestadistica, SolicitudReemplazoBioestadistica,
+│   │                         DisponibilidadAnio, EstadoTarjetaBioestadistica, ValidacionEncabezados),
+│   │                         ports.ts (AlmacenArchivos, LectorArchivoLibreStreaming, mailer),
+│   │                         use-cases/ (RecibirArchivo…, ProcesarCarga…, ObtenerPanel…, Listar…,
+│   │                         ObtenerArchivo…, Solicitar/RevisarSolicitudReemplazo…,
+│   │                         MarcarProcesamientosHuerfanosComoFallidos), infrastructure/
+│   │                         (almacenamiento/AlmacenArchivosDisco.ts, lectura-archivo/,
+│   │                         concurrencia/LimitadorConcurrenciaMemoria.ts, arranque/, repositories/,
+│   │                         email/, auditoria/). Lee las ventanas vía la INTERFAZ `VentanaCargaRepository`
 │   ├── mensajeria/         — mensajes revisor ↔ notificador sobre cargas (RF-31). entities/
 │   │                         MensajeCarga.ts, repositories/MensajeCargaRepository.ts, ports.ts
 │   │                         (EnviadorAvisoMensajeNuevo), use-cases/ (EnviarMensajeRevisor,
@@ -108,7 +118,8 @@ src/
 │       ├── domain/         — entities/SolicitudReemplazoCarga.ts (estado + `origen`:
 │       │                     `CARGA_APROBADA` | `CARGA_PENDIENTE_DECISION`, resuelto siempre en
 │       │                     servidor, nunca recibido del cliente; `solicitudUtilizable`/
-│       │                     `solicitudVencida`, vigencia de 5 días calculada en lectura contra un
+│       │                     `solicitudVencida`, vigencia calculada en lectura (RF-36: `diasVigencia`
+│       │                     copiado de la ventana al aprobar; antes, 5 días fijos) contra un
 │       │                     `ahora` recibido, sin cron), errors/SolicitudReemplazoDuplicadaError.ts,
 │       │                     repositories/
 │       ├── application/    — ports.ts (EnviadorNotificacionSolicitudReemplazo), use-cases/
@@ -122,6 +133,8 @@ src/
 │   ├── database/prisma.ts, config/env.ts
 │   ├── logging/            — logger.ts, auditoria.ts, leerLogs.ts, logUpload.ts (preparado, sin conectar — ver RF-13)
 │   ├── email/SmtpMailer.ts
+│   ├── hojas-calculo/      — abrirHojaExcelJs.ts; desde RF-37 también leerHojaStreamingExcelJs.ts,
+│   │                         leerCsvStreaming.ts y valorCelda.ts (lectura en streaming)
 │   └── rate-limit/LimitadorMemoria.ts   — cupo de recuperación de contraseña (RF-10)
 ├── proxy.ts                — guard de sesión por área protegida (reemplaza a middleware.ts en Next.js 16)
 └── shared/
@@ -238,7 +251,8 @@ Registradas aquí porque condicionan cómo se construyen los módulos siguientes
 
 El borrado físico estaba fuera de alcance por trazabilidad; RF-25 lo permite solo cuando no hay
 nada que trazar. De las 12 relaciones que referencian a `Usuario` (14 desde RF-31, que agrega los
-mensajes escritos y recibidos, ambos de historial), 10 (hoy 12) son `ON DELETE RESTRICT` y
+mensajes escritos y recibidos, ambos de historial; 17 desde RF-37, que agrega las cargas de
+Bioestadística y las solicitudes de reemplazo de Bioestadística hechas y revisadas), 10 (hoy 15) son `ON DELETE RESTRICT` y
 representan historial (bloquean) y 2 son `CASCADE` y se descartan con la cuenta (tokens de
 recuperación y asignaciones de formato; la traza de estas queda en `formatosQuitados` de la
 auditoría). La clasificación vive en **una sola fuente**
@@ -2381,3 +2395,136 @@ comparte entre componentes); cierre con Escape, cierre al clic fuera (listener e
 el contenedor) y devolución de foco al botón disparador al cerrar, igual que la trampa de foco nativa
 que ya usa `DialogoConfirmacion` con `<dialog>`. Cualquier menú desplegable nuevo del proyecto debería
 seguir este mismo patrón en vez de introducir uno distinto.
+
+## Vigencia de reemplazo configurable por ventana (RF-36)
+
+Las secciones anteriores de RF-19, RF-20, RF-22 y RF-33 hablan de **5 días fijos**. RF-36 los
+reemplaza; esas secciones se conservan como registro de la decisión original.
+
+### Una sola fórmula para solicitudes aprobadas y reaperturas por rechazo
+
+`fechaVencimientoAutorizacion()` (`modules/ventanas-carga/domain/entities/VentanaCarga.ts`) es la
+única fuente del plazo:
+
+```
+venceEl = max(ventana.fechaVencimiento, finDelDiaChile(fechaDecision + N días))
+```
+
+- Si al decidir la ventana sigue vigente, la autorización dura al menos hasta su cierre.
+- Si ya venció, dura N días desde la decisión, hasta las 23:59:59.999 hora de Chile.
+
+Antes, una solicitud aprobada (RF-19/RF-33) y una reapertura por rechazo (RF-20/RF-22) tenían
+constantes separadas, ambas en 5. Unificarlas evita que dos caminos de "puedes volver a subir" den
+plazos distintos para la misma ventana.
+
+### N se copia al decidir, no se lee de la ventana en cada lectura
+
+`ventana_carga.diasVigenciaReemplazo` (1 a 90, por defecto 7) se copia en el registro que otorga la
+autorización: `solicitud_reemplazo_carga.diasVigencia` al aprobar y
+`carga_archivo_rechazo.diasReapertura` al rechazar. Así, editar la ventana después no cambia en
+silencio un plazo ya comunicado por correo, y la regla sigue siendo una función pura sobre la fila.
+CHECK en la BD: una solicitud `APROBADA` siempre tiene `diasVigencia`, y ambos valores quedan entre 1
+y 90.
+
+### Cerrada por fecha sí; archivada, despublicada o eliminada no
+
+Una autorización vigente habilita subir y "Finalizar y enviar" con la ventana **cerrada por fecha**.
+Una ventana **archivada, despublicada o eliminada** no admite ninguna subida, ni siquiera autorizada:
+archivar o despublicar es una decisión explícita de sacar la ventana de circulación. Por coherencia,
+pedir un reemplazo sobre una ventana así responde 409 `VENTANA_NO_DISPONIBLE`, porque esa aprobación
+nunca podría usarse.
+
+### Efecto sobre datos existentes
+
+La migración dejó `diasVigencia = 5` en las solicitudes ya aprobadas y `diasReapertura = 5` en los
+rechazos existentes. Con la fórmula nueva, las que pertenecen a una ventana todavía abierta pasan a
+durar hasta su cierre: se alargan, nunca se acortan.
+
+## Perfil Bioestadística (RF-37)
+
+### Misma receta de área por perfil
+
+`/bioestadistica` es un área top-level propia, como `/notificador` y `/revisor`: chequeo positivo en
+`src/proxy.ts` (`esPerfilBioestadistica`), despacho desde `/inicio`, `exigirBioestadistica()` en cada
+Route Handler bajo `/api/bioestadistica/**` y `exigirAdminORevisor()` en los endpoints
+administrativos. El establecimiento pasa a ser obligatorio también para este perfil
+(`perfilExigeEstablecimiento()` en `Perfil.ts`, usado por Zod, `validarEstablecimientoUsuario.ts` y
+`UsuarioForm`), y se **copia** en cada carga para que la vista administrativa muestre dónde se
+reportó aunque la persona cambie de establecimiento después.
+
+### Habilitación por año, a partir de las ventanas del notificador
+
+Bioestadística no tiene ventanas propias: un año está disponible si **alguna** `ventana_carga` de ese
+año está publicada y abierta (`resolverAniosDisponibles()`), y la fecha de cierre mostrada es la más
+tardía. "Alguna" en vez de un rango [mínima apertura, máximo cierre] porque la unión es exacta: dos
+ventanas que no se traslapan no dejan abierto el hueco entre ellas. La carga guarda `anio` **sin FK**
+a `ventana_carga`: una FK `Restrict` cambiaría la regla de RF-15 que decide entre eliminación física
+y lógica de una ventana. Para el reemplazo se usa la fórmula de RF-36 con el máximo
+`diasVigenciaReemplazo` y el máximo cierre de las ventanas publicadas y no archivadas del año (7 días
+si no queda ninguna).
+
+### Binario en disco, no en `Bytes`
+
+A diferencia de `carga_archivo.contenidoArchivo`, el archivo de Bioestadística (hasta 200 MB) se
+guarda en disco, bajo `DIRECTORIO_ARCHIVOS_BIOESTADISTICA`. Prisma lee y escribe `Bytes` como un
+`Buffer` completo codificado en hexadecimal, lo que significaría picos de unos 400 MB por subida o
+descarga sin posibilidad de streaming, además de inflar los respaldos de la BD.
+
+- Temporal en `<base>/tmp/<uuid>.part`; definitivo en `<base>/<anio>/<cargaId>.<ext>`. La ruta la
+  genera el servidor y `rutaAbsoluta()` verifica que quede dentro de `<base>`; el nombre original
+  nunca forma parte de la ruta.
+- La descarga es en streaming (`createReadStream` → `Readable.toWeb`) con `Content-Disposition`
+  `filename*` (RFC 5987).
+- Al arrancar se borran los `.part` anteriores al arranque, de subidas interrumpidas.
+
+### Subida con el cuerpo crudo, nunca por el proxy
+
+El cliente envía el archivo como cuerpo de la petición (`fetch(url, { body: file })`) con el nombre
+en `X-Nombre-Archivo`, y el handler lee `request.body` en streaming: `request.formData()` cargaría
+todo el multipart en memoria. Se rechaza antes por `Content-Length` y, además, se cuentan los bytes
+reales durante la recepción. **`/api/**` nunca entra al `matcher` del proxy:** cuando el proxy
+intercepta una petición, Next copia el cuerpo con un límite de 10 MB y lo trunca sin error
+(`proxyClientMaxBodySize`). La invariante quedó escrita en `src/proxy.ts`.
+
+### Validación inmediata de encabezados, procesamiento en segundo plano
+
+1. En la misma petición se guarda el archivo, se calcula su SHA-256, se verifica la firma de bytes
+   y se leen **solo los encabezados**. Un error ahí responde 400 al instante.
+2. Se crea la cabecera en `PROCESANDO` y se responde 202.
+3. En `after()` se recorren las filas en streaming y se insertan por lotes de 5.000, cada lote en su
+   propia sentencia. No hay una transacción que abarque todo: la atomicidad lógica la da el estado,
+   porque nada en `PROCESANDO` cuenta como dato vigente.
+4. La activación es una transacción corta: consume la solicitud de reemplazo si sigue disponible,
+   pasa la anterior a `REEMPLAZADA` y la nueva a `ACTIVA`. Índices únicos parciales para `ACTIVA` y
+   `PROCESANDO` por (usuario, año, tipo); sus P2002 se traducen a `YA_REPORTADO` y `EN_PROCESO`.
+5. Al fallar, la carga queda `FALLIDA` con un código (nunca contenido), y se borran sus filas (por
+   lotes de 50.000) y su archivo. Si otro proceso la marcó `FALLIDA` mientras todavía se insertaban
+   lotes, `eliminarFilasDeCargaFallida()` borra las filas que llegaron después; solo actúa sobre
+   `FALLIDA`, nunca sobre una `REEMPLAZADA`, cuyas filas son historial.
+
+Concurrencia: hasta 2 procesamientos simultáneos y otro limitador de 2 para la lectura de
+encabezados, separados para que una respuesta HTTP no espere detrás de procesamientos que duran
+minutos. Al arrancar, `instrumentation.ts` marca como `FALLIDA` todo `PROCESANDO` (asume una sola
+instancia, igual que el scheduler de RF-17), y como respaldo un `PROCESANDO` de más de 2 h cuenta
+como expirado.
+
+### Lector de xlsx en streaming sobre métodos internos de exceljs
+
+`leerHojaStreamingExcelJs.ts` abre el ZIP con `unzipper` y alimenta los parsers internos de
+`exceljs` (`_parseSharedStrings`, `_parseStyles`, `_parseWorksheet`, etc.), porque el
+`WorkbookReader` secuencial de exceljs perdía partes del archivo de forma no determinista. El costo es
+depender de una API privada:
+
+- `exceljs` y `unzipper` van con **versión exacta** en `package.json`.
+- `tests/lector-xlsx-streaming.unit.ts` arma un xlsx de referencia y falla si esa API cambia.
+- Las partes que exceljs mantiene enteras en memoria (relaciones, libro, estilos, textos compartidos)
+  tienen un tope de 256 MB descomprimidos. Se revisa el tamaño declarado en el ZIP y, como ese dato
+  se puede falsear, también los bytes reales que salen del descompresor. Es la defensa contra una
+  bomba ZIP. La hoja de datos no tiene ese tope porque se lee fila a fila y la limita el tope de
+  2.000.000 de filas.
+
+### Retención sin depuración
+
+Por decisión explícita, una carga `REEMPLAZADA` conserva su archivo en disco y sus filas JSONB como
+historial descargable. Solo una `FALLIDA` se limpia. El crecimiento del almacenamiento está
+registrado como deuda técnica en `docs/requerimientos.md`.

@@ -192,14 +192,17 @@ export async function validarYCargarArchivo(
 
   const ahora = new Date();
 
-  // Ventana cerrada sin reapertura vigente, o en borrador: ver `resolverVentanaHabilitada`. Una
-  // reapertura vigente habilita subir con la ventana vencida, pero NO se consume aquí (decisión que
-  // revierte la de RF-20): se consume al finalizar y enviar con éxito
-  // (`CargaArchivoRepository.finalizar()`), para que un intento con errores, o uno que el
-  // notificador no llegó a finalizar, no lo deje bloqueado.
+  // Ventana en borrador o archivada, o cerrada por fecha sin habilitación fuera de plazo: ver
+  // `resolverVentanaHabilitada`. Una reapertura vigente o (RF-36) una solicitud de reemplazo
+  // aprobada y utilizable habilitan subir con la ventana vencida, pero NO se consumen aquí: se
+  // consumen al finalizar y enviar con éxito (`CargaArchivoRepository.finalizar()`), para que un
+  // intento con errores, o uno que el notificador no llegó a finalizar, no lo deje bloqueado.
   const motivoVentana = await resolverVentanaHabilitada(
     { ventana, usuarioId: datos.usuarioId, ahora },
-    { repositorio: dependencias.repositorio },
+    {
+      repositorio: dependencias.repositorio,
+      repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo,
+    },
   );
 
   if (motivoVentana) {

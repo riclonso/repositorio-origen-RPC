@@ -15,8 +15,7 @@ import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/audi
 import { auditarDesenlaceEnlace } from "@/app/api/usuarios/_lib/auditarEnlace";
 import { listadoUsuariosSchema } from "@/modules/usuarios/schemas/listado-usuarios.schema";
 import {
-  CODIGO_PERFIL_NOTIFICADOR,
-  CODIGO_PERFIL_REVISOR_REPOSITORIO,
+  PERFILES_GESTIONABLES_POR_REVISOR,
   esPerfilAdministrador,
 } from "@/modules/perfiles/domain/entities/Perfil";
 import { crearUsuarioSchema } from "@/modules/usuarios/schemas/usuario.schema";
@@ -57,7 +56,7 @@ export async function GET(request: Request) {
       ? filtro.data
       : {
           ...filtro.data,
-          perfilesPermitidos: [CODIGO_PERFIL_NOTIFICADOR, CODIGO_PERFIL_REVISOR_REPOSITORIO],
+          perfilesPermitidos: PERFILES_GESTIONABLES_POR_REVISOR,
         };
 
     const resultado = await listarUsuarios(filtroEfectivo, {

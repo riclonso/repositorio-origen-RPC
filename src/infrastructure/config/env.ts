@@ -20,6 +20,10 @@ const puertoSmtpSchema = z
 
 const booleanoSchema = z.enum(["true", "false"]);
 
+// Ruta absoluta POSIX (`/var/...`) o Windows (`C:\...`, `\\servidor\...`). Sin `node:path`: este
+// módulo también lo importa `JwtService`, que se empaqueta dentro de `src/proxy.ts`.
+const RUTA_ABSOLUTA = /^(\/|[A-Za-z]:[\\/]|\\\\)/;
+
 // El grupo SMTP completo es OPCIONAL: sin él la aplicación arranca y opera normalmente, solo
 // queda desactivado el autoservicio de recuperación de contraseña. Declararlo obligatorio
 // repetiría la falla ya documentada en docs/resumen-tecnico.md, porque `next build` evalúa los
@@ -47,6 +51,17 @@ const schema = z
     BUZON_COMPARTIDO_REVISOR_EMAIL: z.preprocess(
       (valor) => (valor === "" ? undefined : valor),
       z.email("BUZON_COMPARTIDO_REVISOR_EMAIL debe ser un correo válido").optional(),
+    ),
+    // RF-37: directorio donde se guardan los archivos de Bioestadística (hasta 200 MB cada uno).
+    // OPCIONAL por el mismo motivo que el grupo SMTP (si fuera obligatoria rompería `next build`):
+    // sin ella se usa `<cwd>/almacenamiento/bioestadistica` (ver `directorioArchivosBioestadistica`).
+    // En producción debe apuntar a un volumen persistente incluido en los respaldos.
+    DIRECTORIO_ARCHIVOS_BIOESTADISTICA: z.preprocess(
+      (valor) => (valor === "" ? undefined : valor),
+      z
+        .string()
+        .refine((valor) => RUTA_ABSOLUTA.test(valor), "DIRECTORIO_ARCHIVOS_BIOESTADISTICA debe ser una ruta absoluta")
+        .optional(),
     ),
   })
   // Validación de todo o nada: el peor escenario posible es una configuración a medias que
@@ -93,7 +108,14 @@ export const env = schema.parse({
   SMTP_FROM: process.env.SMTP_FROM,
   SMTP_REJECT_UNAUTHORIZED: process.env.SMTP_REJECT_UNAUTHORIZED,
   BUZON_COMPARTIDO_REVISOR_EMAIL: process.env.BUZON_COMPARTIDO_REVISOR_EMAIL,
+  DIRECTORIO_ARCHIVOS_BIOESTADISTICA: process.env.DIRECTORIO_ARCHIVOS_BIOESTADISTICA,
 });
+
+// RF-37: directorio base de los archivos de Bioestadística. Se resuelve al llamarla (nunca al
+// importar el módulo) y el directorio se crea recién en la primera escritura.
+export function directorioArchivosBioestadistica(): string {
+  return env.DIRECTORIO_ARCHIVOS_BIOESTADISTICA ?? `${process.cwd()}/almacenamiento/bioestadistica`;
+}
 
 export type ConfigSmtp = {
   host: string;

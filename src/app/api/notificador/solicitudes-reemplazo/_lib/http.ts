@@ -3,7 +3,11 @@ import type {
   OrigenSolicitudReemplazoCarga,
   SolicitudReemplazoCarga,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
-import { solicitudUtilizable, solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import {
+  fechaVencimientoSolicitud,
+  solicitudUtilizable,
+  solicitudVencida,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import {
   exigirNotificador,
   idRutaSchema,
@@ -37,6 +41,8 @@ export type SolicitudReemplazoPropiaDTO = {
   // `true` solo si la autorización todavía habilita subir el reemplazo (`APROBADA`, sin consumir y
   // dentro de su plazo). Una `APROBADA` ya consumida no es `vencida`, pero tampoco `utilizable`.
   utilizable: boolean;
+  // RF-36: hasta cuándo habilita la subida una solicitud APROBADA (`null` si no lo está).
+  venceEl: string | null;
   createdAt: string;
 };
 
@@ -54,6 +60,7 @@ export function aSolicitudReemplazoPropiaDTO(solicitud: SolicitudReemplazoCarga,
     revisadoEn: solicitud.revisadoEn ? solicitud.revisadoEn.toISOString() : null,
     vencida: solicitudVencida(solicitud, ahora),
     utilizable: solicitudUtilizable(solicitud, ahora),
+    venceEl: fechaVencimientoSolicitud(solicitud)?.toISOString() ?? null,
     createdAt: solicitud.createdAt.toISOString(),
   };
 }
@@ -71,6 +78,14 @@ export function respuestaNoEsVigente(): NextResponse {
 export function respuestaSolicitudDuplicada(): NextResponse {
   return respuestaError("Ya existe una solicitud de reemplazo pendiente para esta carga", 409, {
     codigo: "SOLICITUD_DUPLICADA",
+  });
+}
+
+// RF-36 (ajuste aprobado): una ventana eliminada, archivada o despublicada no admite reemplazos,
+// así que tampoco se acepta solicitarlo.
+export function respuestaVentanaNoDisponible(): NextResponse {
+  return respuestaError("La ventana de esta carga ya no admite reemplazos (fue archivada, despublicada o eliminada)", 409, {
+    codigo: "VENTANA_NO_DISPONIBLE",
   });
 }
 

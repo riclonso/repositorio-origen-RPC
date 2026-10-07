@@ -1,6 +1,7 @@
 import type {
   DatosEdicionVentanaCarga,
   DatosNuevaVentanaCarga,
+  ResumenVigenciaAnio,
   VentanaCarga,
 } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type { NotificadorPendiente } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
@@ -23,11 +24,19 @@ export interface VentanaCargaRepository {
   // formato): excluye siempre las ventanas eliminadas (`eliminadaEn: null` en el `WHERE`), así que
   // un año/formato con la única ventana eliminada se ve como "sin ventana para ese año y formato".
   obtenerPorAnioYFormato(anio: number, formatoExcelId: string): Promise<VentanaCarga | null>;
+  // RF-36: varias ventanas por id en UNA consulta (sin N+1), incluidas eliminadas, archivadas y
+  // borradores. La usan el panel del notificador (tarjetas de ventanas cerradas con solicitud o
+  // reapertura) y "Mis cargas" (si la ventana todavía admite solicitar un reemplazo).
+  listarPorIds(ids: string[]): Promise<VentanaCarga[]>;
   // Ventanas disponibles para un notificador en `ahora`: ni eliminadas, dentro de su rango de
   // fechas Y publicadas (RF-15 ampliación) — exclusión real en el propio `WHERE`, no solo en la
   // UI. Devuelve las entidades completas (incluye `formatoExcelId`), no solo el año: el llamador
   // necesita cruzar por formato exacto contra los formatos asignados al notificador.
   listarDisponibles(ahora: Date): Promise<VentanaCarga[]>;
+  // RF-37: por cada año pedido que tenga al menos una ventana publicada, no archivada y no eliminada
+  // (abierta o cerrada por fecha), su máximo `fechaVencimiento` y su máximo `diasVigenciaReemplazo`.
+  // Los años sin ninguna ventana así no aparecen. Una sola consulta agrupada, sin N+1.
+  listarDiasVigenciaPorAnio(anios: number[]): Promise<ResumenVigenciaAnio[]>;
   // `anio` es inmutable después de creada: se editan las fechas y el `formatoExcelId`, incluso si
   // la ventana ya tiene cargas asociadas (decisión explícita, ver diseño de RF-15).
   actualizar(id: string, datos: DatosEdicionVentanaCarga): Promise<VentanaCarga | null>;

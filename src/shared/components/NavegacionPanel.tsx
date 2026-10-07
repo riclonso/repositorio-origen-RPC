@@ -8,7 +8,9 @@ import {
   Buildings,
   CalendarBlank,
   CaretDown,
+  ChartBar,
   CheckCircle,
+  Files,
   FileText,
   Gear,
   House,
@@ -93,6 +95,10 @@ export function NavegacionPanel({ enlaces, titulo }: NavegacionPanelProps) {
     Comunas: Signpost,
     Logs: FileText,
     Administración: Gear,
+    // RF-37: grupo "Bioestadística" en dashboard y revisor, y "Mis archivos" del área propia.
+    Bioestadística: ChartBar,
+    Archivos: Files,
+    "Mis archivos": Files,
   } as const;
 
   return (

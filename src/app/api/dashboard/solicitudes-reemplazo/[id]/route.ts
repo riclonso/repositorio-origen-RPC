@@ -5,6 +5,7 @@ import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-r
 import { solicitudReemplazoMailer } from "@/modules/solicitudes-reemplazo/infrastructure/email/SolicitudReemplazoMailer";
 import { auditarSolicitudReemplazo } from "@/modules/solicitudes-reemplazo/infrastructure/auditoria/auditarSolicitudReemplazo";
 import { revisarSolicitudReemplazoSchema } from "@/modules/solicitudes-reemplazo/schemas/solicitud-reemplazo.schema";
+import { fechaVencimientoSolicitud } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { rechazarCarga } from "@/modules/reporte-excel/application/use-cases/RechazarCarga";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
@@ -87,6 +88,7 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
       cargaArchivoId: solicitud.cargaArchivoId,
       solicitudReemplazoId: solicitud.id,
       estadoSolicitud: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
+      diasVigencia: solicitud.diasVigencia,
     });
 
     // Efecto secundario exclusivo del origen `CARGA_PENDIENTE_DECISION`: al APROBARSE, la carga
@@ -144,6 +146,7 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
           nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
           estado: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
           comentarioRevision: solicitud.comentarioRevision,
+          venceEl: fechaVencimientoSolicitud(solicitud),
         });
       } catch (error) {
         logger.error("Error al enviar el correo de resultado de una solicitud de reemplazo", {

@@ -11,6 +11,11 @@ import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoArchivar, IconoEliminar } from "@/shared/components/iconos";
 import { formatearFechaCalendario } from "@/shared/utils/fecha";
 import { useAccionConfirmable } from "@/shared/hooks/useAccionConfirmable";
+import {
+  DIAS_VIGENCIA_REEMPLAZO_MAXIMO,
+  DIAS_VIGENCIA_REEMPLAZO_MINIMO,
+  DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO,
+} from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
 // Opción sintética que representa "sin filtro" en el `<select>` de formato de archivo del
 // buscador: no es un formato real, así que no puede viajar como uno de `opcionesFormatoExcel`.
@@ -57,6 +62,9 @@ export type VentanaCargaVista = {
   // Cantidad de `CargaArchivo` en estado APROBADA asociadas a esta ventana, resuelta server-side
   // vía `_count` de Prisma (nunca contada en el cliente).
   cantidadCargas: number;
+  // RF-36: días que dura la habilitación fuera de plazo tras aprobar una solicitud de reemplazo o
+  // rechazar una carga (se copia en cada decisión: editarlo no cambia plazos ya otorgados).
+  diasVigenciaReemplazo: number;
   // Ruta de detalle ya resuelta en el servidor (`ListadoVentanasCarga.tsx`), como string: este
   // componente es Client ("use client" arriba, por sus formularios/diálogos) y no puede recibir
   // una función como prop desde un Server Component.
@@ -75,7 +83,14 @@ function formatearFechaIso(iso: string): string {
   return formatearFechaCalendario(new Date(iso));
 }
 
-type FormularioCreacion = { anio: string; fechaApertura: string; fechaVencimiento: string; formatoExcelId: string };
+// Los días viajan como texto (valor del `<input type="number">`); el servidor los valida con Zod.
+type FormularioCreacion = {
+  anio: string;
+  fechaApertura: string;
+  fechaVencimiento: string;
+  formatoExcelId: string;
+  diasVigenciaReemplazo: string;
+};
 
 function formularioCreacionVacio(opcionesFormatoExcel: OpcionSelect[]): FormularioCreacion {
   return {
@@ -83,10 +98,23 @@ function formularioCreacionVacio(opcionesFormatoExcel: OpcionSelect[]): Formular
     fechaApertura: "",
     fechaVencimiento: "",
     formatoExcelId: opcionesFormatoExcel[0]?.valor ?? "",
+    // RF-36: prellenado con el valor por defecto.
+    diasVigenciaReemplazo: String(DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO),
   };
 }
 
-type FormularioEdicion = { fechaApertura: string; fechaVencimiento: string; formatoExcelId: string };
+type FormularioEdicion = {
+  fechaApertura: string;
+  fechaVencimiento: string;
+  formatoExcelId: string;
+  diasVigenciaReemplazo: string;
+};
+
+const ETIQUETA_DIAS_REEMPLAZO = "Días para reemplazar tras aprobar una solicitud";
+const AYUDA_DIAS_REEMPLAZO = `Entre ${DIAS_VIGENCIA_REEMPLAZO_MINIMO} y ${DIAS_VIGENCIA_REEMPLAZO_MAXIMO}. También es el plazo para volver a subir tras un rechazo, si la ventana ya venció.`;
+
+const CLASE_CONTROL_EDICION =
+  "rounded-md border border-gob-accent bg-white px-2 py-1 text-sm text-gob-black outline-none focus:border-gob-primary focus:ring-2 focus:ring-gob-primary/30";
 
 type EstadoVentana = { texto: string; claseColor: string };
 
@@ -441,6 +469,24 @@ function FilaVentanaCarga({
           formatearFechaIso(ventana.fechaVencimiento)
         )}
       </td>
+      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gob-gray-a">
+        {enEdicion ? (
+          <input
+            type="number"
+            inputMode="numeric"
+            min={DIAS_VIGENCIA_REEMPLAZO_MINIMO}
+            max={DIAS_VIGENCIA_REEMPLAZO_MAXIMO}
+            step={1}
+            aria-label={`${ETIQUETA_DIAS_REEMPLAZO} en la ventana ${ventana.anio}`}
+            value={edicion.diasVigenciaReemplazo}
+            disabled={guardandoEdicion}
+            onChange={(evento) => onCambiarEdicion({ diasVigenciaReemplazo: evento.target.value })}
+            className={`w-20 ${CLASE_CONTROL_EDICION}`}
+          />
+        ) : (
+          ventana.diasVigenciaReemplazo
+        )}
+      </td>
       <td className="whitespace-nowrap px-3 py-2">
         <span
           className={`inline-flex items-center rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${estado.claseColor}`}
@@ -489,6 +535,124 @@ function FilaVentanaCarga({
   );
 }
 
+// Formulario "Nueva ventana de carga". Extraído de `TablaVentanasCarga` con su propio estado (ningún
+// otro bloque de la tabla lo lee): crear solo necesita refrescar la página al terminar.
+function FormularioNuevaVentanaCarga({ opcionesFormatoExcel }: { opcionesFormatoExcel: OpcionSelect[] }) {
+  const router = useRouter();
+  const [formulario, setFormulario] = useState<FormularioCreacion>(() => formularioCreacionVacio(opcionesFormatoExcel));
+  const [creando, setCreando] = useState(false);
+  const [erroresCreacion, setErroresCreacion] = useState<Record<string, string>>({});
+
+  function cambiar(cambio: Partial<FormularioCreacion>) {
+    setFormulario((actual) => ({ ...actual, ...cambio }));
+  }
+
+  async function crearVentana() {
+    setCreando(true);
+    setErroresCreacion({});
+
+    try {
+      const respuesta = await fetch("/api/dashboard/ventanas-carga", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formulario),
+      });
+
+      if (!respuesta.ok) {
+        const datos = await respuesta.json().catch(() => null);
+        const mensaje: string = datos?.error ?? MENSAJE_ERROR_GENERICO;
+        setErroresCreacion({ [String(datos?.campo ?? "general")]: mensaje });
+        return;
+      }
+
+      setFormulario(formularioCreacionVacio(opcionesFormatoExcel));
+      router.refresh();
+    } catch {
+      setErroresCreacion({ general: MENSAJE_ERROR_GENERICO });
+    } finally {
+      setCreando(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="titulo-nueva-ventana" className="rounded-lg border border-gob-accent bg-white p-4">
+      <h2 id="titulo-nueva-ventana" className="text-sm font-semibold text-gob-black">
+        Nueva ventana de carga
+      </h2>
+
+      <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <CampoSelect
+          id="anio-nueva-ventana"
+          etiqueta="Año"
+          opciones={OPCIONES_ANIO_VENTANA}
+          value={formulario.anio}
+          onChange={(evento) => cambiar({ anio: evento.target.value })}
+          disabled={creando}
+          error={erroresCreacion.anio}
+        />
+        <CampoTexto
+          id="apertura-nueva-ventana"
+          etiqueta="Fecha de apertura"
+          type="date"
+          value={formulario.fechaApertura}
+          onChange={(evento) => cambiar({ fechaApertura: evento.target.value })}
+          disabled={creando}
+          error={erroresCreacion.fechaApertura}
+        />
+        <CampoTexto
+          id="vencimiento-nueva-ventana"
+          etiqueta="Fecha de vencimiento"
+          type="date"
+          value={formulario.fechaVencimiento}
+          onChange={(evento) => cambiar({ fechaVencimiento: evento.target.value })}
+          disabled={creando}
+          error={erroresCreacion.fechaVencimiento}
+        />
+        <CampoSelect
+          id="formato-archivo-nueva-ventana"
+          etiqueta="Formato de archivo"
+          opciones={opcionesFormatoExcel}
+          value={formulario.formatoExcelId}
+          onChange={(evento) => cambiar({ formatoExcelId: evento.target.value })}
+          disabled={creando}
+          error={erroresCreacion.formatoExcelId}
+        />
+        <CampoTexto
+          id="dias-reemplazo-nueva-ventana"
+          etiqueta={ETIQUETA_DIAS_REEMPLAZO}
+          ayuda={AYUDA_DIAS_REEMPLAZO}
+          type="number"
+          inputMode="numeric"
+          min={DIAS_VIGENCIA_REEMPLAZO_MINIMO}
+          max={DIAS_VIGENCIA_REEMPLAZO_MAXIMO}
+          step={1}
+          value={formulario.diasVigenciaReemplazo}
+          onChange={(evento) => cambiar({ diasVigenciaReemplazo: evento.target.value })}
+          disabled={creando}
+          error={erroresCreacion.diasVigenciaReemplazo}
+        />
+      </div>
+
+      {erroresCreacion.general ? (
+        <p role="alert" className="mt-3 text-sm font-medium text-gob-danger">
+          {erroresCreacion.general}
+        </p>
+      ) : null}
+
+      <Boton
+        type="button"
+        variante="primario"
+        className="mt-4 w-fit"
+        cargando={creando}
+        textoCargando="Creando..."
+        onClick={() => void crearVentana()}
+      >
+        Crear ventana
+      </Boton>
+    </section>
+  );
+}
+
 // Tabla + formulario de creación, compartidos entre `/dashboard/ventanas-carga` (ADMIN) y
 // `/revisor/ventanas-carga` (REVISOR_REPOSITORIO): ambos perfiles pueden crear ventanas, editar
 // sus fechas/formato de archivo y publicarlas (RF-15). Las fechas y el formato de archivo se
@@ -517,17 +681,12 @@ export function TablaVentanasCarga({
 }: TablaVentanasCargaProps) {
   const router = useRouter();
 
-  const [formulario, setFormulario] = useState<FormularioCreacion>(() =>
-    formularioCreacionVacio(opcionesFormatoExcel),
-  );
-  const [creando, setCreando] = useState(false);
-  const [erroresCreacion, setErroresCreacion] = useState<Record<string, string>>({});
-
   const [idEnEdicion, setIdEnEdicion] = useState<string | null>(null);
   const [edicion, setEdicion] = useState<FormularioEdicion>({
     fechaApertura: "",
     fechaVencimiento: "",
     formatoExcelId: opcionesFormatoExcel[0]?.valor ?? "",
+    diasVigenciaReemplazo: String(DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO),
   });
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
@@ -576,38 +735,6 @@ export function TablaVentanasCarga({
     [ventanas, terminoBusqueda, filtroFormato, mostrarArchivadas],
   );
 
-  async function crearVentana() {
-    setCreando(true);
-    setErroresCreacion({});
-
-    try {
-      const respuesta = await fetch("/api/dashboard/ventanas-carga", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          anio: formulario.anio,
-          fechaApertura: formulario.fechaApertura,
-          fechaVencimiento: formulario.fechaVencimiento,
-          formatoExcelId: formulario.formatoExcelId,
-        }),
-      });
-
-      if (!respuesta.ok) {
-        const datos = await respuesta.json().catch(() => null);
-        const mensaje: string = datos?.error ?? MENSAJE_ERROR_GENERICO;
-        setErroresCreacion({ [String(datos?.campo ?? "general")]: mensaje });
-        return;
-      }
-
-      setFormulario(formularioCreacionVacio(opcionesFormatoExcel));
-      router.refresh();
-    } catch {
-      setErroresCreacion({ general: MENSAJE_ERROR_GENERICO });
-    } finally {
-      setCreando(false);
-    }
-  }
-
   function iniciarEdicion(ventana: VentanaCargaVista) {
     setIdEnEdicion(ventana.id);
     setErrorEdicion(null);
@@ -615,6 +742,7 @@ export function TablaVentanasCarga({
       fechaApertura: aFechaInputValue(ventana.fechaApertura),
       fechaVencimiento: aFechaInputValue(ventana.fechaVencimiento),
       formatoExcelId: ventana.formatoExcelId,
+      diasVigenciaReemplazo: String(ventana.diasVigenciaReemplazo),
     });
   }
 
@@ -662,73 +790,7 @@ export function TablaVentanasCarga({
 
   return (
     <div className="mt-6 flex flex-col gap-6">
-      <section aria-labelledby="titulo-nueva-ventana" className="rounded-lg border border-gob-accent bg-white p-4">
-        <h2 id="titulo-nueva-ventana" className="text-sm font-semibold text-gob-black">
-          Nueva ventana de carga
-        </h2>
-
-        <div className="mt-3 grid gap-4 sm:grid-cols-4">
-          <CampoSelect
-            id="anio-nueva-ventana"
-            etiqueta="Año"
-            opciones={OPCIONES_ANIO_VENTANA}
-            value={formulario.anio}
-            onChange={(evento) => setFormulario((actual) => ({ ...actual, anio: evento.target.value }))}
-            disabled={creando}
-            error={erroresCreacion.anio}
-          />
-          <CampoTexto
-            id="apertura-nueva-ventana"
-            etiqueta="Fecha de apertura"
-            type="date"
-            value={formulario.fechaApertura}
-            onChange={(evento) =>
-              setFormulario((actual) => ({ ...actual, fechaApertura: evento.target.value }))
-            }
-            disabled={creando}
-            error={erroresCreacion.fechaApertura}
-          />
-          <CampoTexto
-            id="vencimiento-nueva-ventana"
-            etiqueta="Fecha de vencimiento"
-            type="date"
-            value={formulario.fechaVencimiento}
-            onChange={(evento) =>
-              setFormulario((actual) => ({ ...actual, fechaVencimiento: evento.target.value }))
-            }
-            disabled={creando}
-            error={erroresCreacion.fechaVencimiento}
-          />
-          <CampoSelect
-            id="formato-archivo-nueva-ventana"
-            etiqueta="Formato de archivo"
-            opciones={opcionesFormatoExcel}
-            value={formulario.formatoExcelId}
-            onChange={(evento) =>
-              setFormulario((actual) => ({ ...actual, formatoExcelId: evento.target.value }))
-            }
-            disabled={creando}
-            error={erroresCreacion.formatoExcelId}
-          />
-        </div>
-
-        {erroresCreacion.general ? (
-          <p role="alert" className="mt-3 text-sm font-medium text-gob-danger">
-            {erroresCreacion.general}
-          </p>
-        ) : null}
-
-        <Boton
-          type="button"
-          variante="primario"
-          className="mt-4 w-fit"
-          cargando={creando}
-          textoCargando="Creando..."
-          onClick={() => void crearVentana()}
-        >
-          Crear ventana
-        </Boton>
-      </section>
+      <FormularioNuevaVentanaCarga opcionesFormatoExcel={opcionesFormatoExcel} />
 
       {ventanas.length > 0 ? (
         <BuscadorVentanasCarga
@@ -757,6 +819,9 @@ export function TablaVentanasCarga({
                 <th scope="col" className="px-3 py-3 font-semibold">Formato de archivo</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Apertura</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Vencimiento</th>
+                <th scope="col" className="px-3 py-3 font-semibold">
+                  <abbr title={ETIQUETA_DIAS_REEMPLAZO} className="no-underline">Días reemplazo</abbr>
+                </th>
                 <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Publicada</th>
                 <th scope="col" className="px-3 py-3 font-semibold">Creada por</th>

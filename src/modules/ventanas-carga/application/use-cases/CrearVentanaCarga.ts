@@ -1,5 +1,8 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
-import type { VentanaCarga } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import {
+  diasVigenciaReemplazoValidos,
+  type VentanaCarga,
+} from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { VentanaCargaDuplicadaError } from "@/modules/ventanas-carga/domain/errors/VentanaCargaDuplicadaError";
 import { FormatoInvalidoVentanaCargaError } from "@/modules/ventanas-carga/domain/errors/FormatoInvalidoVentanaCargaError";
@@ -9,6 +12,8 @@ export type DatosCreacionVentanaCarga = {
   fechaApertura: Date;
   fechaVencimiento: Date;
   formatoExcelId: string;
+  // RF-36: N días de la habilitación fuera de plazo (1..90).
+  diasVigenciaReemplazo: number;
   creadoPorId: string;
 };
 
@@ -16,6 +21,7 @@ export type ResultadoCrearVentanaCarga =
   | { ok: true; ventana: VentanaCarga }
   | { ok: false; motivo: "ANIO_DUPLICADO" }
   | { ok: false; motivo: "RANGO_INVALIDO" }
+  | { ok: false; motivo: "DIAS_VIGENCIA_INVALIDOS" }
   | { ok: false; motivo: "FORMATO_INVALIDO" };
 
 // Como mucho una ventana por año calendario y formato (`(anio, formatoExcelId)` es único mientras
@@ -34,6 +40,11 @@ export async function crearVentanaCarga(
   // de ese año calendario (una ventana puede abrirse en diciembre y vencer en enero siguiente).
   if (datos.fechaVencimiento <= datos.fechaApertura) {
     return { ok: false, motivo: "RANGO_INVALIDO" };
+  }
+
+  // Mismo criterio de defensa en profundidad (Zod en el borde y CHECK en la base).
+  if (!diasVigenciaReemplazoValidos(datos.diasVigenciaReemplazo)) {
+    return { ok: false, motivo: "DIAS_VIGENCIA_INVALIDOS" };
   }
 
   const formatoActivo = await dependencias.repositorioFormatosExcel.existeActivo(datos.formatoExcelId);

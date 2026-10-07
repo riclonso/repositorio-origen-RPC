@@ -12,6 +12,7 @@ import {
   aVentanaCargaDTO,
   exigirAdminORevisor,
   respuestaAnioDuplicado,
+  respuestaDiasVigenciaInvalidos,
   respuestaError,
   respuestaFormatoInvalido,
   respuestaRangoInvalido,
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
         fechaApertura: datos.data.fechaApertura,
         fechaVencimiento: datos.data.fechaVencimiento,
         formatoExcelId: datos.data.formatoExcelId,
+        diasVigenciaReemplazo: datos.data.diasVigenciaReemplazo,
         creadoPorId: acceso.sesion.sub,
       },
       { repositorio: prismaVentanaCargaRepository, repositorioFormatosExcel: prismaFormatoExcelRepository },
@@ -91,6 +93,11 @@ export async function POST(request: Request) {
         return respuestaRangoInvalido(
           "La fecha de vencimiento debe ser posterior a la fecha de apertura",
         );
+      }
+
+      // Validación de forma (ya la cubre Zod): no se audita, mismo criterio que los 400 de esquema.
+      if (resultado.motivo === "DIAS_VIGENCIA_INVALIDOS") {
+        return respuestaDiasVigenciaInvalidos();
       }
 
       if (resultado.motivo === "FORMATO_INVALIDO") {
@@ -121,6 +128,7 @@ export async function POST(request: Request) {
       fechaApertura: resultado.ventana.fechaApertura,
       fechaVencimiento: resultado.ventana.fechaVencimiento,
       formatoExcelId: resultado.ventana.formatoExcelId,
+      diasVigenciaReemplazo: resultado.ventana.diasVigenciaReemplazo,
     });
 
     const ahora = new Date();

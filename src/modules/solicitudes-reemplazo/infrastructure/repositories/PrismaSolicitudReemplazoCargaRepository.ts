@@ -19,7 +19,8 @@ const SELECCION = {
     select: {
       nombreArchivoOriginal: true,
       formatoExcel: { select: { nombre: true } },
-      ventanaCarga: { select: { anio: true } },
+      ventanaCargaId: true,
+      ventanaCarga: { select: { anio: true, fechaVencimiento: true, diasVigenciaReemplazo: true } },
     },
   },
   solicitadoPorId: true,
@@ -31,6 +32,7 @@ const SELECCION = {
   revisadoPor: { select: { nombres: true, apellidos: true } },
   revisadoEn: true,
   comentarioRevision: true,
+  diasVigencia: true,
   nuevaCargaArchivoId: true,
   utilizadaEn: true,
   createdAt: true,
@@ -45,6 +47,9 @@ function aSolicitudReemplazoCarga(registro: RegistroSolicitud): SolicitudReempla
     cargaArchivoId: registro.cargaArchivoId,
     formatoExcelNombre: registro.cargaArchivo.formatoExcel.nombre,
     anio: registro.cargaArchivo.ventanaCarga.anio,
+    ventanaCargaId: registro.cargaArchivo.ventanaCargaId,
+    ventanaFechaVencimiento: registro.cargaArchivo.ventanaCarga.fechaVencimiento,
+    diasVigenciaReemplazoVentana: registro.cargaArchivo.ventanaCarga.diasVigenciaReemplazo,
     nombreArchivoOriginal: registro.cargaArchivo.nombreArchivoOriginal,
     solicitadoPorId: registro.solicitadoPorId,
     solicitadoPorNombre: nombreCompleto(registro.solicitadoPor),
@@ -56,6 +61,7 @@ function aSolicitudReemplazoCarga(registro: RegistroSolicitud): SolicitudReempla
     revisadoPorNombre: registro.revisadoPor ? nombreCompleto(registro.revisadoPor) : null,
     revisadoEn: registro.revisadoEn,
     comentarioRevision: registro.comentarioRevision,
+    diasVigencia: registro.diasVigencia,
     nuevaCargaArchivoId: registro.nuevaCargaArchivoId,
     utilizadaEn: registro.utilizadaEn,
     createdAt: registro.createdAt,
@@ -143,8 +149,8 @@ export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRep
 
     const solicitud = aSolicitudReemplazoCarga(registro);
     // Reutiliza la misma regla de vigencia del dominio (`solicitudUtilizable`), en vez de
-    // reimplementar la aritmética de fechas aquí: una sola fuente de verdad para "5 días desde
-    // `revisadoEn`".
+    // reimplementar la aritmética de fechas aquí: una sola fuente de verdad para el plazo de RF-36
+    // (`max(vencimiento de la ventana, fin del día de revisadoEn + diasVigencia)`).
     return solicitudUtilizable(solicitud, ahora) ? solicitud : null;
   },
 
@@ -202,6 +208,9 @@ export const prismaSolicitudReemplazoCargaRepository: SolicitudReemplazoCargaRep
         revisadoPorId: datos.revisadoPorId,
         revisadoEn: new Date(),
         comentarioRevision: datos.comentarioRevision,
+        // RF-36: copia de los días de la ventana al aprobar (`null` al rechazar). El CHECK de la base
+        // rechaza una APROBADA sin días.
+        diasVigencia: datos.diasVigencia,
       },
     });
 

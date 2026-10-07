@@ -46,6 +46,9 @@ next-env.d.ts
 # logs de la aplicación (contienen RUT e IP de funcionarios)
 /logs/
 
+# RF-37: archivos de Bioestadística subidos (datos clínicos, hasta 200 MB cada uno)
+/almacenamiento/
+
 # Respaldos de base de datos: contienen RUT, email y hashes
 respaldo_*.sql
 

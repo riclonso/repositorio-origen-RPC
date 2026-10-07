@@ -110,10 +110,18 @@ model Usuario {
   mensajesCargaEscritos  MensajeCarga[] @relation("MensajesCargaEscritosPor")
   mensajesCargaRecibidos MensajeCarga[] @relation("MensajesCargaDeNotificador")
 
+  // Relaciones inversas de RF-37 (perfil Bioestadística), exigidas por Prisma. NUNCA usarlas con
+  // `include` en el listado de usuarios, mismo motivo que `cargasArchivo`: arrastrarían el historial
+  // completo de archivos y solicitudes de cada fila.
+  cargasBioestadistica                          CargaBioestadistica[]              @relation("CargasBioestadisticaSubidasPor")
+  solicitudesReemplazoBioestadisticaSolicitadas SolicitudReemplazoBioestadistica[] @relation("SolicitudesReemplazoBioestadisticaSolicitadasPor")
+  solicitudesReemplazoBioestadisticaRevisadas   SolicitudReemplazoBioestadistica[] @relation("SolicitudesReemplazoBioestadisticaRevisadasPor")
+
   // Política de eliminación FÍSICA (RF-25): una cuenta solo puede borrarse si no tiene historial.
-  //  - Las 12 relaciones con `onDelete: Restrict` (cargas, vistos buenos, publicaciones,
+  //  - Las 15 relaciones con `onDelete: Restrict` (cargas, vistos buenos, publicaciones,
   //    solicitudes de reemplazo solicitadas/revisadas, rechazos, ventanas creadas/eliminadas,
-  //    alertas recibidas/disparadas, mensajes de carga escritos/recibidos) SON historial: una sola
+  //    alertas recibidas/disparadas, mensajes de carga escritos/recibidos y, desde RF-37, cargas de
+  //    Bioestadística y sus solicitudes de reemplazo solicitadas/revisadas) SON historial: una sola
   //    fila impide eliminar, y la FK Restrict es la defensa final de la base.
   //  - Las 2 con `onDelete: Cascade` (`tokensRecuperacion`, `formatosAsignados`) son descartables y
   //    caen con la cuenta.
@@ -342,6 +350,10 @@ model Establecimiento {
   // Relación inversa de RF-30, exigida por Prisma. NUNCA usarla con `include` en el listado de
   // establecimientos: cargaría los usuarios de cada fila (N+1). Mismo motivo que `Perfil.usuarios`.
   usuarios Usuario[]
+
+  // Relación inversa de RF-37, exigida por Prisma. NUNCA usarla con `include` en el listado de
+  // establecimientos: cargaría los archivos de Bioestadística de cada fila (N+1).
+  cargasBioestadistica CargaBioestadistica[]
 
   @@map("establecimiento")
 }
@@ -623,9 +635,9 @@ model CargaArchivoPublicadaFila {
 // rechaza decide unilateralmente: no hay "solicitud pendiente" ni dos partes. 1:1 con
 // `CargaArchivo`, irreversible (no hay endpoint para deshacer un rechazo). Habilita una REAPERTURA
 // de la ventana para que el mismo notificador vuelva a subir un archivo para esa combinación
-// (formato, ventana): vigente hasta `fechaVencimiento` de la ventana si esta no había vencido al
-// momento del rechazo, o 5 días adicionales desde el rechazo si ya había vencido (ver
-// `reaperturaVigente()` en `modules/reporte-excel/domain/entities/CargaArchivoRechazo.ts`).
+// (formato, ventana). RF-36: vigente hasta
+// `max(ventana.fechaVencimiento, fin del día Chile de rechazadoEn + diasReapertura)` (ver
+// `fechaVencimientoAutorizacion()` en `modules/ventanas-carga/domain/entities/VentanaCarga.ts`).
 model CargaArchivoRechazo {
   id             String       @id @default(uuid())
   cargaArchivoId String       @unique
@@ -637,6 +649,10 @@ model CargaArchivoRechazo {
   rechazadoEn    DateTime @default(now())
   rechazadoPorId String
   rechazadoPor   Usuario  @relation("RechazosDecididosPor", fields: [rechazadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // RF-36: copia de `VentanaCarga.diasVigenciaReemplazo` al momento del rechazo, para que editar la
+  // ventana después no cambie un plazo ya otorgado. Las filas anteriores a RF-36 quedaron en 5 (el
+  // valor fijo vigente cuando se rechazaron). CHECK 1..90 agregado a mano en la migración.
+  diasReapertura Int
 
   // Se completan al FINALIZAR Y ENVIAR (no al subir) una carga de esa combinación (usuario,
   // ventana), con la ventana abierta o cerrada, en la MISMA transacción que fija su `finalizadaEn`:
@@ -678,8 +694,9 @@ enum OrigenSolicitudReemplazoCarga {
 // ya tiene una carga APROBADA vigente, o que tiene una carga PENDIENTE_VISTO_BUENO ya finalizada y
 // todavía sin decisión (ver `origen`). La autorización se CONSUME al finalizar y enviar el archivo
 // de reemplazo (`utilizadaEn`/`nuevaCargaArchivoId`), no al subirlo: el notificador puede
-// reintentar la subida mientras siga vigente. EXPIRA 5 días después de aprobada si no se usa (calculado
-// en lectura, nunca persistido como estado propio — mismo patrón que
+// reintentar la subida mientras siga vigente. RF-36: EXPIRA en
+// `max(ventana.fechaVencimiento, fin del día Chile de revisadoEn + diasVigencia)` si no se usa
+// (calculado en lectura, nunca persistido como estado propio — mismo patrón que
 // `TokenRecuperacion.expiraEn`/`VentanaCarga.estaAbierta`).
 model SolicitudReemplazoCarga {
   id             String       @id @default(uuid())
@@ -696,10 +713,13 @@ model SolicitudReemplazoCarga {
 
   revisadoPorId      String?
   revisadoPor        Usuario?  @relation("SolicitudesReemplazoRevisadasPor", fields: [revisadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
-  // Se fija junto con `estado`, nunca por separado. Es también el ancla de la expiración:
-  // `revisadoEn + 5 días`.
+  // Se fija junto con `estado`, nunca por separado. Es también el ancla de la expiración.
   revisadoEn         DateTime?
   comentarioRevision String?
+  // RF-36: copia de `VentanaCarga.diasVigenciaReemplazo` al APROBAR (nula en PENDIENTE/RECHAZADA),
+  // para que editar la ventana después no cambie un plazo ya otorgado. Las APROBADA anteriores a
+  // RF-36 quedaron en 5. CHECKs a mano en la migración: obligatoria si `estado = APROBADA`, y 1..90.
+  diasVigencia       Int?
 
   // Se completan al CONSUMIR la autorización: cuando el notificador FINALIZA Y ENVÍA la carga de
   // reemplazo, en la misma transacción que fija su `finalizadaEn`. `nuevaCargaArchivoId` apunta a
@@ -777,6 +797,10 @@ model VentanaCarga {
   // `PLANTILLA_ALERTA_POR_DEFECTO_HTML` al crearse la ventana (no es un campo del formulario de
   // creación), editable después con su propio endpoint PUT.
   plantillaAlerta         String
+  // RF-36: días que dura la habilitación fuera de plazo que se otorga al aprobar una solicitud de
+  // reemplazo o al rechazar una carga (reapertura). Se COPIA en la solicitud/rechazo al decidir.
+  // CHECK 1..90 agregado a mano en la migración.
+  diasVigenciaReemplazo   Int     @default(7)
 
   cargas              CargaArchivo[]
   alertasNotificacion AlertaNotificacionVentana[]
@@ -896,6 +920,152 @@ model ErrorCargaArchivo {
   mensaje        String
 
   @@map("error_carga_archivo")
+}
+
+// ============================================================
+// RF-37: perfil Bioestadística (archivos de Defunciones y Egresos por año, formato libre)
+// ============================================================
+
+// Lista fija por decisión de producto: agregar un tercer tipo exige UI y reglas propias.
+enum TipoArchivoBioestadistica {
+  DEFUNCIONES
+  EGRESOS
+}
+
+// Ciclo de vida de una carga de Bioestadística. `PROCESANDO`: recibida y en procesamiento
+// asíncrono (sus filas todavía NO son datos vigentes). `ACTIVA`: vigente para su (usuario, año,
+// tipo). `REEMPLAZADA`: desactivada por una carga posterior autorizada (equivale al `activo=false`
+// del notificador; conserva filas y archivo). `FALLIDA`: el procesamiento no terminó (filas y
+// archivo ya limpiados; el código va en `motivoFallo`).
+enum EstadoCargaBioestadistica {
+  PROCESANDO
+  ACTIVA
+  REEMPLAZADA
+  FALLIDA
+}
+
+// CABECERA de un archivo de Bioestadística. Depende del AÑO, no de una ventana concreta: `anio` va
+// sin FK a `ventana_carga` a propósito (con varias ventanas por año, una FK no aporta nada estable,
+// y una `Restrict` cambiaría la eliminación física de ventanas que hoy decide el `RESTRICT` de
+// `carga_archivo`). El binario vive EN DISCO (`rutaArchivo`, relativa al directorio base
+// `DIRECTORIO_ARCHIVOS_BIOESTADISTICA`), nunca en `Bytes`: un archivo puede pesar hasta 200 MB.
+// SQL a mano en la migración: índices únicos parciales (una ACTIVA y un PROCESANDO por usuario,
+// año y tipo) y CHECKs de coherencia de estado.
+model CargaBioestadistica {
+  id                    String                    @id @default(uuid())
+  anio                  Int
+  tipoArchivo           TipoArchivoBioestadistica
+  usuarioId             String
+  usuario               Usuario                   @relation("CargasBioestadisticaSubidasPor", fields: [usuarioId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // COPIA del establecimiento de la persona al momento de subir: la vista administrativa muestra
+  // dónde se reportó aunque la persona cambie después de establecimiento.
+  establecimientoId     String
+  establecimiento       Establecimiento           @relation(fields: [establecimientoId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Solo se muestra; nunca forma parte de la ruta en disco.
+  nombreArchivoOriginal String                    @db.VarChar(255)
+  // Decidido por la firma de bytes, nunca por lo que declara el cliente.
+  tipoContenidoArchivo  String
+  // Relativa al directorio base (`<anio>/<id>.<xlsx|csv>`), generada por el servidor. `NULL` tras
+  // limpiar una `FALLIDA`.
+  rutaArchivo           String?
+  tamanoBytes           BigInt
+  // SHA-256 hexadecimal calculado mientras se recibe el archivo (integridad y trazabilidad).
+  sha256                String                    @db.Char(64)
+  // Orden original de las columnas: JSONB no conserva el orden de las claves de `valores`.
+  encabezados           String[]
+  cantidadFilasDatos    Int                       @default(0)
+  estado                EstadoCargaBioestadistica @default(PROCESANDO)
+  // Código, nunca contenido: ENCABEZADOS_INVALIDOS, SIN_FILAS_DATOS, TOPE_FILAS, ARCHIVO_ILEGIBLE,
+  // REEMPLAZO_NO_AUTORIZADO, YA_REPORTADO, PROCESAMIENTO_INTERRUMPIDO. No nulo si y solo si
+  // `estado = FALLIDA` (CHECK).
+  motivoFallo           String?                   @db.VarChar(40)
+  procesadaEn           DateTime?                 @db.Timestamp(3)
+  // No nulo si y solo si `estado = REEMPLAZADA` (CHECK).
+  desactivadaEn         DateTime?                 @db.Timestamp(3)
+  reemplazadaPorCargaId String?                   @unique
+  reemplazadaPorCarga   CargaBioestadistica?      @relation("ReemplazoCargaBioestadistica", fields: [reemplazadaPorCargaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Texto libre del motivo de la solicitud que autorizó el reemplazo. Nunca se registra en logs.
+  motivoDesactivacion   String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  // Relación inversa de la auto-FK de reemplazo, exigida por Prisma.
+  reemplazaA CargaBioestadistica? @relation("ReemplazoCargaBioestadistica")
+
+  // DETALLE: NUNCA usarla con `include` en listados (hasta 2 millones de filas por carga).
+  filas CargaBioestadisticaFila[]
+
+  // Relaciones inversas de las solicitudes de reemplazo, exigidas por Prisma. NUNCA con `include`.
+  solicitudesReemplazo SolicitudReemplazoBioestadistica[] @relation("SolicitudesDeCargaBioestadistica")
+  solicitudesConsumidas SolicitudReemplazoBioestadistica[] @relation("CargaBioestadisticaOrigenDeReemplazo")
+
+  // EXISTS de historial de RF-25 y verificación de la FK Restrict al eliminar una cuenta.
+  @@index([usuarioId])
+  // Listado administrativo por año y tipo.
+  @@index([anio, tipoArchivo, estado])
+  @@index([establecimientoId])
+  @@map("carga_bioestadistica")
+}
+
+// DETALLE: una fila por cada fila de datos del archivo. `valores` es JSONB porque las columnas son
+// libres (cada archivo trae las suyas). Los consumidores SIEMPRE deben hacer JOIN con la cabecera y
+// filtrar `estado = 'ACTIVA'`: las filas de una `PROCESANDO` o `REEMPLAZADA` no son datos vigentes.
+// Se insertan por lotes con `createMany`, nunca una por una.
+model CargaBioestadisticaFila {
+  id                    String              @id @default(uuid())
+  cargaBioestadisticaId String
+  cargaBioestadistica   CargaBioestadistica @relation(fields: [cargaBioestadisticaId], references: [id], onDelete: Cascade)
+  // Número real de la fila en el archivo (la fila 1 es la de encabezados). Las filas completamente
+  // vacías se omiten conservando la numeración real.
+  numeroFila            Int
+  // `Record<encabezado, valor>`; fechas como ISO string.
+  valores               Json                @db.JsonB
+
+  @@unique([cargaBioestadisticaId, numeroFila])
+  @@map("carga_bioestadistica_fila")
+}
+
+// Autoriza a una persona de Bioestadística a reemplazar su archivo ACTIVO de un (año, tipo). Mismo
+// ciclo que `SolicitudReemplazoCarga`: PENDIENTE → APROBADA/RECHAZADA por ADMIN o
+// REVISOR_REPOSITORIO; al aprobar se COPIA `diasVigencia` (máximo `diasVigenciaReemplazo` de las
+// ventanas del año publicadas y no archivadas, o 7). Se CONSUME al activarse el archivo de reemplazo
+// (`utilizadaEn`/`nuevaCargaBioestadisticaId`). Vigencia calculada en lectura con
+// `fechaVencimientoAutorizacion` (RF-36). SQL a mano: único parcial `WHERE estado = 'PENDIENTE'`
+// sobre la carga y los CHECK de `diasVigencia`.
+model SolicitudReemplazoBioestadistica {
+  id                    String              @id @default(uuid())
+  cargaBioestadisticaId String
+  cargaBioestadistica   CargaBioestadistica @relation("SolicitudesDeCargaBioestadistica", fields: [cargaBioestadisticaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  solicitadoPorId String
+  solicitadoPor   Usuario @relation("SolicitudesReemplazoBioestadisticaSolicitadasPor", fields: [solicitadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  // Texto libre. Nunca se registra en logs ni en auditoría.
+  motivo          String
+
+  estado EstadoSolicitudReemplazoCarga @default(PENDIENTE)
+
+  revisadoPorId      String?
+  revisadoPor        Usuario?  @relation("SolicitudesReemplazoBioestadisticaRevisadasPor", fields: [revisadoPorId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  revisadoEn         DateTime?
+  comentarioRevision String?
+  // Copia de los días de vigencia al APROBAR (nula en PENDIENTE/RECHAZADA). CHECKs a mano.
+  diasVigencia       Int?
+
+  nuevaCargaBioestadisticaId String?
+  nuevaCargaBioestadistica   CargaBioestadistica? @relation("CargaBioestadisticaOrigenDeReemplazo", fields: [nuevaCargaBioestadisticaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  utilizadaEn                DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // EXISTS de historial de RF-25 (ambas FK hacia `usuario`) y "Mis solicitudes".
+  @@index([solicitadoPorId])
+  @@index([revisadoPorId])
+  @@index([cargaBioestadisticaId])
+  // FK Restrict hacia `carga_bioestadistica`: sin índice, borrar o actualizar el id de una carga
+  // obligaría a recorrer la tabla completa para verificar la FK.
+  @@index([nuevaCargaBioestadisticaId])
+  @@map("solicitud_reemplazo_bioestadistica")
 }
 
 // Errores técnicos persistentes. A diferencia de los archivos locales de Winston, esta tabla

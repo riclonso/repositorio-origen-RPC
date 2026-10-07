@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { IconoConfiguracion } from "@/shared/components/iconos";
 
 type MenuConfiguracionUsuarioProps = {
-  // Base de ruta del área actual ("/dashboard" | "/notificador" | "/revisor"), mismo patrón
+  // Base de ruta del área actual ("/dashboard" | "/notificador" | "/revisor" | "/bioestadistica"), mismo patrón
   // `rutaBase` ya usado por `TablaUsuarios`/`TablaFormatosExcel`: cada layout aporta la suya.
   rutaBase: string;
   altoContraste?: boolean;

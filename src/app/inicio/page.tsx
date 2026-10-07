@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import {
   esPerfilAdministrador,
+  esPerfilBioestadistica,
   esPerfilNotificador,
   esPerfilRevisorRepositorio,
 } from "@/modules/perfiles/domain/entities/Perfil";
@@ -27,6 +28,10 @@ export default async function InicioPage(): Promise<never> {
 
   if (esPerfilRevisorRepositorio(sesion.perfil)) {
     redirect("/revisor");
+  }
+
+  if (esPerfilBioestadistica(sesion.perfil)) {
+    redirect("/bioestadistica");
   }
 
   redirect("/login");

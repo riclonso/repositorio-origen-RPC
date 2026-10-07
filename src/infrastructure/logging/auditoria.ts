@@ -95,7 +95,16 @@ export type AccionAuditoria =
   // RF-31: un mensaje sobre una carga, en cualquiera de las dos direcciones (equipo revisor hacia
   // el notificador, o respuesta del notificador). El lado queda implícito en `actorPerfil`. NUNCA se
   // registra el contenido del mensaje ni su longitud.
-  | "MENSAJE_CARGA_ENVIADO";
+  | "MENSAJE_CARGA_ENVIADO"
+  // RF-37 (Bioestadística). `_RECIBIDA`: el archivo se recibió y quedó en procesamiento (EXITO) o se
+  // rechazó en la recepción (RECHAZADO). `_PROCESADA`: desenlace del procesamiento asíncrono (EXITO
+  // al activarse, RECHAZADO con el código de `motivoFallo`). Las solicitudes de reemplazo siguen el
+  // mismo criterio que las del notificador. NUNCA se registra el contenido de las celdas, el motivo
+  // de la solicitud ni el comentario de revisión.
+  | "CARGA_BIOESTADISTICA_RECIBIDA"
+  | "CARGA_BIOESTADISTICA_PROCESADA"
+  | "SOLICITUD_REEMPLAZO_BIOESTADISTICA_CREADA"
+  | "SOLICITUD_REEMPLAZO_BIOESTADISTICA_REVISADA";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -184,6 +193,9 @@ export type MotivoAuditoria =
   // De `SOLICITUD_REEMPLAZO_CREADA`: la carga existe y es del actor, pero ya fue reemplazada por
   // una carga posterior (no es la vigente de su combinación formato/ventana).
   | "NO_ES_VIGENTE"
+  // De `SOLICITUD_REEMPLAZO_CREADA` (RF-36): la ventana de la carga está eliminada, archivada o
+  // despublicada, así que una aprobación nunca podría usarse.
+  | "VENTANA_NO_DISPONIBLE"
   // De `CARGA_ARCHIVO_REGISTRADA`: existe una carga APROBADA vigente para esa combinación
   // (formato, ventana) y no hay ninguna solicitud de reemplazo aprobada y vigente que autorice la
   // subida.
@@ -243,7 +255,23 @@ export type MotivoAuditoria =
   | "TIPO_ESTABLECIMIENTO_EN_USO"
   // De `MENSAJE_CARGA_ENVIADO` (RF-31): no existe conversación previa en ese par (notificador,
   // ventana). El notificador nunca inicia; el revisor solo continúa un hilo que ya existe.
-  | "SIN_CONVERSACION";
+  | "SIN_CONVERSACION"
+  // RF-37 (Bioestadística), de `CARGA_BIOESTADISTICA_RECIBIDA`: estructura del archivo inválida
+  // (encabezados vacíos, duplicados o demasiadas columnas); el año no está disponible y no hay una
+  // autorización que lo habilite; ya existe una carga ACTIVA sin solicitud aprobada; ya hay un
+  // procesamiento en curso; la persona no tiene establecimiento.
+  | "ESTRUCTURA_INVALIDA"
+  | "SIN_ANIO_DISPONIBLE"
+  | "YA_REPORTADO"
+  | "EN_PROCESO"
+  | "SIN_ESTABLECIMIENTO"
+  // De `CARGA_BIOESTADISTICA_PROCESADA` (RECHAZADO): códigos de `motivoFallo` propios del
+  // procesamiento (`REEMPLAZO_NO_AUTORIZADO` y `YA_REPORTADO` ya existen arriba).
+  | "ENCABEZADOS_INVALIDOS"
+  | "SIN_FILAS_DATOS"
+  | "TOPE_FILAS"
+  | "ARCHIVO_ILEGIBLE"
+  | "PROCESAMIENTO_INTERRUMPIDO";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -330,6 +358,9 @@ export type EventoAuditoria = {
   // estos metadatos.
   diasAnticipacionInicio?: number | null;
   intervaloRepeticionDias?: number | null;
+  // RF-36: N días de la habilitación fuera de plazo en `VENTANA_CARGA_CREADA`/`_EDITADA` (valor
+  // resultante, no es dato sensible).
+  diasVigenciaReemplazo?: number | null;
   loteId?: string | null;
   destinatarioId?: string | null;
   cantidadExitos?: number | null;
@@ -340,6 +371,8 @@ export type EventoAuditoria = {
   // contenido de celdas ni contraseñas: solo metadatos estructurados.
   solicitudReemplazoId?: string | null;
   estadoSolicitud?: "APROBADA" | "RECHAZADA" | null;
+  // RF-36: días de vigencia copiados en la solicitud al APROBARLA (`SOLICITUD_REEMPLAZO_REVISADA`).
+  diasVigencia?: number | null;
   // Específico de `REGION_*` (RF-26): id de la región afectada. En los rechazos por duplicado
   // `campos` lleva el NOMBRE del campo en conflicto, nunca el valor ni datos de la otra región.
   regionId?: string | null;
@@ -362,6 +395,14 @@ export type EventoAuditoria = {
   // Específico de `MENSAJE_CARGA_ENVIADO` (RF-31): id del mensaje creado (solo en EXITO). Va junto
   // a `cargaArchivoId`/`ventanaCargaId`, reutilizados de los eventos de cargas y ventanas.
   mensajeCargaId?: string | null;
+  // Específicos de RF-37 (Bioestadística). Solo metadatos: `anio` (arriba) y estos campos. Nunca el
+  // contenido de las celdas, el motivo de la solicitud ni el comentario de revisión.
+  tipoArchivoBioestadistica?: string | null;
+  cargaBioestadisticaId?: string | null;
+  cargaReemplazadaId?: string | null;
+  cantidadFilasDatos?: number | null;
+  tamanoBytes?: number | null;
+  solicitudReemplazoBioestadisticaId?: string | null;
   ip: string | null;
   userAgent: string | null;
 };

@@ -26,7 +26,7 @@ export default async function MisSolicitudesPage() {
 
   const filas: FilaMiSolicitudReemplazoVista[] = resultado.solicitudes.map((solicitud) => ({
     id: solicitud.id,
-    formatoExcelNombre: solicitud.formatoExcelNombre,
+    nombreReporte: solicitud.formatoExcelNombre,
     anio: solicitud.anio,
     nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
     motivo: solicitud.motivo,

@@ -3,6 +3,11 @@ import type {
   GrupoCargaAprobada,
   TipoDesactivacionCargaPublicada,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import {
+  fechaVencimientoSolicitud,
+  solicitudUtilizable,
+  type SolicitudReemplazoCarga,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 
 // Mapeo de dominio -> vista para "Mis cargas" (histórico de exitosas del notificador). Vive en un
@@ -35,6 +40,18 @@ export type FilaCargaExitosaVista = {
   rechazadoPor: string | null;
 };
 
+// RF-36: qué ofrece la fila vigente respecto de un reemplazo. Resuelto en el servidor (la fecha ya
+// formateada en hora de Chile, mismo motivo que `vistoBuenoEl`):
+// - `SOLICITAR`: aprobada, ventana que todavía admite autorizaciones (abierta o vencida por fecha) y
+//   sin solicitud pendiente ni utilizable → acción "Solicitar reemplazo".
+// - `SOLICITUD_PENDIENTE` / `REEMPLAZO_AUTORIZADO`: badge con el estado de la solicitud en curso.
+// - `NO_DISPONIBLE`: rechazada, o ventana archivada, despublicada o eliminada (ajuste aprobado).
+export type EstadoReemplazoGrupoVista =
+  | { tipo: "SOLICITAR" }
+  | { tipo: "SOLICITUD_PENDIENTE" }
+  | { tipo: "REEMPLAZO_AUTORIZADO"; venceEl: string; venceElIso: string }
+  | { tipo: "NO_DISPONIBLE" };
+
 // Un grupo por `ventanaCargaId`: la vigente es la fila principal, las reemplazadas quedan como
 // historial anidado dentro de esa misma fila (nunca como filas sueltas).
 export type GrupoCargaExitosaVista = {
@@ -44,7 +61,38 @@ export type GrupoCargaExitosaVista = {
   anio: number;
   vigente: FilaCargaExitosaVista;
   reemplazadas: FilaCargaExitosaVista[];
+  estadoReemplazo: EstadoReemplazoGrupoVista;
 };
+
+// RF-36: estado de reemplazo de la fila vigente de un grupo, sin consultas propias: recibe las
+// solicitudes del notificador (una consulta) y las ventanas que admiten autorizaciones (otra).
+// Mismas reglas que el servidor aplica al solicitar (`SolicitarReemplazoCarga`): esto solo decide
+// qué ofrecer, la autorización real se revalida en la petición.
+export function resolverEstadoReemplazoGrupo(
+  vigente: Pick<CargaArchivoResumenPropia, "id" | "estado" | "ventanaCargaId">,
+  solicitudes: SolicitudReemplazoCarga[],
+  idsVentanasQueAdmiten: ReadonlySet<string>,
+  ahora: Date,
+): EstadoReemplazoGrupoVista {
+  if (vigente.estado !== "APROBADA" || !idsVentanasQueAdmiten.has(vigente.ventanaCargaId)) {
+    return { tipo: "NO_DISPONIBLE" };
+  }
+
+  const solicitudesDeLaCarga = solicitudes.filter((solicitud) => solicitud.cargaArchivoId === vigente.id);
+
+  if (solicitudesDeLaCarga.some((solicitud) => solicitud.estado === "PENDIENTE")) {
+    return { tipo: "SOLICITUD_PENDIENTE" };
+  }
+
+  const utilizable = solicitudesDeLaCarga.find((solicitud) => solicitudUtilizable(solicitud, ahora));
+  const venceEl = utilizable ? fechaVencimientoSolicitud(utilizable) : null;
+
+  if (venceEl) {
+    return { tipo: "REEMPLAZO_AUTORIZADO", venceEl: formatearFechaHora(venceEl), venceElIso: venceEl.toISOString() };
+  }
+
+  return { tipo: "SOLICITAR" };
+}
 
 function aFilaCargaExitosaVista(carga: CargaArchivoResumenPropia): FilaCargaExitosaVista {
   return {
@@ -59,7 +107,10 @@ function aFilaCargaExitosaVista(carga: CargaArchivoResumenPropia): FilaCargaExit
   };
 }
 
-export function aGrupoCargaExitosaVista(grupo: GrupoCargaAprobada<CargaArchivoResumenPropia>): GrupoCargaExitosaVista {
+export function aGrupoCargaExitosaVista(
+  grupo: GrupoCargaAprobada<CargaArchivoResumenPropia>,
+  estadoReemplazo: EstadoReemplazoGrupoVista,
+): GrupoCargaExitosaVista {
   return {
     ventanaCargaId: grupo.vigente.ventanaCargaId,
     formatoExcelId: grupo.vigente.formatoExcelId,
@@ -67,5 +118,6 @@ export function aGrupoCargaExitosaVista(grupo: GrupoCargaAprobada<CargaArchivoRe
     anio: grupo.vigente.anio,
     vigente: aFilaCargaExitosaVista(grupo.vigente),
     reemplazadas: grupo.reemplazadas.map(aFilaCargaExitosaVista),
+    estadoReemplazo,
   };
 }

@@ -1,37 +1,12 @@
-import type ExcelJS from "exceljs";
 import type { LectorArchivoReporte } from "@/modules/reporte-excel/application/ports";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { abrirPrimeraHojaExcelJs } from "@/infrastructure/hojas-calculo/abrirHojaExcelJs";
+// Conversión de celdas compartida con el lector en streaming de Bioestadística (RF-37).
+import { celdaAValor } from "@/infrastructure/hojas-calculo/valorCelda";
 
 // Tope de seguridad: mismo criterio que `LectorPlantillaExcelJs`, evita recorrer columnas
 // indefinidamente si la primera fila viniera sin ninguna celda vacía.
 const MAXIMO_COLUMNAS = 500;
-
-// Traduce el valor "crudo" de una celda de exceljs a uno de los cuatro tipos primitivos que
-// entiende el resto del módulo. Los objetos enriquecidos de exceljs (fórmulas, texto con
-// formato, hipervínculos) se reducen a su valor calculado o su texto plano; nunca se propaga un
-// objeto opaco al validador de tipos.
-function celdaAValor(valor: ExcelJS.CellValue): ValorCeldaArchivo {
-  if (valor === null || valor === undefined) return null;
-  if (valor instanceof Date) return valor;
-  if (typeof valor === "number" || typeof valor === "boolean" || typeof valor === "string") {
-    return valor;
-  }
-
-  if (typeof valor === "object") {
-    if ("result" in valor && valor.result !== undefined) {
-      return celdaAValor(valor.result as ExcelJS.CellValue);
-    }
-    if ("text" in valor && typeof valor.text === "string") {
-      return valor.text;
-    }
-    if ("richText" in valor && Array.isArray(valor.richText)) {
-      return valor.richText.map((fragmento) => fragmento.text).join("");
-    }
-  }
-
-  return String(valor);
-}
 
 // Implementación del puerto `LectorArchivoReporte` con `exceljs`. Las cargas nuevas son siempre
 // Excel; la rama CSV (separador coma) solo existe para volver a leer cargas antiguas al darles el

@@ -7,7 +7,14 @@
 // genérico (`TipoArchivo`, EXCEL/CSV), sino un `FormatoExcel` concreto (`formatoExcelId`), que es
 // el que trae las reglas y el número de columnas requeridas/opcionales reales.
 
-import { instanteAParedChile } from "@/shared/utils/fecha";
+import { finDelDiaChile, instanteAParedChile, paredChileAInstante } from "@/shared/utils/fecha";
+
+// RF-36: días que dura la habilitación fuera de plazo que se otorga al aprobar una solicitud de
+// reemplazo o al rechazar una carga (reapertura). Configurable por ventana, prellenado con el valor
+// por defecto en el formulario. El rango se repite como CHECK en la migración.
+export const DIAS_VIGENCIA_REEMPLAZO_POR_DEFECTO = 7;
+export const DIAS_VIGENCIA_REEMPLAZO_MINIMO = 1;
+export const DIAS_VIGENCIA_REEMPLAZO_MAXIMO = 90;
 
 // `fechaApertura`/`fechaVencimiento` son hora de pared de Chile escrita en UTC (apertura 00:00,
 // vencimiento 23:59:59.999). Toda comparación contra un instante real pasa por
@@ -57,6 +64,9 @@ export type VentanaCarga = {
   // HTML sanitizado (ver `PlantillaAlerta.ts`). NUNCA nulo: nace como copia de
   // `PLANTILLA_ALERTA_POR_DEFECTO_HTML` al crearse la ventana, editable después.
   plantillaAlerta: string;
+  // RF-36: N días de la habilitación fuera de plazo (ver `fechaVencimientoAutorizacion`). Se copia
+  // en la solicitud o el rechazo al decidir: editarlo no cambia plazos ya otorgados.
+  diasVigenciaReemplazo: number;
 };
 
 export type DatosNuevaVentanaCarga = {
@@ -64,6 +74,7 @@ export type DatosNuevaVentanaCarga = {
   fechaApertura: Date;
   fechaVencimiento: Date;
   formatoExcelId: string;
+  diasVigenciaReemplazo: number;
   creadoPorId: string;
 };
 
@@ -73,6 +84,7 @@ export type DatosEdicionVentanaCarga = {
   fechaApertura: Date;
   fechaVencimiento: Date;
   formatoExcelId: string;
+  diasVigenciaReemplazo: number;
 };
 
 // Estado calculado, nunca persistido: una ventana está abierta si no fue eliminada y `ahora` cae
@@ -98,6 +110,53 @@ export function disponibleParaNotificador(
 ): boolean {
   return estaAbierta(ventana, ahora) && ventana.publicada;
 }
+
+export function diasVigenciaReemplazoValidos(dias: number): boolean {
+  return Number.isInteger(dias) && dias >= DIAS_VIGENCIA_REEMPLAZO_MINIMO && dias <= DIAS_VIGENCIA_REEMPLAZO_MAXIMO;
+}
+
+// RF-36 (ajuste aprobado): una ventana archivada, despublicada o eliminada no admite NINGUNA subida,
+// ni siquiera con una solicitud de reemplazo aprobada o una reapertura vigente. Solo una ventana
+// cerrada POR FECHA (publicada, no archivada, no eliminada) admite usar esas autorizaciones fuera
+// de plazo.
+export function ventanaAdmiteAutorizaciones(
+  ventana: Pick<VentanaCarga, "eliminadaEn" | "publicada" | "archivada">,
+): boolean {
+  return ventana.eliminadaEn === null && ventana.publicada && !ventana.archivada;
+}
+
+// RF-36: plazo ÚNICO de una habilitación fuera de plazo (solicitud de reemplazo aprobada, reapertura
+// por rechazo y, en RF-37, el equivalente de Bioestadística):
+//
+//   venceEl = max(fechaVencimientoVentana, fin del día Chile de (fechaDecision + diasVigencia))
+//
+// Si al decidir la ventana sigue vigente, la habilitación dura al menos hasta su vencimiento; si ya
+// venció, `diasVigencia` días desde la decisión, hasta las 23:59:59.999 hora de Chile.
+// `diasVigencia` es la COPIA persistida al decidir (nunca el valor actual de la ventana);
+// `fechaVencimientoVentana` es hora de pared de Chile escrita en UTC (convenio de las ventanas) y
+// se lee viva de la ventana: extenderla también extiende el piso de la habilitación, mientras que
+// el tramo de `diasVigencia` queda fijo. El resultado es un instante real (comparable con `ahora`).
+export function fechaVencimientoAutorizacion(entrada: {
+  fechaDecision: Date;
+  diasVigencia: number;
+  fechaVencimientoVentana: Date;
+}): Date {
+  const vencimientoVentana = paredChileAInstante(entrada.fechaVencimientoVentana);
+  const plazoDesdeDecision = finDelDiaChile(entrada.fechaDecision, entrada.diasVigencia);
+  return vencimientoVentana.getTime() > plazoDesdeDecision.getTime() ? vencimientoVentana : plazoDesdeDecision;
+}
+
+// RF-37: resumen por año de las ventanas que ADMITEN autorizaciones (`ventanaAdmiteAutorizaciones`:
+// publicadas, no archivadas, no eliminadas; abiertas o cerradas por fecha). Bioestadística depende
+// del año, no de una ventana concreta: usa el MÁXIMO vencimiento como `fechaVencimientoVentana` de
+// `fechaVencimientoAutorizacion` y el MÁXIMO `diasVigenciaReemplazo` como N al aprobar (semántica de
+// unión entre las ventanas del año). Un año sin ninguna ventana así no tiene resumen: sus
+// autorizaciones no son utilizables.
+export type ResumenVigenciaAnio = {
+  anio: number;
+  fechaVencimientoMaxima: Date;
+  diasVigenciaMaximos: number;
+};
 
 // Vista de listado: misma forma que `VentanaCarga`, con el estado ya calculado para pintar la
 // tabla de `/dashboard` y `/revisor` sin que la vista tenga que importar `estaAbierta()`.

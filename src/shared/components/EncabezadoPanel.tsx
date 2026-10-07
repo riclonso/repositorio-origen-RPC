@@ -7,22 +7,29 @@ type EncabezadoPanelProps = {
   // Base de ruta del área actual, para que el menú de configuración enlace a
   // `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena` sin que este componente conozca las
   // tres áreas del sistema. Mismo patrón `rutaBase` ya usado por `TablaUsuarios`/`TablaFormatosExcel`.
-  rutaBase: "/dashboard" | "/notificador" | "/revisor";
+  rutaBase: "/dashboard" | "/notificador" | "/revisor" | "/bioestadistica";
   // Solo el revisor recibe la bandeja de trabajo de solicitudes pendientes; los demás perfiles
   // conservan el encabezado actual sin un control que no les corresponde.
   cantidadNotificaciones?: number;
 };
 
-// Encabezado común a los tres paneles: branding institucional a la izquierda y el menú de
+// Color de fondo de cada área: distingue de un vistazo en qué panel se está.
+const COLOR_FONDO_AREA: Record<EncabezadoPanelProps["rutaBase"], string> = {
+  "/dashboard": "bg-[#173b69]",
+  "/notificador": "bg-[#678d6c]",
+  "/revisor": "bg-[#3f84d8]",
+  // RF-37: área del perfil Bioestadística.
+  "/bioestadistica": "bg-[#5b4f8f]",
+};
+
+// Encabezado común a los paneles: branding institucional a la izquierda y el menú de
 // configuración de la cuenta ("Mi perfil"/"Cambiar contraseña") a la derecha. La identidad de la
 // sesión (nombre, avatar de iniciales y perfil) no vive aquí: está al tope de la barra lateral
 // (`BarraLateralPanel`).
 export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: EncabezadoPanelProps) {
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
-  const esNotificador = rutaBase === "/notificador";
-  const esRevisor = rutaBase === "/revisor";
-  const colorFondo = esNotificador ? "bg-[#678d6c]" : esRevisor ? "bg-[#3f84d8]" : "bg-[#173b69]";
-  const colorSubtitulo = esNotificador ? "text-white" : "text-white/60";
+  const colorFondo = COLOR_FONDO_AREA[rutaBase];
+  const colorSubtitulo = rutaBase === "/notificador" || rutaBase === "/bioestadistica" ? "text-white" : "text-white/60";
 
   return (
     <header className={`flex items-center justify-between gap-4 border-b border-transparent px-4 py-3.5 md:px-7 ${colorFondo}`}>

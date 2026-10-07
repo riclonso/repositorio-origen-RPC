@@ -8,7 +8,13 @@ import { listarVentanasDisponiblesParaNotificador } from "@/modules/ventanas-car
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 import { listarSolicitudesReemplazoPropias } from "@/modules/solicitudes-reemplazo/application/use-cases/ListarSolicitudesReemplazoPropias";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
-import { solicitudUtilizable, solicitudVencida } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import {
+  fechaVencimientoSolicitud,
+  solicitudUtilizable,
+  solicitudVencida,
+} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { listarVentanasQueAdmitenAutorizaciones } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasQueAdmitenAutorizaciones";
+import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
 import type { ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import {
@@ -61,18 +67,44 @@ export default async function NotificadorPage() {
     ),
   ]);
 
-  // Una entrada por cada par (formato asignado, ventana disponible) cuyo formato coincide
-  // exactamente: el notificador solo debe ver la ventana para subir el archivo que le corresponde
-  // (RF-15 ampliación; corrección posterior reemplaza la comparación por tipo de archivo genérico
-  // por una comparación de id exacta).
+  const ahora = new Date();
+  const idsVentanasDisponibles = new Set(ventanasDisponibles.map((ventana) => ventana.id));
+
+  // RF-36: ventanas ya cerradas por fecha en las que el notificador tiene una solicitud de reemplazo
+  // en curso (PENDIENTE) o utilizable, o una reapertura vigente: también reciben su tarjeta, para
+  // que pueda seguir la solicitud o subir fuera de plazo. Archivadas, despublicadas y eliminadas
+  // quedan fuera (`listarVentanasQueAdmitenAutorizaciones`). Una sola consulta para todas.
+  const idsVentanasConAutorizacion = new Set(
+    [
+      ...solicitudesPropias.solicitudes
+        .filter((solicitud) => solicitud.estado === "PENDIENTE" || solicitudUtilizable(solicitud, ahora))
+        .map((solicitud) => solicitud.ventanaCargaId),
+      ...reaperturasVigentes.map((reapertura) => reapertura.ventanaCargaId),
+    ].filter((id) => !idsVentanasDisponibles.has(id)),
+  );
+  const ventanasCerradas = (
+    await listarVentanasQueAdmitenAutorizaciones([...idsVentanasConAutorizacion], {
+      repositorio: prismaVentanaCargaRepository,
+    })
+  ).filter((ventana) => !estaAbierta(ventana, ahora));
+
+  // Una entrada por cada par (formato asignado, ventana disponible o cerrada con autorización) cuyo
+  // formato coincide exactamente: el notificador solo debe ver la ventana para subir el archivo que
+  // le corresponde (RF-15 ampliación; corrección posterior reemplaza la comparación por tipo de
+  // archivo genérico por una comparación de id exacta).
+  const ventanasConTarjeta = [
+    ...ventanasDisponibles.map((ventana) => ({ ventana, cerrada: false })),
+    ...ventanasCerradas.map((ventana) => ({ ventana, cerrada: true })),
+  ];
   const combinaciones: CombinacionCargaVista[] = formatos.flatMap((formato) =>
-    ventanasDisponibles
-      .filter((ventana) => ventana.formatoExcelId === formato.id)
-      .map((ventana) => ({
+    ventanasConTarjeta
+      .filter(({ ventana }) => ventana.formatoExcelId === formato.id)
+      .map(({ ventana, cerrada }) => ({
         formatoExcelId: formato.id,
         formatoNombre: formato.nombre,
         anio: ventana.anio,
         ventanaCargaId: ventana.id,
+        cerrada,
       })),
   );
 
@@ -83,7 +115,6 @@ export default async function NotificadorPage() {
     finalizadaEn: carga.finalizadaEn ? carga.finalizadaEn.toISOString() : null,
   }));
 
-  const ahora = new Date();
   const solicitudesIniciales: SolicitudReemplazoPropiaVista[] = solicitudesPropias.solicitudes.map((solicitud) => ({
     id: solicitud.id,
     cargaArchivoId: solicitud.cargaArchivoId,
@@ -91,13 +122,15 @@ export default async function NotificadorPage() {
     origen: solicitud.origen,
     vencida: solicitudVencida(solicitud, ahora),
     utilizable: solicitudUtilizable(solicitud, ahora),
+    venceEl: fechaVencimientoSolicitud(solicitud)?.toISOString() ?? null,
   }));
 
-  // El aviso de rechazo solo se muestra si la ventana está publicada y abierta: con una ventana en
-  // borrador o cerrada el notificador no puede volver a subir, y el aviso solo generaría confusión.
-  const idsVentanasDisponibles = new Set(ventanasDisponibles.map((ventana) => ventana.id));
+  // El aviso de rechazo solo se muestra si la ventana tiene tarjeta (publicada y abierta, o RF-36
+  // cerrada por fecha con la reapertura vigente): con una ventana en borrador o archivada el
+  // notificador no puede volver a subir, y el aviso solo generaría confusión.
+  const idsVentanasConTarjeta = new Set(ventanasConTarjeta.map(({ ventana }) => ventana.id));
   const reaperturasIniciales: ReaperturaVigentePropiaVista[] = reaperturasVigentes
-    .filter((reapertura) => idsVentanasDisponibles.has(reapertura.ventanaCargaId))
+    .filter((reapertura) => idsVentanasConTarjeta.has(reapertura.ventanaCargaId))
     .map((reapertura) => ({
       ...reapertura,
       fechaLimite: reapertura.fechaLimite.toISOString(),

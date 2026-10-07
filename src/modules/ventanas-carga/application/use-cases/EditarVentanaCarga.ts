@@ -1,5 +1,9 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
-import type { DatosEdicionVentanaCarga, VentanaCarga } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
+import {
+  diasVigenciaReemplazoValidos,
+  type DatosEdicionVentanaCarga,
+  type VentanaCarga,
+} from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { FormatoInvalidoVentanaCargaError } from "@/modules/ventanas-carga/domain/errors/FormatoInvalidoVentanaCargaError";
 
@@ -8,6 +12,7 @@ export type ResultadoEditarVentanaCarga =
   | { ok: false; motivo: "VENTANA_NO_ENCONTRADA" }
   | { ok: false; motivo: "VENTANA_ELIMINADA" }
   | { ok: false; motivo: "RANGO_INVALIDO" }
+  | { ok: false; motivo: "DIAS_VIGENCIA_INVALIDOS" }
   | { ok: false; motivo: "FORMATO_INVALIDO" };
 
 // Las fechas y el formato de archivo de una ventana se pueden editar SIEMPRE, incluso si ya tiene
@@ -39,6 +44,12 @@ export async function editarVentanaCarga(
   // en enero siguiente).
   if (datos.fechaVencimiento <= datos.fechaApertura) {
     return { ok: false, motivo: "RANGO_INVALIDO" };
+  }
+
+  // RF-36: cambiar N no afecta solicitudes ya aprobadas ni rechazos ya registrados: cada uno guarda
+  // su propia copia (`diasVigencia` / `diasReapertura`).
+  if (!diasVigenciaReemplazoValidos(datos.diasVigenciaReemplazo)) {
+    return { ok: false, motivo: "DIAS_VIGENCIA_INVALIDOS" };
   }
 
   if (datos.formatoExcelId !== ventana.formatoExcelId) {

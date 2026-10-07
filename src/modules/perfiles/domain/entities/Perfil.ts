@@ -40,6 +40,29 @@ export function esPerfilRevisorRepositorio(codigo: string): boolean {
   return codigo === CODIGO_PERFIL_REVISOR_REPOSITORIO;
 }
 
+// RF-37: perfil que reporta los archivos de Defunciones y Egresos por año. Tiene área propia
+// (`/bioestadistica`), así que el sistema lo conoce por su código, mismo criterio que los anteriores.
+export const CODIGO_PERFIL_BIOESTADISTICA = "BIOESTADISTICA";
+
+export function esPerfilBioestadistica(codigo: string): boolean {
+  return codigo === CODIGO_PERFIL_BIOESTADISTICA;
+}
+
+// RF-30 / RF-37: perfiles que DEBEN pertenecer a un establecimiento (el notificador y, desde RF-37,
+// Bioestadística, cuyas cargas guardan una copia del establecimiento). Para el resto es opcional.
+// Fuente única para el esquema Zod, el caso de uso y el formulario.
+export function perfilExigeEstablecimiento(codigo: string): boolean {
+  return esPerfilNotificador(codigo) || esPerfilBioestadistica(codigo);
+}
+
+// Perfiles cuyas cuentas puede ver y administrar un REVISOR_REPOSITORIO desde su mantenedor de
+// usuarios (todo menos ADMIN). Fuente única para el listado de la vista y el de la API.
+export const PERFILES_GESTIONABLES_POR_REVISOR: readonly string[] = [
+  CODIGO_PERFIL_NOTIFICADOR,
+  CODIGO_PERFIL_REVISOR_REPOSITORIO,
+  CODIGO_PERFIL_BIOESTADISTICA,
+];
+
 // Forma válida de un código de perfil. Vive aquí, en TypeScript puro, porque la usan tanto el
 // esquema Zod como la verificación del JWT: una sola definición impide que las dos deriven.
 export const FORMA_CODIGO_PERFIL = /^[A-Z][A-Z0-9_]{0,39}$/;

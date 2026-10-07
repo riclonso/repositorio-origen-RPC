@@ -2,27 +2,27 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type {
-  EstadoSolicitudReemplazoCarga,
-  OrigenSolicitudReemplazoCarga,
-} from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import type { EstadoSolicitudReemplazoCarga } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { Boton } from "@/shared/components/Boton";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
 
 // Vista de una solicitud para la bandeja de revisión (`/dashboard/solicitudes`,
-// `/revisor/solicitudes`), ya con las fechas formateadas y `vencida` resuelto en el servidor
-// (mismo criterio que el resto del panel: nunca calcular vigencia en el cliente).
+// `/revisor/solicitudes` y, desde RF-37, las de Bioestadística), ya con las fechas formateadas y
+// `vencida` resuelto en el servidor (mismo criterio que el resto del panel: nunca calcular vigencia
+// en el cliente).
 export type FilaSolicitudReemplazoVista = {
   id: string;
-  formatoExcelNombre: string;
+  // Qué se reporta: el nombre del formato (notificador) o el tipo de archivo (Bioestadística).
+  nombreReporte: string;
   anio: number;
   nombreArchivoOriginal: string;
   solicitadoPorNombre: string;
   solicitadoPorRut: string;
   motivo: string;
   estado: EstadoSolicitudReemplazoCarga;
-  origen: OrigenSolicitudReemplazoCarga;
+  // Texto secundario opcional bajo el archivo (p. ej. el origen de la solicitud del notificador).
+  etiquetaOrigen: string | null;
   revisadoPorNombre: string | null;
   revisadoEnTexto: string | null;
   comentarioRevision: string | null;
@@ -36,14 +36,6 @@ const ETIQUETAS_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
   PENDIENTE: "Pendiente",
   APROBADA: "Aprobada",
   RECHAZADA: "Rechazada",
-};
-
-// Mejora menor de UX (no bloqueante, ver diseño aprobado): distingue en el listado si la
-// solicitud es para reemplazar una carga ya aprobada o una pendiente de decisión, sin afectar el
-// flujo de aprobar/rechazar (idéntico para ambos orígenes).
-const ETIQUETAS_ORIGEN: Record<OrigenSolicitudReemplazoCarga, string> = {
-  CARGA_APROBADA: "Reemplazo de carga aprobada",
-  CARGA_PENDIENTE_DECISION: "Reemplazo de carga pendiente de decisión",
 };
 
 const CLASES_ESTADO: Record<EstadoSolicitudReemplazoCarga, string> = {
@@ -96,19 +88,24 @@ function AccionesFila({ fila, onAprobar, onRechazar }: AccionesFilaProps) {
   );
 }
 
-const COLUMNAS: ColumnaTabla<FilaSolicitudReemplazoVista>[] = [
-  {
-    encabezado: "Formato / Año",
+function columnaReporte(encabezado: string): ColumnaTabla<FilaSolicitudReemplazoVista> {
+  return {
+    encabezado,
     encabezadoFila: true,
     className: "min-w-40 px-3 py-2 font-medium text-gob-black",
     contenido: (fila) => (
       <>
-        {fila.formatoExcelNombre} · {fila.anio}
+        {fila.nombreReporte} · {fila.anio}
         <span className="block break-all text-xs font-normal text-gob-gray-a">{fila.nombreArchivoOriginal}</span>
-        <span className="block text-xs font-normal text-gob-gray-b">{ETIQUETAS_ORIGEN[fila.origen]}</span>
+        {fila.etiquetaOrigen ? (
+          <span className="block text-xs font-normal text-gob-gray-b">{fila.etiquetaOrigen}</span>
+        ) : null}
       </>
     ),
-  },
+  };
+}
+
+const COLUMNAS_COMUNES: ColumnaTabla<FilaSolicitudReemplazoVista>[] = [
   {
     encabezado: "Solicitado por",
     className: "px-3 py-2 text-gob-gray-a",
@@ -139,10 +136,19 @@ const COLUMNAS: ColumnaTabla<FilaSolicitudReemplazoVista>[] = [
 type TablaSolicitudesReemplazoProps = {
   filas: FilaSolicitudReemplazoVista[];
   rutaApiRevision: string;
+  // RF-37: la bandeja de Bioestadística muestra "Archivo / Año" en vez de "Formato / Año".
+  encabezadoPrimeraColumna?: string;
+  descripcion?: string;
 };
 
-export function TablaSolicitudesReemplazo({ filas, rutaApiRevision }: TablaSolicitudesReemplazoProps) {
+export function TablaSolicitudesReemplazo({
+  filas,
+  rutaApiRevision,
+  encabezadoPrimeraColumna = "Formato / Año",
+  descripcion = "Solicitudes de reemplazo de cargas ya aprobadas",
+}: TablaSolicitudesReemplazoProps) {
   const router = useRouter();
+  const columnas = [columnaReporte(encabezadoPrimeraColumna), ...COLUMNAS_COMUNES];
   const [objetivo, setObjetivo] = useState<{ fila: FilaSolicitudReemplazoVista; decision: "APROBAR" | "RECHAZAR" } | null>(
     null,
   );
@@ -190,8 +196,8 @@ export function TablaSolicitudesReemplazo({ filas, rutaApiRevision }: TablaSolic
   return (
     <>
       <TablaPanel
-        descripcion="Solicitudes de reemplazo de cargas ya aprobadas"
-        columnas={COLUMNAS}
+        descripcion={descripcion}
+        columnas={columnas}
         filas={filas}
         claveFila={(fila) => fila.id}
         anchoMinimo="min-w-4xl"
@@ -205,10 +211,10 @@ export function TablaSolicitudesReemplazo({ filas, rutaApiRevision }: TablaSolic
         tarjeta={(fila) => (
           <>
             <p className="font-semibold text-gob-black">
-              {fila.formatoExcelNombre} · {fila.anio}
+              {fila.nombreReporte} · {fila.anio}
             </p>
             <p className="break-all">{fila.nombreArchivoOriginal}</p>
-            <p className="mt-1 text-xs text-gob-gray-b">{ETIQUETAS_ORIGEN[fila.origen]}</p>
+            {fila.etiquetaOrigen ? <p className="mt-1 text-xs text-gob-gray-b">{fila.etiquetaOrigen}</p> : null}
             <p className="mt-1">
               {fila.solicitadoPorNombre} <span className="tabular-nums">({fila.solicitadoPorRut})</span>
             </p>
@@ -234,7 +240,7 @@ export function TablaSolicitudesReemplazo({ filas, rutaApiRevision }: TablaSolic
         descripcion={
           objetivo
             ? objetivo.decision === "APROBAR"
-              ? `${objetivo.fila.solicitadoPorNombre} podrá volver a subir un archivo para "${objetivo.fila.formatoExcelNombre} · ${objetivo.fila.anio}". Puedes agregar un comentario opcional.`
+              ? `${objetivo.fila.solicitadoPorNombre} podrá volver a subir un archivo para "${objetivo.fila.nombreReporte} · ${objetivo.fila.anio}". Puedes agregar un comentario opcional.`
               : `${objetivo.fila.solicitadoPorNombre} no podrá reemplazar esta carga. Puedes agregar un comentario opcional con el motivo.`
             : ""
         }

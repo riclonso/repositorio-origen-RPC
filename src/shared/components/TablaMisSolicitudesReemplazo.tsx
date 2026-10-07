@@ -3,10 +3,11 @@ import type { EstadoSolicitudReemplazoCarga } from "@/modules/solicitudes-reempl
 // Vista de "Mis solicitudes" (`/notificador/solicitudes`): seguimiento propio, solo lectura. Sin
 // acciones (aprobar/rechazar es exclusivo de `/dashboard/solicitudes` y `/revisor/solicitudes`),
 // así que es un Server Component puro, sin interactividad de cliente, mismo criterio que
-// `TablaCargasVentana.tsx`.
+// `TablaCargasVentana.tsx`. RF-37: también la usa "Mis solicitudes" de Bioestadística.
 export type FilaMiSolicitudReemplazoVista = {
   id: string;
-  formatoExcelNombre: string;
+  // Qué se reporta: el nombre del formato (notificador) o el tipo de archivo (Bioestadística).
+  nombreReporte: string;
   anio: number;
   nombreArchivoOriginal: string;
   motivo: string;
@@ -51,16 +52,20 @@ function BadgeEstado({ fila }: { fila: FilaMiSolicitudReemplazoVista }) {
 
 type TablaMisSolicitudesReemplazoProps = {
   filas: FilaMiSolicitudReemplazoVista[];
+  encabezadoPrimeraColumna?: string;
 };
 
-export function TablaMisSolicitudesReemplazo({ filas }: TablaMisSolicitudesReemplazoProps) {
+export function TablaMisSolicitudesReemplazo({
+  filas,
+  encabezadoPrimeraColumna = "Formato / Año",
+}: TablaMisSolicitudesReemplazoProps) {
   return (
     <div className="mt-6 overflow-x-auto rounded-lg border border-gob-accent bg-white">
       <table className="w-full min-w-3xl border-collapse text-left text-sm">
         <caption className="sr-only">Mis solicitudes de reemplazo</caption>
         <thead className="bg-gob-neutral text-xs uppercase tracking-wide text-gob-gray-a">
           <tr>
-            <th scope="col" className="px-3 py-3 font-semibold">Formato / Año</th>
+            <th scope="col" className="px-3 py-3 font-semibold">{encabezadoPrimeraColumna}</th>
             <th scope="col" className="px-3 py-3 font-semibold">Motivo</th>
             <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
             <th scope="col" className="px-3 py-3 font-semibold">Comentario</th>
@@ -71,7 +76,7 @@ export function TablaMisSolicitudesReemplazo({ filas }: TablaMisSolicitudesReemp
           {filas.map((fila) => (
             <tr key={fila.id} className="align-middle transition-colors hover:bg-gob-neutral/50">
               <th scope="row" className="min-w-40 px-3 py-2 font-medium text-gob-black">
-                {fila.formatoExcelNombre} · {fila.anio}
+                {fila.nombreReporte} · {fila.anio}
                 <span className="block break-all text-xs font-normal text-gob-gray-a">{fila.nombreArchivoOriginal}</span>
               </th>
               <td className="min-w-48 px-3 py-2 text-gob-gray-a">{fila.motivo}</td>

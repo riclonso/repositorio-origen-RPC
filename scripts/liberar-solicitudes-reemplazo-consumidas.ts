@@ -10,7 +10,8 @@ import { PrismaClient } from "@prisma/client";
 //
 //   - `estado = APROBADA` y `utilizadaEn` no nulo, y
 //   - su `nuevaCargaArchivo` está en `CON_ERRORES`, o en `PENDIENTE_VISTO_BUENO` sin `finalizadaEn`, y
-//   - siguen dentro de su vigencia (5 días desde `revisadoEn`, hasta las 23:59 hora de Chile).
+//   - siguen dentro de su vigencia (RF-36: `max(vencimiento de su ventana, fin del día Chile de
+//     revisadoEn + diasVigencia)`, con los días copiados en cada solicitud al aprobarla).
 //
 // Por defecto es DRY-RUN (solo informa). Para escribir: `--aplicar`.
 //
@@ -26,10 +27,10 @@ try {
 }
 
 // DUPLICADO a propósito (este script no importa nada de `src/`, mismo criterio que
-// `seed-admin.ts`). Fuente de verdad: `DIAS_VIGENCIA_SOLICITUD_APROBADA` y `solicitudUtilizable()`
-// en src/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga.ts, y
-// `finDelDiaChile()` en src/shared/utils/fecha.ts. Si cambian allá, hay que cambiarlos aquí.
-const DIAS_VIGENCIA_SOLICITUD_APROBADA = 5;
+// `seed-admin.ts`). Fuente de verdad: `fechaVencimientoAutorizacion()` en
+// src/modules/ventanas-carga/domain/entities/VentanaCarga.ts (que usan `solicitudUtilizable()` y
+// `fechaLimiteReapertura()`), y `finDelDiaChile()` en src/shared/utils/fecha.ts. Si cambian allá, hay
+// que cambiarlos aquí. Los días ya no son una constante: cada solicitud/rechazo guarda su copia.
 
 const FORMATEADOR_PARTES_CHILE = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/Santiago",
@@ -74,14 +75,13 @@ function finDelDiaChile(instante: Date, diasExtra: number): Date {
   return paredChileAInstante(pared);
 }
 
-// DUPLICADO de `DIAS_REAPERTURA_TRAS_VENCIMIENTO` y `fechaLimiteReapertura()` en
-// src/modules/reporte-excel/domain/entities/CargaArchivoRechazo.ts (mismo criterio que arriba).
-const DIAS_REAPERTURA_TRAS_VENCIMIENTO = 5;
-
-function fechaLimiteReapertura(rechazadoEn: Date, fechaVencimientoVentana: Date): Date {
+// DUPLICADO de `fechaVencimientoAutorizacion()` (RF-36, plazo único de solicitudes aprobadas y
+// reaperturas): `max(vencimiento de la ventana, fin del día Chile de fechaDecision + diasVigencia)`.
+// `fechaVencimientoVentana` viene en hora de pared de Chile escrita en UTC.
+function fechaVencimientoAutorizacion(fechaDecision: Date, diasVigencia: number, fechaVencimientoVentana: Date): Date {
   const vencimientoVentana = paredChileAInstante(fechaVencimientoVentana);
-  if (vencimientoVentana.getTime() > rechazadoEn.getTime()) return vencimientoVentana;
-  return finDelDiaChile(rechazadoEn, DIAS_REAPERTURA_TRAS_VENCIMIENTO);
+  const plazoDesdeDecision = finDelDiaChile(fechaDecision, diasVigencia);
+  return vencimientoVentana.getTime() > plazoDesdeDecision.getTime() ? vencimientoVentana : plazoDesdeDecision;
 }
 
 // SOLO INFORMATIVO (nunca escribe, ni con `--aplicar`): reaperturas que el código anterior consumió
@@ -98,6 +98,7 @@ async function informarReaperturasConsumidasPorIntentoNoEnviado(prisma: PrismaCl
     select: {
       id: true,
       rechazadoEn: true,
+      diasReapertura: true,
       reaperturaConsumidaPorCargaArchivoId: true,
       cargaArchivo: { select: { ventanaCarga: { select: { fechaVencimiento: true } } } },
     },
@@ -107,7 +108,11 @@ async function informarReaperturasConsumidasPorIntentoNoEnviado(prisma: PrismaCl
   const enPlazo = rechazos.filter(
     (rechazo) =>
       ahora.getTime() <=
-      fechaLimiteReapertura(rechazo.rechazadoEn, rechazo.cargaArchivo.ventanaCarga.fechaVencimiento).getTime(),
+      fechaVencimientoAutorizacion(
+        rechazo.rechazadoEn,
+        rechazo.diasReapertura,
+        rechazo.cargaArchivo.ventanaCarga.fechaVencimiento,
+      ).getTime(),
   );
 
   console.log(`[Informativo, no se modifica] Reaperturas consumidas por un intento no enviado: ${rechazos.length}`);
@@ -139,7 +144,13 @@ async function main(): Promise<void> {
           },
         },
       },
-      select: { id: true, revisadoEn: true, nuevaCargaArchivoId: true },
+      select: {
+        id: true,
+        revisadoEn: true,
+        diasVigencia: true,
+        nuevaCargaArchivoId: true,
+        cargaArchivo: { select: { ventanaCarga: { select: { fechaVencimiento: true } } } },
+      },
       orderBy: { revisadoEn: "asc" },
     });
 
@@ -147,7 +158,14 @@ async function main(): Promise<void> {
     const vigentes = candidatas.filter(
       (solicitud) =>
         solicitud.revisadoEn !== null &&
-        ahora.getTime() <= finDelDiaChile(solicitud.revisadoEn, DIAS_VIGENCIA_SOLICITUD_APROBADA).getTime(),
+        // Toda APROBADA trae `diasVigencia` (CHECK de la migración RF-36); defensivo: sin días, no se libera.
+        solicitud.diasVigencia !== null &&
+        ahora.getTime() <=
+          fechaVencimientoAutorizacion(
+            solicitud.revisadoEn,
+            solicitud.diasVigencia,
+            solicitud.cargaArchivo.ventanaCarga.fechaVencimiento,
+          ).getTime(),
     );
 
     console.log(`Modo: ${aplicar ? "APLICAR" : "DRY-RUN (usa --aplicar para escribir)"}`);

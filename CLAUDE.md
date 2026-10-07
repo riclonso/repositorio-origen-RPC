@@ -84,6 +84,9 @@ en vez de fallar en runtime más adelante:
 - `AUTH_SECRET` — secreto para firmar JWT con `jose`, mínimo 32 caracteres.
 - `ADMIN_SEED_PASSWORD` — solo la usa `scripts/seed-admin.ts` (no pasa por `env.ts`), para
   sembrar/actualizar el usuario administrador inicial.
+- `DIRECTORIO_ARCHIVOS_BIOESTADISTICA` — opcional (RF-37), ruta absoluta del directorio de archivos de
+  Bioestadística; por defecto `<cwd>/almacenamiento/bioestadistica`. En producción, volumen persistente
+  incluido en los respaldos.
 
 ## Arquitectura
 
@@ -112,6 +115,8 @@ src/
 │   │   ├── application/    — use-cases/ListarPerfiles.ts
 │   │   └── infrastructure/ — repositories/PrismaPerfilRepository.ts
 │   ├── mensajeria/         — mensajes revisor ↔ notificador sobre cargas (RF-31); ver detalle abajo
+│   ├── bioestadistica/     — perfil Bioestadística (RF-37): Defunciones/Egresos por año, archivos en
+│   │                         disco hasta 200 MB, lectura en streaming; ver detalle abajo
 │   └── usuarios/           — mantenedor de usuarios (RF-06), nombres en español; ver detalle abajo
 │       ├── domain/         — entities/Usuario.ts, errors/ (UsuarioDuplicadoError, PerfilInvalidoError)
 │       ├── application/    — ports.ts, use-cases/ (CrearUsuario, ActualizarUsuario, ListarUsuarios, ...)
@@ -121,7 +126,8 @@ src/
 │   ├── database/prisma.ts, config/env.ts
 │   ├── logging/            — logger.ts (Winston), auditoria.ts, leerLogs.ts
 │   ├── email/SmtpMailer.ts
-│   ├── hojas-calculo/      — abrirHojaExcelJs.ts (único punto de apertura/escritura exceljs, separador CSV)
+│   ├── hojas-calculo/      — abrirHojaExcelJs.ts (único punto de apertura/escritura exceljs, separador CSV);
+│   │                         leerHojaStreamingExcelJs.ts, leerCsvStreaming.ts, valorCelda.ts (RF-37)
 │   └── rate-limit/LimitadorMemoria.ts
 ├── shared/
 │   ├── utils/              — rut.ts, peticion.ts (extraerIp)
@@ -172,9 +178,10 @@ Puntos que hay que respetar al tocarlo:
   Client no soporta `unaccent()`. El término del usuario va parametrizado por la plantilla etiquetada
   de Prisma y los comodines LIKE se escapan: nunca concatenar el término en el SQL.
 * **Qué es "historial" tiene una sola fuente.** `infrastructure/repositories/relacionesHistorialUsuario.ts`
-  lista las 12 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
-  publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas, y desde RF-31 los mensajes
-  escritos y recibidos) y las 2 `Cascade` que se
+  lista las 15 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
+  publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas, desde RF-31 los mensajes
+  escritos y recibidos, y desde RF-37 las cargas de Bioestadística y sus solicitudes de reemplazo
+  hechas y revisadas) y las 2 `Cascade` que se
   descartan (tokens de recuperación, asignaciones de formato). La usan `listar()` (columna
   `tieneHistorial`) y `eliminar()`. Al agregar una relación nueva a `Usuario` hay que clasificarla
   ahí; `tests/relaciones-usuario.guard.unit.ts` falla si no. `eliminar()` corre en una transacción
@@ -214,6 +221,25 @@ lado contrario; del lado revisor es compartida por todos los revisores). Puntos 
 * **Conteos sin N+1**: `groupBy` sobre `mensaje_carga` usando los índices
   `[ventanaCargaId, ladoAutor, leidoEn]` y `[notificadorId, ventanaCargaId, creadoEn]`.
 
+### `modules/bioestadistica/` (perfil Bioestadística, RF-37)
+
+Archivos de Defunciones y Egresos por año, formato libre, hasta 200 MB. Puntos a respetar:
+
+* **`/api/**` nunca entra al `matcher` del proxy.** El proxy copia el cuerpo con un límite de 10 MB y
+  lo trunca sin error (`proxyClientMaxBodySize`). Las subidas grandes dependen de esto; la invariante
+  está escrita en `src/proxy.ts`.
+* **Binario en disco, no en `Bytes`.** `AlmacenArchivosDisco` guarda bajo
+  `DIRECTORIO_ARCHIVOS_BIOESTADISTICA`, con rutas generadas por el servidor y verificadas contra el
+  directorio base; el nombre original nunca forma parte de la ruta. Subida con el binario crudo como
+  cuerpo (no `formData()`), descarga en streaming.
+* **Estado como atomicidad.** Encabezados en la petición (202), filas en `after()` por lotes; nada en
+  `PROCESANDO` es dato vigente. Los consumidores de `carga_bioestadistica_fila` siempre hacen JOIN con
+  la cabecera y filtran `estado = 'ACTIVA'`.
+* **El lector de xlsx usa métodos internos de exceljs.** `exceljs` y `unzipper` van con versión exacta;
+  no actualizarlos sin correr `tests/lector-xlsx-streaming.unit.ts`.
+* **Plazo de reemplazo:** el de RF-36 (`fechaVencimientoAutorizacion()`), con el máximo de las
+  ventanas publicadas y no archivadas del año.
+
 ### Autenticación (flujo de referencia)
 
 Ejemplo completo de cómo encajan las capas, usando el login — **es un Route Handler REST, no un
@@ -244,7 +270,8 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
    al panel) en vez de volver a pedir `/dashboard` con la cookie recién emitida, dejando al usuario
    atascado en `/login` sin mensaje de error. La petición nueva reevalúa el proxy con la sesión
    vigente. Mantener ese patrón en cualquier navegación posterior a un cambio de sesión.
-7. `src/proxy.ts` — guard único de navegación, con `matcher: ["/dashboard/:path*", "/notificador/:path*"]`.
+7. `src/proxy.ts` — guard único de navegación, con `matcher: ["/dashboard/:path*", "/notificador/:path*", "/revisor/:path*", "/bioestadistica/:path*"]`
+   (cada área con su chequeo positivo; `/api/**` nunca entra, ver `modules/bioestadistica/` arriba).
    Lee la cookie `sesion`, la verifica con `verificarSesion()`
    (`modules/auth/infrastructure/auth/JwtService.ts`) y aplica un chequeo **positivo por área**: cada
    área top-level mapea 1:1 a un perfil (`/dashboard` exige `esPerfilAdministrador`, `/notificador`
@@ -255,7 +282,8 @@ Server Action** (`app/login/login-form.tsx` hace `fetch("/api/auth/login")` desd
    de `src/` (no en la raíz) porque el proyecto usa la convención `src`.
    - `app/inicio/page.tsx` es el **despachador de sesión**: no está en el `matcher` del proxy (se
      autoguarda leyendo `obtenerSesionActual()`), nunca renderiza contenido propio, y redirige según
-     perfil (`/dashboard` para ADMIN, `/notificador` para NOTIFICADOR, `/login` si el perfil no tiene
+     perfil (`/dashboard` para ADMIN, `/notificador` para NOTIFICADOR, `/revisor` para
+     REVISOR_REPOSITORIO, `/bioestadistica` para BIOESTADISTICA, `/login` si el perfil no tiene
      área conocida o no hay sesión). Es el destino al que el proxy reenvía cuando el perfil no calza
      con el área pedida, y el punto al que un login exitoso debería apuntar en vez de asumir un panel
      fijo.

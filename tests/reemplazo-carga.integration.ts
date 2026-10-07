@@ -21,6 +21,7 @@ import { finalizarYEnviarCarga } from "../src/modules/reporte-excel/application/
 import { darVistoBueno } from "../src/modules/reporte-excel/application/use-cases/DarVistoBueno";
 import { rechazarCarga } from "../src/modules/reporte-excel/application/use-cases/RechazarCarga";
 import { solicitarReemplazoCarga } from "../src/modules/solicitudes-reemplazo/application/use-cases/SolicitarReemplazoCarga";
+import { revisarSolicitudReemplazo } from "../src/modules/solicitudes-reemplazo/application/use-cases/RevisarSolicitudReemplazo";
 import type { LectorArchivoReporte } from "../src/modules/reporte-excel/application/ports";
 import type { ValorCeldaArchivo } from "../src/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { FormatoExcel } from "../src/modules/formatos-excel/domain/entities/FormatoExcel";
@@ -162,20 +163,36 @@ async function cargaAprobada(ventana: Ventana): Promise<string> {
   return id;
 }
 
-async function solicitarYAprobar(cargaArchivoId: string, motivo: string): Promise<string> {
-  const solicitud = await solicitarReemplazoCarga(
+function solicitar(cargaArchivoId: string, motivo: string) {
+  return solicitarReemplazoCarga(
     { cargaArchivoId, usuarioId: notificadorId, motivo },
-    { repositorio: repositorioSolicitudes, repositorioCargas: repositorio },
+    { repositorio: repositorioSolicitudes, repositorioCargas: repositorio, repositorioVentanasCarga: repositorioVentanas },
   );
+}
+
+// RF-36: aprueba por el caso de uso real, que COPIA en la solicitud los días de su ventana.
+async function solicitarYAprobar(cargaArchivoId: string, motivo: string): Promise<string> {
+  const solicitud = await solicitar(cargaArchivoId, motivo);
   assert.ok(solicitud.ok, `solicitar reemplazo (${solicitud.ok ? "" : solicitud.motivo})`);
-  const revisada = await repositorioSolicitudes.revisar(solicitud.solicitud.id, {
-    revisadoPorId: revisorId,
-    estado: "APROBADA",
-    comentarioRevision: null,
-  });
-  assert.ok(revisada);
+  const revisada = await revisarSolicitudReemplazo(
+    solicitud.solicitud.id,
+    { revisadoPorId: revisorId, decision: "APROBAR", comentario: null },
+    { repositorio: repositorioSolicitudes },
+  );
+  assert.ok(revisada.ok);
+  assert.equal(revisada.solicitud.diasVigencia, revisada.solicitud.diasVigenciaReemplazoVentana, "copia los días de la ventana");
   return solicitud.solicitud.id;
 }
+
+// Deja la ventana cerrada POR FECHA (sigue publicada y sin archivar).
+async function cerrarPorFecha(ventana: Ventana): Promise<void> {
+  await prisma.ventanaCarga.update({
+    where: { id: ventana.id },
+    data: { fechaVencimiento: new Date("2001-01-01T23:59:59.999Z") },
+  });
+}
+
+const HACE_DIEZ_DIAS = () => new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
 async function rechazar(id: string, motivo: string): Promise<void> {
   const resultado = await rechazarCarga(id, { rechazadoPorId: revisorId, motivo }, { repositorio });
@@ -337,31 +354,137 @@ async function escenarioE(): Promise<void> {
   const nueva = await subir(ventana, FILAS_OK);
   assert.ok(nueva.ok, "la aprobación superada no bloquea la subida");
 
-  const solicitudSobreSuperada = await solicitarReemplazoCarga(
-    { cargaArchivoId: primera, usuarioId: notificadorId, motivo: "x" },
-    { repositorio: repositorioSolicitudes, repositorioCargas: repositorio },
-  );
+  const solicitudSobreSuperada = await solicitar(primera, "x");
   assert.deepEqual(solicitudSobreSuperada, { ok: false, motivo: "NO_ES_VIGENTE" });
   console.log("OK E: aprobación superada no bloquea ni admite solicitud de reemplazo");
 }
 
+// RF-36: con la ventana vigente, una solicitud aprobada habilita al menos hasta el vencimiento de la
+// ventana; solo vence por sus N días cuando la ventana ya cerró. Aprobada hace 10 días con 7 días
+// copiados y ventana cerrada entretanto: vencida, y la ventana cerrada sin autorización rechaza la
+// finalización antes de mirar el reemplazo.
 async function escenarioSolicitudVencida(): Promise<void> {
   const ventana = await crearVentana();
   const original = await cargaAprobada(ventana);
   const solicitudId = await solicitarYAprobar(original, "Motivo vencida");
   const reemplazo = await subirOk(ventana);
 
-  await prisma.solicitudReemplazoCarga.update({
-    where: { id: solicitudId },
-    data: { revisadoEn: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
-  });
+  await prisma.solicitudReemplazoCarga.update({ where: { id: solicitudId }, data: { revisadoEn: HACE_DIEZ_DIAS() } });
+  await cerrarPorFecha(ventana);
 
-  assert.deepEqual(await finalizar(reemplazo), { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" });
+  const configurada = await prisma.solicitudReemplazoCarga.findUniqueOrThrow({ where: { id: solicitudId } });
+  assert.equal(configurada.diasVigencia, 7, "copió los 7 días por defecto de la ventana");
+
+  assert.deepEqual(await finalizar(reemplazo), { ok: false, motivo: "SIN_VENTANA_ABIERTA" });
   const solicitud = await prisma.solicitudReemplazoCarga.findUniqueOrThrow({ where: { id: solicitudId } });
   assert.equal(solicitud.utilizadaEn, null);
   const carga = await prisma.cargaArchivo.findUniqueOrThrow({ where: { id: reemplazo } });
   assert.equal(carga.finalizadaEn, null, "la carga no queda finalizada");
-  console.log("OK: solicitud vencida entre subida y finalizar -> REEMPLAZO_NO_AUTORIZADO");
+  console.log("OK: solicitud vencida (N días, ventana cerrada) entre subida y finalizar -> rechazada");
+}
+
+// RF-36: se puede SOLICITAR con la ventana vencida, y la aprobación habilita subir y finalizar.
+async function escenarioVentanaCerradaConSolicitud(): Promise<void> {
+  const ventana = await crearVentana();
+  const original = await cargaAprobada(ventana);
+  await cerrarPorFecha(ventana);
+
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "cerrada sin autorización");
+
+  const solicitudId = await solicitarYAprobar(original, "Motivo ventana cerrada");
+  const reemplazo = await subirOk(ventana);
+  const finalizada = await finalizar(reemplazo);
+  assert.ok(finalizada.ok, `finalizar con ventana cerrada (${finalizada.ok ? "" : finalizada.motivo})`);
+  assert.equal(finalizada.solicitudReemplazoId, solicitudId);
+
+  const consumida = await prisma.solicitudReemplazoCarga.findUniqueOrThrow({ where: { id: solicitudId } });
+  assert.equal(consumida.nuevaCargaArchivoId, reemplazo, "consumida al finalizar");
+  console.log("OK RF-36: ventana cerrada por fecha + solicitud utilizable -> subida y finalización");
+}
+
+// RF-36 (ajuste aprobado): archivada o despublicada bloquea, aunque haya una solicitud aprobada.
+async function escenarioVentanaArchivadaConSolicitud(): Promise<void> {
+  const ventana = await crearVentana();
+  const original = await cargaAprobada(ventana);
+  await solicitarYAprobar(original, "Motivo archivada");
+  await cerrarPorFecha(ventana);
+  const reemplazo = await subirOk(ventana);
+
+  await prisma.ventanaCarga.update({ where: { id: ventana.id }, data: { archivada: true, publicada: false } });
+
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "subir");
+  assert.deepEqual(await finalizar(reemplazo), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "finalizar");
+
+  // Tampoco se acepta una solicitud nueva: nunca podría usarse.
+  assert.deepEqual(await solicitar(original, "Otra"), { ok: false, motivo: "VENTANA_NO_DISPONIBLE" });
+
+  // Despublicada (sin archivar): mismo rechazo.
+  await prisma.ventanaCarga.update({ where: { id: ventana.id }, data: { archivada: false, publicada: false } });
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "despublicada");
+  console.log("OK RF-36: ventana archivada o despublicada + solicitud -> rechazado");
+}
+
+// La ventana eliminada nunca habilita nada, ni con solicitud aprobada.
+async function escenarioVentanaEliminadaConSolicitud(): Promise<void> {
+  const ventana = await crearVentana();
+  const original = await cargaAprobada(ventana);
+  await solicitarYAprobar(original, "Motivo eliminada");
+  const reemplazo = await subirOk(ventana);
+
+  await prisma.ventanaCarga.update({
+    where: { id: ventana.id },
+    data: { eliminadaEn: new Date(), eliminadaPorId: revisorId },
+  });
+
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "subir");
+  assert.deepEqual(await finalizar(reemplazo), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "finalizar");
+  console.log("OK RF-36: ventana eliminada + solicitud -> SIN_VENTANA_ABIERTA");
+}
+
+// RF-36: editar `diasVigenciaReemplazo` después de aprobar no cambia el plazo ya otorgado (ni el de
+// la solicitud ni el de una reapertura).
+async function escenarioEditarDiasNoCambiaPlazo(): Promise<void> {
+  const ventana = await crearVentana();
+  const original = await cargaAprobada(ventana);
+  const solicitudId = await solicitarYAprobar(original, "Motivo edición");
+
+  await prisma.ventanaCarga.update({ where: { id: ventana.id }, data: { diasVigenciaReemplazo: 30 } });
+  await prisma.solicitudReemplazoCarga.update({ where: { id: solicitudId }, data: { revisadoEn: HACE_DIEZ_DIAS() } });
+  await cerrarPorFecha(ventana);
+
+  const solicitud = await prisma.solicitudReemplazoCarga.findUniqueOrThrow({ where: { id: solicitudId } });
+  assert.equal(solicitud.diasVigencia, 7, "la copia no cambia al editar la ventana");
+  assert.equal(
+    await repositorioSolicitudes.obtenerAprobadaUtilizablePorCarga(original, new Date()),
+    null,
+    "con 7 días copiados ya venció (con 30 seguiría vigente)",
+  );
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" });
+  console.log("OK RF-36: editar los días de la ventana no cambia un plazo ya otorgado");
+}
+
+// RF-36 (plazo unificado): el rechazo copia los días de la ventana en `diasReapertura` y la
+// reapertura habilita subir con la ventana cerrada por fecha durante esos días.
+async function escenarioReaperturaConDiasDeVentana(): Promise<void> {
+  const ventana = await crearVentana();
+  await prisma.ventanaCarga.update({ where: { id: ventana.id }, data: { diasVigenciaReemplazo: 12 } });
+  const rechazada = await subirOk(ventana);
+  assert.ok((await finalizar(rechazada)).ok);
+  await rechazar(rechazada, "Rechazo con días de ventana");
+
+  const registro = await prisma.cargaArchivoRechazo.findUniqueOrThrow({ where: { cargaArchivoId: rechazada } });
+  assert.equal(registro.diasReapertura, 12, "copia los días de la ventana");
+
+  await prisma.ventanaCarga.update({ where: { id: ventana.id }, data: { diasVigenciaReemplazo: 1 } });
+  await cerrarPorFecha(ventana);
+  assert.ok((await subir(ventana, FILAS_OK)).ok, "reapertura vigente con la ventana cerrada (12 días copiados)");
+
+  await prisma.cargaArchivoRechazo.update({
+    where: { cargaArchivoId: rechazada },
+    data: { rechazadoEn: new Date(Date.now() - 13 * 24 * 60 * 60 * 1000) },
+  });
+  assert.deepEqual(await subir(ventana, FILAS_OK), { ok: false, motivo: "SIN_VENTANA_ABIERTA" }, "vencida tras 12 días");
+  console.log("OK RF-36: reapertura con los días copiados de la ventana");
 }
 
 async function escenarioVentanaCerrada(): Promise<void> {
@@ -466,6 +589,11 @@ async function main(): Promise<void> {
     await escenarioD();
     await escenarioE();
     await escenarioSolicitudVencida();
+    await escenarioVentanaCerradaConSolicitud();
+    await escenarioVentanaArchivadaConSolicitud();
+    await escenarioVentanaEliminadaConSolicitud();
+    await escenarioEditarDiasNoCambiaPlazo();
+    await escenarioReaperturaConDiasDeVentana();
     await escenarioVentanaCerrada();
     await escenarioReaperturaVieja();
     await escenarioIndiceUnicoPendienteFinalizada();

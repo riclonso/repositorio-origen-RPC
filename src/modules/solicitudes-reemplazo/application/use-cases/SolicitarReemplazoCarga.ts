@@ -5,6 +5,8 @@ import type {
   SolicitudReemplazoCarga,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { SolicitudReemplazoDuplicadaError } from "@/modules/solicitudes-reemplazo/domain/errors/SolicitudReemplazoDuplicadaError";
+import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
+import { ventanaAdmiteAutorizaciones } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
 export type DatosSolicitarReemplazoCarga = {
   cargaArchivoId: string;
@@ -20,6 +22,9 @@ export type ResultadoSolicitarReemplazoCarga =
   // La carga existe, es del actor y está APROBADA, pero ya fue reemplazada por una carga posterior
   // (no es la vigente de su combinación formato/ventana): no tiene sentido pedir reemplazarla.
   | { ok: false; motivo: "NO_ES_VIGENTE" }
+  // RF-36 (ajuste aprobado): la ventana de la carga está eliminada, archivada o despublicada, así
+  // que una aprobación nunca podría usarse. Una ventana solo VENCIDA por fecha sí lo admite.
+  | { ok: false; motivo: "VENTANA_NO_DISPONIBLE" }
   | { ok: false; motivo: "SOLICITUD_DUPLICADA" }
   | { ok: false; motivo: "SOLICITUD_YA_APROBADA_VIGENTE" };
 
@@ -33,6 +38,7 @@ export async function solicitarReemplazoCarga(
   dependencias: {
     repositorio: SolicitudReemplazoCargaRepository;
     repositorioCargas: CargaArchivoRepository;
+    repositorioVentanasCarga: VentanaCargaRepository;
   },
 ): Promise<ResultadoSolicitarReemplazoCarga> {
   // Ownership explícito por `usuarioId`, filtrado en el `WHERE` de `obtenerPropiaPorId`: una carga
@@ -41,6 +47,14 @@ export async function solicitarReemplazoCarga(
 
   if (!carga) {
     return { ok: false, motivo: "NO_ENCONTRADO" };
+  }
+
+  // RF-36: se puede solicitar con la ventana VENCIDA (la aprobación habilita subir fuera de plazo),
+  // pero no si fue eliminada, archivada o despublicada (`ventanaAdmiteAutorizaciones`).
+  const ventana = await dependencias.repositorioVentanasCarga.obtenerPorId(carga.ventanaCargaId);
+
+  if (!ventana || !ventanaAdmiteAutorizaciones(ventana)) {
+    return { ok: false, motivo: "VENTANA_NO_DISPONIBLE" };
   }
 
   let origen: OrigenSolicitudReemplazoCarga;

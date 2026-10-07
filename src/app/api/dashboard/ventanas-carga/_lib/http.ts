@@ -49,6 +49,14 @@ export function respuestaRangoInvalido(mensaje: string): NextResponse {
   return respuestaError(mensaje, 400, { campo: "fechaVencimiento", codigo: "RANGO_INVALIDO" });
 }
 
+// RF-36: defensa del caso de uso (el esquema Zod ya lo rechaza antes con su propio mensaje).
+export function respuestaDiasVigenciaInvalidos(): NextResponse {
+  return respuestaError("Los días para reemplazar deben ser un número entero entre 1 y 90", 400, {
+    campo: "diasVigenciaReemplazo",
+    codigo: "DIAS_VIGENCIA_INVALIDOS",
+  });
+}
+
 export function respuestaVentanaEliminada(): NextResponse {
   return respuestaError("Esta ventana ya fue eliminada", 409, { codigo: "VENTANA_ELIMINADA" });
 }

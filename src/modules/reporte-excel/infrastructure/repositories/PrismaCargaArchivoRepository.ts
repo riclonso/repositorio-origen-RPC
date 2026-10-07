@@ -22,6 +22,7 @@ import {
   type CargaArchivoRechazo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import { solicitudUtilizable } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
+import { ventanaAdmiteAutorizaciones } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
 // Filas de detalle insertadas por sentencia `createMany`: `TOPE_FILAS_DATOS` (20.000, ver
 // `domain/entities/CargaArchivo.ts`) por hasta ~4 columnas de parámetros por fila se acerca al
@@ -327,6 +328,7 @@ const SELECCION_RECHAZO_ENTIDAD = {
   rechazadoEn: true,
   rechazadoPorId: true,
   rechazadoPor: { select: { nombres: true, apellidos: true } },
+  diasReapertura: true,
   reaperturaConsumidaEn: true,
   reaperturaConsumidaPorCargaArchivoId: true,
   createdAt: true,
@@ -347,6 +349,7 @@ function aCargaArchivoRechazo(registro: RegistroRechazoEntidad): CargaArchivoRec
     rechazadoEn: registro.rechazadoEn,
     rechazadoPorId: registro.rechazadoPorId,
     rechazadoPorNombre: nombreCompleto(registro.rechazadoPor),
+    diasReapertura: registro.diasReapertura,
     reaperturaConsumidaEn: registro.reaperturaConsumidaEn,
     reaperturaConsumidaPorCargaArchivoId: registro.reaperturaConsumidaPorCargaArchivoId,
     createdAt: registro.createdAt,
@@ -397,9 +400,12 @@ async function resolverAprobadasVigentesEnReemplazo(
         usuarioId: true,
         ventanaCargaId: true,
         vistoBuenoEn: true,
+        // RF-36: vencimiento (piso del plazo) y estado de la ventana, que decide si una
+        // autorización todavía puede usarse (`ventanaAdmiteAutorizaciones`).
+        ventanaCarga: { select: { fechaVencimiento: true, publicada: true, archivada: true, eliminadaEn: true } },
         solicitudesReemplazo: {
           where: { estado: "APROBADA", utilizadaEn: null },
-          select: { estado: true, utilizadaEn: true, revisadoEn: true },
+          select: { estado: true, utilizadaEn: true, revisadoEn: true, diasVigencia: true },
         },
       },
     }),
@@ -412,8 +418,9 @@ async function resolverAprobadasVigentesEnReemplazo(
       orderBy: { rechazadoEn: "desc" },
       select: {
         rechazadoEn: true,
+        diasReapertura: true,
         reaperturaConsumidaEn: true,
-        cargaArchivo: { select: { usuarioId: true, ventanaCargaId: true, ventanaCarga: { select: { fechaVencimiento: true } } } },
+        cargaArchivo: { select: { usuarioId: true, ventanaCargaId: true } },
       },
     }),
   ]);
@@ -437,11 +444,17 @@ async function resolverAprobadasVigentesEnReemplazo(
     paresVistos.add(clave);
 
     const rechazo = ultimoRechazoPorPar.get(clave);
-    const enReemplazo =
-      paresConPendiente.has(clave) ||
-      aprobada.solicitudesReemplazo.some((solicitud) => solicitudUtilizable(solicitud, ahora)) ||
-      (rechazo !== undefined &&
-        reaperturaAutorizaReemplazo(rechazo, { fechaVencimiento: rechazo.cargaArchivo.ventanaCarga.fechaVencimiento }, aprobada, ahora));
+    const { ventanaCarga } = aprobada;
+    // RF-36 (ajuste aprobado): con la ventana archivada o despublicada ninguna autorización puede
+    // usarse, así que no deja la aprobada "en reemplazo" (mismo criterio que `resolverVentanaHabilitada`).
+    const autorizacionUtilizable =
+      ventanaAdmiteAutorizaciones(ventanaCarga) &&
+      (aprobada.solicitudesReemplazo.some((solicitud) =>
+        solicitudUtilizable({ ...solicitud, ventanaFechaVencimiento: ventanaCarga.fechaVencimiento }, ahora),
+      ) ||
+        (rechazo !== undefined &&
+          reaperturaAutorizaReemplazo(rechazo, { fechaVencimiento: ventanaCarga.fechaVencimiento }, aprobada, ahora)));
+    const enReemplazo = paresConPendiente.has(clave) || autorizacionUtilizable;
 
     vigentes.push({ cargaArchivoId: aprobada.id, ventanaCargaId: aprobada.ventanaCargaId, enReemplazo });
   }
@@ -906,7 +919,12 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       // Leído ANTES del `updateMany` (dentro de la misma transacción): determina si el origen fue
       // `APROBADA` (hubo publicación que desactivar) o `PENDIENTE_VISTO_BUENO` finalizada (nunca
       // hubo publicación, se salta ese paso sin error).
-      const previo = await tx.cargaArchivo.findUnique({ where: { id }, select: { estado: true } });
+      // RF-36: también el N vigente de la ventana, que se COPIA en el rechazo (`diasReapertura`)
+      // dentro de esta misma transacción: editar la ventana después no cambia el plazo otorgado.
+      const previo = await tx.cargaArchivo.findUnique({
+        where: { id },
+        select: { estado: true, ventanaCarga: { select: { diasVigenciaReemplazo: true } } },
+      });
 
       if (!previo) return false;
 
@@ -929,7 +947,12 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       if (resultado.count === 0) return false;
 
       await tx.cargaArchivoRechazo.create({
-        data: { cargaArchivoId: id, rechazadoPorId: datos.rechazadoPorId, motivo: datos.motivo },
+        data: {
+          cargaArchivoId: id,
+          rechazadoPorId: datos.rechazadoPorId,
+          motivo: datos.motivo,
+          diasReapertura: previo.ventanaCarga.diasVigenciaReemplazo,
+        },
       });
 
       // Una solicitud de reemplazo todavía PENDIENTE sobre esta carga pierde sentido: el rechazo ya

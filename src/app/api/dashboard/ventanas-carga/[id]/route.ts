@@ -15,6 +15,7 @@ import {
   aVentanaCargaDTO,
   exigirAdminORevisor,
   idVentanaCargaSchema,
+  respuestaDiasVigenciaInvalidos,
   respuestaError,
   respuestaFormatoInvalido,
   respuestaRangoInvalido,
@@ -117,6 +118,11 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
         return respuestaVentanaEliminada();
       }
 
+      // Validación de forma (ya la cubre Zod): no se audita, mismo criterio que los 400 de esquema.
+      if (resultado.motivo === "DIAS_VIGENCIA_INVALIDOS") {
+        return respuestaDiasVigenciaInvalidos();
+      }
+
       if (resultado.motivo === "FORMATO_INVALIDO") {
         auditarVentanaCarga(acceso.sesion, request, {
           accion: "VENTANA_CARGA_EDITADA",
@@ -149,6 +155,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
       fechaApertura: resultado.ventana.fechaApertura,
       fechaVencimiento: resultado.ventana.fechaVencimiento,
       formatoExcelId: resultado.ventana.formatoExcelId,
+      diasVigenciaReemplazo: resultado.ventana.diasVigenciaReemplazo,
     });
 
     const ahora = new Date();

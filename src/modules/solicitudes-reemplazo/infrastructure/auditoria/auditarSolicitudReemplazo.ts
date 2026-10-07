@@ -17,6 +17,7 @@ export type DesenlaceAuditoriaSolicitudReemplazo = {
   cargaArchivoId?: string | null;
   solicitudReemplazoId?: string | null;
   estadoSolicitud?: "APROBADA" | "RECHAZADA" | null;
+  diasVigencia?: number | null;
 };
 
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
@@ -44,6 +45,7 @@ async function construirYRegistrar(
     cargaArchivoId: desenlace.cargaArchivoId ?? null,
     solicitudReemplazoId: desenlace.solicitudReemplazoId ?? null,
     estadoSolicitud: desenlace.estadoSolicitud ?? null,
+    diasVigencia: desenlace.diasVigencia ?? null,
     ip: extraerIp(peticion),
     userAgent: extraerUserAgent(peticion),
   };

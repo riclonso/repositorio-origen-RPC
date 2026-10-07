@@ -27,9 +27,19 @@ function crearLoggerUpload(): Logger {
 const loggerUpload = crearLoggerUpload();
 
 export type EventoUpload = {
-  evento: "subida_exitosa" | "subida_fallida";
+  // RF-37: `procesamiento_*` registra el desenlace del procesamiento asíncrono de un archivo de
+  // Bioestadística (recibido con éxito, luego activado o fallido).
+  evento: "subida_exitosa" | "subida_fallida" | "procesamiento_exitoso" | "procesamiento_fallido";
   usuarioId: string;
-  formatoExcelId: string;
+  // Solo en subidas del notificador (RF-14).
+  formatoExcelId?: string;
+  // Solo en archivos de Bioestadística (RF-37): metadatos, nunca contenido.
+  origen?: "BIOESTADISTICA";
+  anio?: number;
+  tipoArchivoBioestadistica?: string;
+  cargaBioestadisticaId?: string;
+  tamanoBytes?: number;
+  cantidadFilasDatos?: number;
   // Solo en subidas fallidas. Nunca el contenido del archivo ni ningún otro dato sensible.
   motivo?: string;
   ip: string | null;

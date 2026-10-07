@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { esRutValido, normalizarRut } from "@/shared/utils/rut";
 import { codigoPerfilSchema } from "@/modules/perfiles/schemas/perfil.schema";
-import { esPerfilNotificador } from "@/modules/perfiles/domain/entities/Perfil";
+import { esPerfilNotificador, perfilExigeEstablecimiento } from "@/modules/perfiles/domain/entities/Perfil";
 import {
   contrasenaSchema,
   emailSchema,
@@ -76,14 +76,15 @@ const establecimientoIdSchema = z
   .transform((valor) => (valor ? valor : null))
   .pipe(z.uuid("Selecciona un establecimiento válido").nullable());
 
-// Regla cruzada perfil/establecimiento (RF-30), compartida entre alta y edición: NOTIFICADOR_RPC
-// debe pertenecer a un establecimiento; para el resto de los perfiles es opcional. El caso de uso la
-// repite (ESTABLECIMIENTO_REQUERIDO) para que no dependa solo de este esquema.
+// Regla cruzada perfil/establecimiento (RF-30), compartida entre alta y edición: NOTIFICADOR_RPC y,
+// desde RF-37, BIOESTADISTICA deben pertenecer a un establecimiento (`perfilExigeEstablecimiento`);
+// para el resto de los perfiles es opcional. El caso de uso la repite (ESTABLECIMIENTO_REQUERIDO)
+// para que no dependa solo de este esquema.
 function validarEstablecimientoSegunPerfil(
   datos: { perfilCodigo: string; establecimientoId: string | null },
   contexto: z.RefinementCtx,
 ): void {
-  if (esPerfilNotificador(datos.perfilCodigo) && datos.establecimientoId === null) {
+  if (perfilExigeEstablecimiento(datos.perfilCodigo) && datos.establecimientoId === null) {
     contexto.addIssue({
       code: "custom",
       path: ["establecimientoId"],
