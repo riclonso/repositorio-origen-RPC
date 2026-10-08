@@ -65,7 +65,7 @@ Los libros de al menos 50 MB sin tabla de textos compartidos y con dimensión co
 encabezados disponen de una inserción directa de la fecha en el XML de la primera hoja. La salida
 se comprime y entrega por bloques mientras se lee, sin una pasada completa previa ni objetos por
 cada celda. Conserva fórmulas, estilos y hojas auxiliares; agrega una celda de fecha real de Excel
-con el formato `dd-mm-yyyy hh:mm:ss` a cada fila existente. Usa la fecha de notificación guardada
+con el formato `dd-mm-yyyy hh:mm` a cada fila existente. Usa la fecha de notificación guardada
 en la carga, no la hora de descarga. La compresión prioriza velocidad, por lo que la copia puede
 pesar más que el original. Los demás libros conservan la reconstrucción con ExcelJS.
 

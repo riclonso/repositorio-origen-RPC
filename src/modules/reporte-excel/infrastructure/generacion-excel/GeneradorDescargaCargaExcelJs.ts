@@ -36,7 +36,7 @@ const TIPO_CONTENIDO_CSV = "text/csv";
 
 const FORMATO_FECHA = "dd-mm-yyyy";
 const FORMATO_FECHA_HORA = "dd-mm-yyyy hh:mm";
-const FORMATO_FECHA_NOTIFICACION = "dd-mm-yyyy hh:mm:ss";
+const FORMATO_FECHA_NOTIFICACION = "dd-mm-yyyy hh:mm";
 
 function normalizarEncabezado(texto: string): string {
   return texto.normalize("NFC").trim().toLowerCase();

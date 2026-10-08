@@ -161,7 +161,7 @@ async function main(): Promise<void> {
     assert.equal(leida.getCell("D2").numFmt, "dd-mm-yyyy hh:mm");
     assert.equal(leida.getCell("E2").value, true);
     assert.equal((leida.getCell("F2").value as Date).toISOString(), "2025-07-15T13:04:05.000Z", "hora de pared de Chile");
-    assert.equal(leida.getCell("F2").numFmt, "dd-mm-yyyy hh:mm:ss");
+    assert.equal(leida.getCell("F2").numFmt, "dd-mm-yyyy hh:mm");
     assert.equal(leida.getCell("G2").value, null, "celda fuera del encabezado descartada");
     assert.equal(leida.getCell("F3").value, null, "fila vacía sin fecha");
     assert.equal(leida.getCell("F4").value, null, "fila de residuo sin fecha");

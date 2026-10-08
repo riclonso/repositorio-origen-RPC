@@ -19,7 +19,7 @@ async function libro(otraHoja = false, date1904 = false) {
   const hoja = libro.addWorksheet("Original");
   if (otraHoja) libro.addWorksheet("Auxiliar").addRow(["auxiliar"]);
   hoja.addRows([["nombre", "valor"], ["Ana & José", 7], ["otra", { formula: "B2*2", result: 14 }]]);
-  hoja.getCell("B2").numFmt = "0.00";
+  hoja.getCell("B2").numFmt = '"$"#,##0.00';
   const zip = await JSZip.loadAsync(await libro.xlsx.writeBuffer());
   const compartidos = await zip.file("xl/sharedStrings.xml")!.async("string");
   const textos = [...compartidos.matchAll(/<si><t[^>]*>([\s\S]*?)<\/t><\/si>/g)].map(match => match[1]);
@@ -56,11 +56,11 @@ test("conserva valores, fórmulas y estilos y agrega la misma fecha a todas las 
   await salida.xlsx.load(Buffer.from(await new Response(flujo).arrayBuffer()) as unknown as ExcelJS.Buffer);
   const hoja = salida.getWorksheet("Original")!;
   assert.equal(hoja.getCell("A2").value, "Ana & José");
-  assert.equal(hoja.getCell("B2").numFmt, "0.00");
+  assert.equal(hoja.getCell("B2").numFmt, '"$"#,##0.00');
   assert.deepEqual(hoja.getCell("B3").value, { formula: "B2*2", result: 14 });
   assert.equal(hoja.getCell("C1").value, titulo);
   assert.equal((hoja.getCell("C2").value as Date).toISOString(), "2026-10-08T16:20:00.000Z");
-  assert.equal(hoja.getCell("C2").numFmt, "dd-mm-yyyy hh:mm:ss");
+  assert.equal(hoja.getCell("C2").numFmt, "dd-mm-yyyy hh:mm");
   assert.equal(salida.getWorksheet("Auxiliar")!.getCell("A1").value, "auxiliar");
   assert.equal(salida.getWorksheet("Auxiliar")!.getCell("B1").value, null);
   assert.deepEqual(hoja.getCell("C3").value, hoja.getCell("C2").value);

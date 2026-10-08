@@ -18,19 +18,19 @@ function anexarEstiloFecha(xml: string): { xml: string; indice: number } | null 
   if (!indice || indice >= 65_000) return null;
   const ids = [...xml.matchAll(/\bnumFmtId=["'](\d+)["']/g)].map(match => Number(match[1]));
   const id = Math.max(163, ...ids) + 1;
-  const formato = `<numFmt numFmtId="${id}" formatCode="dd-mm-yyyy hh:mm:ss"/>`;
+  const formato = `<numFmt numFmtId="${id}" formatCode="dd-mm-yyyy hh:mm"/>`;
   const formatos = /<numFmts\b([^>]*)(?:\/>|>([\s\S]*?)<\/numFmts>)/.exec(xml);
   if (formatos) {
     const contenido = formatos[2] ?? "";
     const cantidad = [...contenido.matchAll(/<numFmt(?=[\s/>])/g)].length + 1;
-    xml = xml.replace(formatos[0], `<numFmts count="${cantidad}">${contenido}${formato}</numFmts>`);
+    xml = xml.replace(formatos[0], () => `<numFmts count="${cantidad}">${contenido}${formato}</numFmts>`);
   } else {
     if (!/<fonts(?=[\s>])/.test(xml)) return null;
     xml = xml.replace(/<fonts(?=[\s>])/, `<numFmts count="1">${formato}</numFmts><fonts`);
   }
   const atributos = xfs[1].replace(/\s+count=["']\d+["']/, "");
   const xf = `<xf numFmtId="${id}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>`;
-  xml = xml.replace(xfs[0], `<cellXfs${atributos} count="${indice + 1}">${xfs[2]}${xf}</cellXfs>`);
+  xml = xml.replace(xfs[0], () => `<cellXfs${atributos} count="${indice + 1}">${xfs[2]}${xf}</cellXfs>`);
   return { xml, indice };
 }
 
