@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { Readable } from "node:stream";
+import { addAbortSignal, Readable } from "node:stream";
 import { logger } from "@/infrastructure/logging/logger";
 import { crearTransformAnexarColumnaCsv } from "@/infrastructure/hojas-calculo/anexarColumnaCsv";
 import { flujoWebDesdeNode } from "@/infrastructure/hojas-calculo/flujoWebDesdeNode";
@@ -70,22 +70,16 @@ function encabezadosDesdeFila(fila: FilaHojaStreaming): string[] {
   return encabezados;
 }
 
-async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date): Promise<ReadableStream<Uint8Array>> {
-  const iterador = recorrerFilasPrimeraHojaXlsx(fuente, OPCIONES_LECTURA_CARGA)[Symbol.asyncIterator]();
-
-  // Antes de devolver el flujo: si el archivo no se puede abrir o leer su primera fila, se lanza
-  // (el Route Handler responde 500 genérico, no una descarga truncada).
-  const primera = await iterador.next();
-  let pendiente: FilaHojaStreaming | null = null;
+async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+  signal?.throwIfAborted();
+  const iterador = recorrerFilasPrimeraHojaXlsx(fuente, { ...OPCIONES_LECTURA_CARGA, signal })[Symbol.asyncIterator]();
   let encabezados: string[] = [];
-  if (!primera.done) {
-    if (primera.value.numeroFila === 1) encabezados = encabezadosDesdeFila(primera.value);
-    else pendiente = primera.value;
-  }
+  let cantidadColumnas = 0;
 
+  // El writer emite los primeros bytes del ZIP sin esperar la primera pasada de la hoja.
+  // Así la petición ya responde mientras se prepara un Excel grande.
   const escritor = crearEscritorHojaStreaming("Datos");
   const fechaCelda: CeldaEscritura = { valor: instanteAParedChile(fechaNotificacion), formatoNumero: FORMATO_FECHA_NOTIFICACION };
-  const cantidadColumnas = encabezados.length;
 
   async function escribirDatos(fila: FilaHojaStreaming): Promise<void> {
     const celdas: CeldaEscritura[] = [];
@@ -103,6 +97,14 @@ async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date): Promise
 
   async function producir(): Promise<void> {
     try {
+      const primera = await iterador.next();
+      let pendiente: FilaHojaStreaming | null = null;
+      if (!primera.done) {
+        if (primera.value.numeroFila === 1) encabezados = encabezadosDesdeFila(primera.value);
+        else pendiente = primera.value;
+      }
+      signal?.throwIfAborted();
+      cantidadColumnas = encabezados.length;
       await escritor.escribirFila(1, [
         ...encabezados.map((texto) => ({ valor: texto })),
         { valor: nombreColumnaNotificacion(encabezados) },
@@ -115,13 +117,14 @@ async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date): Promise
       }
       await escritor.terminar();
     } catch (error) {
-      await iterador.return?.(undefined);
-      if (!(error instanceof DescargaCanceladaError)) {
+      if (!signal?.aborted && !(error instanceof DescargaCanceladaError)) {
         logger.error("Error al generar la descarga de una carga con fecha de notificación", {
           error: error instanceof Error ? error.name : "desconocido",
         });
       }
       escritor.abortar(error instanceof Error ? error : new Error("Generación interrumpida"));
+    } finally {
+      await iterador.return(undefined).catch(() => undefined);
     }
   }
 
@@ -137,10 +140,17 @@ async function generarCsv(
   fuente: FuenteDescarga,
   fechaNotificacion: Date,
   rutaAbsoluta: (referencia: string) => string,
+  signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
   // Primera pasada solo para decidir la codificación (con la que se escribe el encabezado nuevo).
-  const codificacion = await detectarCodificacionCsvStreaming(abrirBytes(fuente, rutaAbsoluta));
-  const origen = abrirBytes(fuente, rutaAbsoluta);
+  signal?.throwIfAborted();
+  const abrir = () => {
+    const lectura = abrirBytes(fuente, rutaAbsoluta);
+    return signal ? addAbortSignal(signal, lectura) : lectura;
+  };
+  const codificacion = await detectarCodificacionCsvStreaming(abrir());
+  signal?.throwIfAborted();
+  const origen = abrir();
   const transformacion = crearTransformAnexarColumnaCsv({
     codificacion,
     nombreColumna: nombreColumnaNotificacion,
@@ -156,10 +166,11 @@ async function generarCsv(
 // (queda el texto), paneles inmovilizados e imágenes.
 export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(referencia: string): string; fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip> }): GeneradorDescargaCarga {
   return {
-    async generar({ fuente, tipoContenido, fechaNotificacion }) {
+    async generar({ fuente, tipoContenido, fechaNotificacion, signal }) {
+      signal?.throwIfAborted();
       if (tipoContenido === TIPO_CONTENIDO_CSV) {
         return {
-          flujo: await generarCsv(fuente, fechaNotificacion, (referencia) => almacen.rutaAbsoluta(referencia)),
+          flujo: await generarCsv(fuente, fechaNotificacion, (referencia) => almacen.rutaAbsoluta(referencia), signal),
           // Sin `charset`: el archivo conserva su codificación original (UTF-8 o Windows-1252).
           tipoContenido: TIPO_CONTENIDO_CSV,
         };
@@ -167,7 +178,7 @@ export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(refer
 
       const fuenteXlsx: FuenteXlsx =
         "contenido" in fuente ? { buffer: fuente.contenido } : almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(fuente.referencia) } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
-      return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion), tipoContenido: TIPO_CONTENIDO_XLSX };
+      return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion, signal), tipoContenido: TIPO_CONTENIDO_XLSX };
     },
   };
 }
@@ -175,6 +186,8 @@ export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(refer
 // RF-38: espera máxima por un turno de generación. Pasado ese tiempo la petición se rechaza (503) en vez
 // de dejar al cliente colgado detrás de descargas de varios minutos.
 export const ESPERA_MAXIMA_DESCARGA_MS = 30_000;
+// Corta la operación real y sus lecturas; no expira solo la clave dejando trabajo huérfano.
+export const INACTIVIDAD_MAXIMA_DESCARGA_MS = 15 * 60_000;
 
 // Decora el generador para que cada descarga ocupe un turno del limitador mientras se consume, con
 // espera máxima (`LimitadorOcupadoError`) y a lo más UNA generación en curso por solicitante
@@ -182,28 +195,44 @@ export const ESPERA_MAXIMA_DESCARGA_MS = 30_000;
 export function conLimitadorDescargas(
   generador: GeneradorDescargaCarga,
   limitador: Limitador,
-  opciones: { esperaMaximaMs?: number; exclusion?: ReturnType<typeof crearExclusionPorClave> } = {},
+  opciones: { esperaMaximaMs?: number; inactividadMaximaMs?: number; exclusion?: ReturnType<typeof crearExclusionPorClave> } = {},
 ): GeneradorDescargaCarga {
   const exclusion = opciones.exclusion ?? crearExclusionPorClave();
   const esperaMaximaMs = opciones.esperaMaximaMs ?? ESPERA_MAXIMA_DESCARGA_MS;
 
   return {
     async generar(entrada) {
+      entrada.signal?.throwIfAborted();
       const liberarSolicitante = entrada.solicitanteId ? exclusion.adquirir(entrada.solicitanteId) : () => undefined;
+      const control = new AbortController();
+      const cancelar = () => control.abort(entrada.signal?.reason);
+      entrada.signal?.addEventListener("abort", cancelar, { once: true });
+      const temporizador = setTimeout(
+        () => control.abort(new DOMException("La descarga no avanzó dentro del tiempo permitido", "TimeoutError")),
+        opciones.inactividadMaximaMs ?? INACTIVIDAD_MAXIMA_DESCARGA_MS,
+      );
+      temporizador.unref();
+      const terminar = () => {
+        clearTimeout(temporizador);
+        entrada.signal?.removeEventListener("abort", cancelar);
+        control.abort(new DOMException("Descarga terminada o cancelada", "AbortError"));
+        liberarSolicitante();
+      };
+      if (entrada.signal?.aborted) cancelar();
       let tipoContenido = TIPO_CONTENIDO_XLSX;
       try {
         const flujo = await ejecutarMientrasFluye(
           limitador,
           async () => {
-            const generado = await generador.generar(entrada);
+            const generado = await generador.generar({ ...entrada, signal: control.signal });
             tipoContenido = generado.tipoContenido;
             return generado.flujo;
           },
-          { esperaMaximaMs },
+          { esperaMaximaMs, signal: control.signal },
         );
-        return { flujo: alTerminarFlujo(flujo, liberarSolicitante), tipoContenido };
+        return { flujo: alTerminarFlujo(flujo, terminar, control.signal, () => temporizador.refresh()), tipoContenido };
       } catch (error) {
-        liberarSolicitante();
+        terminar();
         throw error;
       }
     },

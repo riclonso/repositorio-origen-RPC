@@ -76,8 +76,8 @@ export type ArchivoGenerado = {
   tipoContenido: string;
 };
 
-// Genera, en streaming y desde el archivo original, la copia con la columna agregada. Lanza ANTES
-// de devolver si no puede abrir el archivo o leer su encabezado; un fallo posterior corta el flujo.
+// Genera la copia en streaming. Devuelve el flujo antes de recorrer la hoja; los errores de
+// lectura cortan la descarga. La señal cancela también la preparación previa a la primera fila.
 export interface GeneradorDescargaCarga {
   generar(entrada: {
     fuente: FuenteDescarga;
@@ -86,6 +86,7 @@ export interface GeneradorDescargaCarga {
     // Quién la pide (id de usuario): la implementación admite una sola generación a la vez por
     // solicitante y lanza si ya tiene otra en curso o si no hay capacidad dentro de la espera máxima.
     solicitanteId?: string;
+    signal?: AbortSignal;
   }): Promise<ArchivoGenerado>;
 }
 

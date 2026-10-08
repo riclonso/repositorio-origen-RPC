@@ -49,6 +49,18 @@ retiene únicamente bloques acotados. No se crea una copia XLSX descifrada en di
 cancelaciones cierran las lecturas abiertas. El archivo original se entrega byte a byte; la descarga
 con fecha de notificación continúa generando su copia mediante streaming.
 
+La descarga con fecha empieza a responder antes de recorrer la hoja completa. La desconexión del
+cliente cancela las lecturas ZIP, retira la petición de la cola si aún espera turno y libera la
+exclusión por usuario. Si pasan 15 minutos sin entregar nuevos bytes, se cancela la operación real
+y se liberan sus recursos; el contador se renueva mientras la descarga avanza. Los errores de
+lectura posteriores al inicio cortan el flujo: una descarga interrumpida no es un Excel completo.
+
+Para aplicar cambios de código en Coolify es necesario desplegar una imagen nueva desde el commit
+actualizado. Reiniciar la imagen anterior no incorpora la corrección. Después del despliegue,
+comprobar la descarga con fecha, cancelarla durante su preparación y reintentar con el mismo
+usuario; el reintento debe poder iniciar una descarga nueva. Una segunda petición mientras la
+primera sigue activa conserva la respuesta `DESCARGA_EN_CURSO`.
+
 Este cifrado protege los binarios almacenados. Las filas extraídas para procesamiento o consulta
 permanecen en PostgreSQL según el modelo existente: no es cifrado de la base de datos ni cifrado
 extremo a extremo. HTTPS sigue siendo necesario para proteger el transporte.
@@ -56,3 +68,5 @@ extremo a extremo. HTTPS sigue siendo necesario para proteger el transporte.
 Pruebas: `npx tsx --test tests/cifrado-excel.unit.ts`. Incluyen lectura por rangos, temporales cifrados,
 lector de Bioestadística y descarga generada, alteración, truncamiento, cambio de propietario,
 sustitución de carga, clave incorrecta, rotación y compatibilidad con archivos previos/CSV.
+
+Cancelación y recuperación: `node --import tsx --test tests/descargas-cancelacion.unit.ts`.

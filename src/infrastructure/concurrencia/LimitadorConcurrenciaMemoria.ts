@@ -7,6 +7,7 @@ export type OpcionesEjecucion = {
   // RF-38: espera máxima por un turno. Al vencerse, quien espera SALE de la cola (no consume un turno
   // después) y la tarea se rechaza con `LimitadorOcupadoError`. Sin ella, espera indefinidamente.
   esperaMaximaMs?: number;
+  signal?: AbortSignal;
 };
 
 export type Limitador = {
@@ -25,7 +26,8 @@ export function crearLimitadorConcurrencia(maximo: number): Limitador {
   let enCurso = 0;
   const enEspera: Array<() => void> = [];
 
-  async function adquirir(esperaMaximaMs: number | undefined): Promise<void> {
+  async function adquirir(esperaMaximaMs: number | undefined, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (enCurso < maximo) {
       enCurso += 1;
       return;
@@ -33,16 +35,29 @@ export function crearLimitadorConcurrencia(maximo: number): Limitador {
     // El turno se transfiere directamente al liberar: `enCurso` no baja ni sube en el traspaso.
     await new Promise<void>((resolver, rechazar) => {
       let temporizador: ReturnType<typeof setTimeout> | undefined;
-      const recibirTurno = () => {
+      const limpiar = () => {
         if (temporizador !== undefined) clearTimeout(temporizador);
+        signal?.removeEventListener("abort", cancelar);
+      };
+      const cancelar = () => {
+        const posicion = enEspera.indexOf(recibirTurno);
+        if (posicion === -1) return;
+        enEspera.splice(posicion, 1);
+        limpiar();
+        rechazar(signal?.reason);
+      };
+      const recibirTurno = () => {
+        limpiar();
         resolver();
       };
       enEspera.push(recibirTurno);
+      signal?.addEventListener("abort", cancelar, { once: true });
       if (esperaMaximaMs !== undefined) {
         temporizador = setTimeout(() => {
           const posicion = enEspera.indexOf(recibirTurno);
           if (posicion === -1) return;
           enEspera.splice(posicion, 1);
+          limpiar();
           rechazar(new LimitadorOcupadoError());
         }, esperaMaximaMs);
       }
@@ -57,8 +72,9 @@ export function crearLimitadorConcurrencia(maximo: number): Limitador {
 
   return {
     async ejecutar<T>(tarea: () => Promise<T>, opciones: OpcionesEjecucion = {}): Promise<T> {
-      await adquirir(opciones.esperaMaximaMs);
+      await adquirir(opciones.esperaMaximaMs, opciones.signal);
       try {
+        opciones.signal?.throwIfAborted();
         return await tarea();
       } finally {
         liberar();
@@ -68,26 +84,41 @@ export function crearLimitadorConcurrencia(maximo: number): Limitador {
 }
 
 // Envuelve un flujo para invocar `alTerminar` UNA vez cuando termina, falla o el cliente lo cancela.
-export function alTerminarFlujo(original: ReadableStream<Uint8Array>, alTerminar: () => void): ReadableStream<Uint8Array> {
+export function alTerminarFlujo(original: ReadableStream<Uint8Array>, alTerminar: () => void, signal?: AbortSignal, alAvanzar?: () => void): ReadableStream<Uint8Array> {
   let terminado = false;
+  let cancelarPorSignal: () => void;
   const terminarUnaVez = () => {
     if (terminado) return;
     terminado = true;
+    signal?.removeEventListener("abort", cancelarPorSignal);
     alTerminar();
   };
   const lector = original.getReader();
 
   return new ReadableStream<Uint8Array>({
+    start(controlador) {
+      cancelarPorSignal = () => {
+        if (terminado) return;
+        controlador.error(signal?.reason);
+        terminarUnaVez();
+        void lector.cancel(signal?.reason).catch(() => undefined);
+      };
+      signal?.addEventListener("abort", cancelarPorSignal, { once: true });
+      if (signal?.aborted) cancelarPorSignal();
+    },
     async pull(controlador) {
       try {
         const { done, value } = await lector.read();
+        if (terminado) return;
         if (done) {
           controlador.close();
           terminarUnaVez();
           return;
         }
         controlador.enqueue(value);
+        alAvanzar?.();
       } catch (error) {
+        if (terminado) return;
         controlador.error(error);
         terminarUnaVez();
       }
@@ -118,7 +149,7 @@ export async function ejecutarMientrasFluye(
   void limitador
     .ejecutar(async () => {
       const original = await crear();
-      await new Promise<void>((liberarTurno) => entregar(alTerminarFlujo(original, liberarTurno)));
+      await new Promise<void>((liberarTurno) => entregar(alTerminarFlujo(original, liberarTurno, opciones.signal)));
     }, opciones)
     .catch((error: unknown) => rechazar(error));
 

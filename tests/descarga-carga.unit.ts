@@ -169,14 +169,13 @@ async function main(): Promise<void> {
     assert.equal(leida.getCell("B6").value, "combinada", "combinada rellenada");
   });
 
-  await prueba("xlsx: hora de verano y archivo ilegible lanza antes de devolver", async () => {
+  await prueba("xlsx: hora de verano y archivo ilegible corta el flujo", async () => {
     const generado = await generador.generar({ fuente: { contenido }, tipoContenido: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fechaNotificacion: VERANO });
     const leida = await leerXlsx(generado.flujo);
     assert.equal((leida.getCell("F2").value as Date).toISOString(), "2025-01-15T13:04:05.000Z");
 
-    await assert.rejects(() =>
-      generador.generar({ fuente: { contenido: Buffer.from("no es un zip") }, tipoContenido: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fechaNotificacion: VERANO }),
-    );
+    const ilegible = await generador.generar({ fuente: { contenido: Buffer.from("no es un zip") }, tipoContenido: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fechaNotificacion: VERANO });
+    await assert.rejects(() => new Response(ilegible.flujo).arrayBuffer());
   });
 
   await prueba("xlsx: colisión de nombre → '(sistema)'", async () => {

@@ -78,6 +78,7 @@ export type FuenteXlsx = string | { ruta: string } | { buffer: Buffer } | { fuen
 // Todas las opciones de RF-38 son ADITIVAS: sin ellas (como llama Bioestadística) el lector se comporta
 // exactamente como en RF-37.
 export type OpcionesLecturaXlsx = {
+  signal?: AbortSignal;
   // Solo para pruebas: por defecto `TOPE_BYTES_PARTE_XLSX`.
   topeBytesParte?: number;
   // RF-38: tope de bytes descomprimidos de la HOJA de datos (bomba ZIP de filas vacías o celdas
@@ -122,7 +123,7 @@ export class HojaXlsxInvalidaError extends Error {
 type FuenteRastreada = {
   fuente: FuenteZip;
   abrirEntrada(entrada: EntradaZip, topeBytes?: number): Readable;
-  cerrar(): void;
+  cerrar(error?: Error): void;
 };
 
 // Cuenta los bytes REALES que salen del descompresor y corta con error al superar el tope. El
@@ -174,12 +175,24 @@ function crearFuenteZip(origen: FuenteXlsx, abiertas: Readable[]): FuenteZip {
   };
 }
 
-function crearFuenteRastreada(origen: FuenteXlsx): FuenteRastreada {
+function crearFuenteRastreada(origen: FuenteXlsx, signal?: AbortSignal): FuenteRastreada {
   const abiertas: Readable[] = [];
   let cerrada = false;
+  const fuenteZip = crearFuenteZip(origen, abiertas);
 
   return {
-    fuente: crearFuenteZip(origen, abiertas),
+    fuente: {
+      size() {
+        signal?.throwIfAborted();
+        return fuenteZip.size();
+      },
+      stream(offset, length) {
+        signal?.throwIfAborted();
+        const lectura = fuenteZip.stream(offset, length);
+        lectura.on("error", () => undefined);
+        return lectura;
+      },
+    },
     // Los parsers de exceljs iteran con `for await`: un `PassThrough` de Node lo admite. Un error de
     // descompresión se propaga al iterador; después de cerrar (corte deliberado) ya no hay quién lo
     // escuche y se ignora, para no convertirlo en una excepción no capturada del proceso. Con tope,
@@ -191,6 +204,7 @@ function crearFuenteRastreada(origen: FuenteXlsx): FuenteRastreada {
     // (ñ, tildes) partido entre dos trozos queda como U+FFFD: corrupción silenciosa que afectaba a
     // Bioestadística (RF-37), corregida en RF-38. El analizador SAX de exceljs acepta texto tal cual.
     abrirEntrada(entrada, topeBytes) {
+      signal?.throwIfAborted();
       if (topeBytes !== undefined && entrada.uncompressedSize > topeBytes) {
         throw new ParteXlsxDemasiadoGrandeError(entrada.path);
       }
@@ -206,12 +220,16 @@ function crearFuenteRastreada(origen: FuenteXlsx): FuenteRastreada {
       });
       origenEntrada.pipe(flujo);
       abiertas.push(origenEntrada);
+      abiertas.push(flujo);
       flujo.setEncoding("utf8");
       return flujo;
     },
-    cerrar() {
+    cerrar(error) {
       cerrada = true;
-      for (const lectura of abiertas) lectura.destroy();
+      for (const lectura of abiertas) {
+        lectura.on("error", () => undefined);
+        lectura.destroy(error);
+      }
     },
   };
 }
@@ -738,7 +756,10 @@ export async function* recorrerFilasPrimeraHojaXlsx(
   origen: FuenteXlsx,
   opciones: OpcionesLecturaXlsx = {},
 ): AsyncGenerator<FilaHojaStreaming> {
-  const { fuente, abrirEntrada, cerrar } = crearFuenteRastreada(origen);
+  opciones.signal?.throwIfAborted();
+  const { fuente, abrirEntrada, cerrar } = crearFuenteRastreada(origen, opciones.signal);
+  const cancelar = () => cerrar(opciones.signal?.reason instanceof Error ? opciones.signal.reason : new Error("Lectura cancelada"));
+  opciones.signal?.addEventListener("abort", cancelar, { once: true });
   const tope = opciones.topeBytesParte ?? TOPE_BYTES_PARTE_XLSX;
   const fiel = opciones.celdasComoLecturaEnMemoria === true;
   const maximoColumnas = opciones.maximoColumnas ?? MAXIMO_COLUMNAS_HOJA;
@@ -810,6 +831,7 @@ export async function* recorrerFilasPrimeraHojaXlsx(
         : { numeroFila: fila.numeroFila, valores: aValores(fila.crudos) };
     }
   } finally {
+    opciones.signal?.removeEventListener("abort", cancelar);
     cerrar();
   }
 }

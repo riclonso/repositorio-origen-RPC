@@ -28,6 +28,7 @@ export async function responderDescargaCarga(entrada: {
   usuarioId: string | null;
   modo: ModoDescargaCarga;
   solicitanteId: string;
+  signal?: AbortSignal;
 }): Promise<Response> {
   try {
     const resultado = await obtenerArchivoCargaParaDescarga(entrada, {

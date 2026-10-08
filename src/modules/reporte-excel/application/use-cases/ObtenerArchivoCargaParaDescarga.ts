@@ -74,7 +74,7 @@ async function abrirOriginal(
 // `original`, siempre el archivo tal como se subió. La referencia sale siempre de la base.
 export async function obtenerArchivoCargaParaDescarga(
   // `solicitanteId`: quien descarga (la sesión), para que el generador limite a una por persona.
-  entrada: { cargaId: string; usuarioId: string | null; modo: ModoDescargaCarga; solicitanteId?: string },
+  entrada: { cargaId: string; usuarioId: string | null; modo: ModoDescargaCarga; solicitanteId?: string; signal?: AbortSignal },
   dependencias: {
     repositorio: CargaArchivoRepository;
     almacen: AlmacenArchivosCarga;
@@ -103,6 +103,7 @@ export async function obtenerArchivoCargaParaDescarga(
     tipoContenido: carga.tipoContenidoArchivo,
     fechaNotificacion: fecha,
     solicitanteId: entrada.solicitanteId,
+    signal: entrada.signal,
   });
 
   return {

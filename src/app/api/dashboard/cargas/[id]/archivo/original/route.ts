@@ -24,5 +24,5 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
     return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
   }
 
-  return responderDescargaCarga({ cargaId: idValido.data, usuarioId: null, modo: "original", solicitanteId: acceso.sesion.sub });
+  return responderDescargaCarga({ cargaId: idValido.data, usuarioId: null, modo: "original", solicitanteId: acceso.sesion.sub, signal: _request.signal });
 }
