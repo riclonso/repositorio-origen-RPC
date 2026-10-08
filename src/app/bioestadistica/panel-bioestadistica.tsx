@@ -13,6 +13,7 @@ import { CargadorArchivo } from "@/shared/components/CargadorArchivo";
 import { FormularioSolicitudReemplazo } from "@/shared/components/FormularioSolicitudReemplazo";
 import { IconoRelojArena, IconoSubir } from "@/shared/components/iconos";
 import { useRefrescoPeriodico } from "@/shared/hooks/useRefrescoPeriodico";
+import { useSubidaConProgreso } from "@/shared/hooks/useSubidaConProgreso";
 import {
   DESCRIPCION_SOLICITUD_REEMPLAZO_BIOESTADISTICA,
   PLACEHOLDER_MOTIVO_REEMPLAZO_BIOESTADISTICA,
@@ -54,32 +55,11 @@ const CLASE_ESTADO: Record<EstadoTarjetaBioestadistica, string> = {
   REEMPLAZO_AUTORIZADO: "border-gob-primary text-gob-primary",
 };
 
-// Subida del binario CRUDO como cuerpo (no multipart): el servidor lo lee en streaming. El nombre
-// va codificado en una cabecera porque las cabeceras HTTP no admiten tildes.
-async function enviarArchivo(tarjeta: TarjetaBioestadisticaVista, archivo: File): Promise<string | null> {
-  const parametros = new URLSearchParams({ anio: String(tarjeta.anio), tipoArchivo: tarjeta.tipoArchivo });
-
-  const respuesta = await fetch(`${RUTA_API_CARGAS}?${parametros.toString()}`, {
-    method: "POST",
-    body: archivo,
-    headers: {
-      "Content-Type": archivo.type || "application/octet-stream",
-      "X-Nombre-Archivo": encodeURIComponent(archivo.name),
-    },
-  });
-
-  if (!respuesta.ok) {
-    const datos = (await respuesta.json().catch(() => null)) as { error?: string } | null;
-    return datos?.error ?? MENSAJE_ERROR_GENERICO;
-  }
-
-  return null;
-}
-
 function FormularioSubida({ tarjeta, onSubido }: { tarjeta: TarjetaBioestadisticaVista; onSubido: () => void }) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { subir: enviar, progreso } = useSubidaConProgreso();
 
   async function subir() {
     if (!archivo) return;
@@ -94,9 +74,14 @@ function FormularioSubida({ tarjeta, onSubido }: { tarjeta: TarjetaBioestadistic
     setError(null);
 
     try {
-      const mensajeError = await enviarArchivo(tarjeta, archivo);
-      if (mensajeError) {
-        setError(mensajeError);
+      const parametros = new URLSearchParams({ anio: String(tarjeta.anio), tipoArchivo: tarjeta.tipoArchivo });
+      const respuesta = await enviar(`${RUTA_API_CARGAS}?${parametros}`, archivo, {
+        "Content-Type": archivo.type || "application/octet-stream",
+        "X-Nombre-Archivo": encodeURIComponent(archivo.name),
+      });
+      if (respuesta.estado !== 202) {
+        const datos = respuesta.cuerpo as { error?: string } | null;
+        setError(datos?.error ?? MENSAJE_ERROR_GENERICO);
         return;
       }
       setArchivo(null);
@@ -133,7 +118,7 @@ function FormularioSubida({ tarjeta, onSubido }: { tarjeta: TarjetaBioestadistic
         onClick={() => void subir()}
         disabled={!archivo}
         cargando={subiendo}
-        textoCargando="Subiendo archivo..."
+        textoCargando={progreso === 100 ? "Completando subida..." : `Subiendo archivo${progreso === null ? "" : `: ${progreso}%`}...`}
         className="w-fit"
       >
         <IconoSubir className="shrink-0" />

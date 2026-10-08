@@ -15,6 +15,7 @@ import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/rep
 export const TIPO_CONTENIDO_XLSX_CARGA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 export type DatosRecibirArchivoCarga = {
+  cargaIdReservada?: string;
   usuarioId: string;
   formatoExcelId: string;
   // Año de la ventana elegida. Se revalida SIEMPRE en servidor.
@@ -94,51 +95,13 @@ export async function recibirArchivoCarga(
   datos: DatosRecibirArchivoCarga,
   dependencias: Dependencias,
 ): Promise<ResultadoRecibirArchivoCarga> {
-  // El notificador sube solo `.xlsx` desde RF-23: mismo mensaje y motivo que antes.
-  if (!esExtensionXlsx(datos.nombreArchivoOriginal)) return { ok: false, motivo: "ARCHIVO_NO_EXCEL" };
-
-  if (datos.tamanoDeclarado !== null && datos.tamanoDeclarado > TAMANO_MAXIMO_ARCHIVO_CARGA) {
-    return { ok: false, motivo: "ARCHIVO_DEMASIADO_GRANDE" };
-  }
-
-  // `formatoExcelId` del cliente SIEMPRE se valida contra la asignación vigente.
-  const asignado = await dependencias.repositorioFormatosExcel.estaAsignadoYActivo(datos.usuarioId, datos.formatoExcelId);
-  if (!asignado) return { ok: false, motivo: "FORMATO_NO_ASIGNADO" };
-
-  const formato = await dependencias.repositorioFormatosExcel.obtenerPorId(datos.formatoExcelId);
-  if (!formato) return { ok: false, motivo: "FORMATO_NO_ASIGNADO" };
-
-  const ventana = await dependencias.repositorioVentanasCarga.obtenerPorAnioYFormato(datos.anio, datos.formatoExcelId);
-  if (!ventana) return { ok: false, motivo: "SIN_VENTANA_ABIERTA" };
-
-  // Reapertura vigente o solicitud de reemplazo aprobada habilitan subir con la ventana vencida,
-  // pero NO se consumen aquí: se consumen al finalizar y enviar con éxito.
-  const motivoVentana = await resolverVentanaHabilitada(
-    { ventana, usuarioId: datos.usuarioId, ahora: datos.ahora },
-    { repositorio: dependencias.repositorio, repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo },
-  );
-  if (motivoVentana) return { ok: false, motivo: motivoVentana };
-
-  const pendienteFinalizada = await dependencias.repositorio.obtenerPendienteFinalizadaPorUsuarioYVentana(
-    datos.usuarioId,
-    ventana.id,
-  );
-  if (pendienteFinalizada) return { ok: false, motivo: "CARGA_PENDIENTE_DECISION" };
-
-  // RF-33: solo se verifica; nada se consume al subir.
-  const autorizacion = await resolverAutorizacionReemplazo(
-    { usuarioId: datos.usuarioId, ventanaCargaId: ventana.id, ahora: datos.ahora },
-    { repositorio: dependencias.repositorio, repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo },
-  );
-  if (!autorizacion.autorizado) return { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" };
-
-  if (await resolverProcesamientoEnCurso(datos.usuarioId, ventana.id, datos.ahora, dependencias.repositorio)) {
-    return { ok: false, motivo: "EN_PROCESO" };
-  }
+  const previa = await validarInicioCarga(datos, dependencias);
+  if (!previa.ok) return previa;
+  const { ventana } = previa;
 
   if (!datos.cuerpo) return { ok: false, motivo: "ARCHIVO_VACIO" };
 
-  const cargaId = crypto.randomUUID();
+  const cargaId = datos.cargaIdReservada ?? crypto.randomUUID();
   const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_CARGA, { usuarioId: datos.usuarioId, archivoId: cargaId, excel: true });
   if (!guardado.ok) {
     return { ok: false, motivo: guardado.motivo === "VACIO" ? "ARCHIVO_VACIO" : "ARCHIVO_DEMASIADO_GRANDE" };
@@ -175,4 +138,50 @@ export async function recibirArchivoCarga(
     // Sin carga, el archivo (temporal o ya movido) no pertenece a nadie: se elimina.
     if (!cargaCreada) await dependencias.almacen.eliminar(referenciaVigente);
   }
+}
+
+export async function validarInicioCarga(datos: DatosRecibirArchivoCarga, dependencias: Dependencias) {
+  // El notificador sube solo `.xlsx` desde RF-23: mismo mensaje y motivo que antes.
+  if (!esExtensionXlsx(datos.nombreArchivoOriginal)) return { ok: false, motivo: "ARCHIVO_NO_EXCEL" } as const;
+
+  if (datos.tamanoDeclarado !== null && datos.tamanoDeclarado > TAMANO_MAXIMO_ARCHIVO_CARGA) {
+    return { ok: false, motivo: "ARCHIVO_DEMASIADO_GRANDE" } as const;
+  }
+
+  // `formatoExcelId` del cliente SIEMPRE se valida contra la asignación vigente.
+  const asignado = await dependencias.repositorioFormatosExcel.estaAsignadoYActivo(datos.usuarioId, datos.formatoExcelId);
+  if (!asignado) return { ok: false, motivo: "FORMATO_NO_ASIGNADO" } as const;
+
+  const formato = await dependencias.repositorioFormatosExcel.obtenerPorId(datos.formatoExcelId);
+  if (!formato) return { ok: false, motivo: "FORMATO_NO_ASIGNADO" } as const;
+
+  const ventana = await dependencias.repositorioVentanasCarga.obtenerPorAnioYFormato(datos.anio, datos.formatoExcelId);
+  if (!ventana) return { ok: false, motivo: "SIN_VENTANA_ABIERTA" } as const;
+
+  // Reapertura vigente o solicitud de reemplazo aprobada habilitan subir con la ventana vencida,
+  // pero NO se consumen aquí: se consumen al finalizar y enviar con éxito.
+  const motivoVentana = await resolverVentanaHabilitada(
+    { ventana, usuarioId: datos.usuarioId, ahora: datos.ahora },
+    { repositorio: dependencias.repositorio, repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo },
+  );
+  if (motivoVentana) return { ok: false, motivo: motivoVentana } as const;
+
+  const pendienteFinalizada = await dependencias.repositorio.obtenerPendienteFinalizadaPorUsuarioYVentana(
+    datos.usuarioId,
+    ventana.id,
+  );
+  if (pendienteFinalizada) return { ok: false, motivo: "CARGA_PENDIENTE_DECISION" } as const;
+
+  // RF-33: solo se verifica; nada se consume al subir.
+  const autorizacion = await resolverAutorizacionReemplazo(
+    { usuarioId: datos.usuarioId, ventanaCargaId: ventana.id, ahora: datos.ahora },
+    { repositorio: dependencias.repositorio, repositorioSolicitudesReemplazo: dependencias.repositorioSolicitudesReemplazo },
+  );
+  if (!autorizacion.autorizado) return { ok: false, motivo: "REEMPLAZO_NO_AUTORIZADO" } as const;
+
+  if (await resolverProcesamientoEnCurso(datos.usuarioId, ventana.id, datos.ahora, dependencias.repositorio)) {
+    return { ok: false, motivo: "EN_PROCESO" } as const;
+  }
+
+  return { ok: true as const, ventana };
 }

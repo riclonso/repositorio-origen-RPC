@@ -24,6 +24,7 @@ import { resolverAutorizacionSubidaBioestadistica } from "@/modules/bioestadisti
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 
 export type DatosRecibirArchivoBioestadistica = {
+  cargaIdReservada?: string;
   usuarioId: string;
   anio: number;
   tipoArchivo: TipoArchivoBioestadistica;
@@ -117,37 +118,13 @@ export async function recibirArchivoBioestadistica(
   datos: DatosRecibirArchivoBioestadistica,
   dependencias: Dependencias,
 ): Promise<ResultadoRecibirArchivoBioestadistica> {
-  const usuario = await dependencias.consultaUsuarios.obtenerPorId(datos.usuarioId);
-  const establecimientoId = usuario?.establecimientoId ?? null;
-
-  // Defensivo: el mantenedor ya exige establecimiento a este perfil, pero una cuenta anterior a esa
-  // regla podría no tenerlo, y la carga guarda una copia obligatoria.
-  if (!establecimientoId) return { ok: false, motivo: "SIN_ESTABLECIMIENTO" };
-
-  await liberarProcesamientosExpirados(datos, dependencias);
-
-  // Antes de recibir 300 MB: si ya hay un procesamiento vigente, la subida se rechazaría igual.
-  const hayProcesando = await dependencias.repositorioCargas.existeProcesandoVigente(
-    datos.usuarioId,
-    datos.anio,
-    datos.tipoArchivo,
-    limiteExpiracionProcesamiento(datos.ahora),
-  );
-  if (hayProcesando) return { ok: false, motivo: "EN_PROCESO" };
-
-  const autorizacion = await resolverAutorizacionSubidaBioestadistica(
-    { usuarioId: datos.usuarioId, anio: datos.anio, tipoArchivo: datos.tipoArchivo, ahora: datos.ahora },
-    dependencias,
-  );
-  if (!autorizacion.ok) return { ok: false, motivo: autorizacion.motivo };
-
-  if (datos.tamanoDeclarado !== null && datos.tamanoDeclarado > TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA) {
-    return { ok: false, motivo: "ARCHIVO_DEMASIADO_GRANDE" };
-  }
+  const previa = await validarInicioBioestadistica(datos, dependencias);
+  if (!previa.ok) return previa;
+  const { establecimientoId, autorizacion } = previa;
 
   if (!datos.cuerpo) return { ok: false, motivo: "ARCHIVO_VACIO" };
 
-  const cargaId = crypto.randomUUID();
+  const cargaId = datos.cargaIdReservada ?? crypto.randomUUID();
   const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA, { usuarioId: datos.usuarioId, archivoId: cargaId, excel: /\.xlsx$/i.test(datos.nombreArchivoOriginal) });
   if (!guardado.ok) {
     return { ok: false, motivo: guardado.motivo === "VACIO" ? "ARCHIVO_VACIO" : "ARCHIVO_DEMASIADO_GRANDE" };
@@ -202,4 +179,36 @@ export async function recibirArchivoBioestadistica(
     // Sin cabecera, el archivo (temporal o ya movido) no pertenece a ninguna carga: se elimina.
     if (!cabeceraCreada) await dependencias.almacen.eliminar(referenciaVigente);
   }
+}
+
+export async function validarInicioBioestadistica(datos: DatosRecibirArchivoBioestadistica, dependencias: Dependencias) {
+  const usuario = await dependencias.consultaUsuarios.obtenerPorId(datos.usuarioId);
+  const establecimientoId = usuario?.establecimientoId ?? null;
+
+  // Defensivo: el mantenedor ya exige establecimiento a este perfil, pero una cuenta anterior a esa
+  // regla podría no tenerlo, y la carga guarda una copia obligatoria.
+  if (!establecimientoId) return { ok: false, motivo: "SIN_ESTABLECIMIENTO" } as const;
+
+  await liberarProcesamientosExpirados(datos, dependencias);
+
+  // Antes de recibir 300 MB: si ya hay un procesamiento vigente, la subida se rechazaría igual.
+  const hayProcesando = await dependencias.repositorioCargas.existeProcesandoVigente(
+    datos.usuarioId,
+    datos.anio,
+    datos.tipoArchivo,
+    limiteExpiracionProcesamiento(datos.ahora),
+  );
+  if (hayProcesando) return { ok: false, motivo: "EN_PROCESO" } as const;
+
+  const autorizacion = await resolverAutorizacionSubidaBioestadistica(
+    { usuarioId: datos.usuarioId, anio: datos.anio, tipoArchivo: datos.tipoArchivo, ahora: datos.ahora },
+    dependencias,
+  );
+  if (!autorizacion.ok) return { ok: false, motivo: autorizacion.motivo } as const;
+
+  if (datos.tamanoDeclarado !== null && datos.tamanoDeclarado > TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA) {
+    return { ok: false, motivo: "ARCHIVO_DEMASIADO_GRANDE" } as const;
+  }
+
+  return { ok: true as const, establecimientoId, autorizacion };
 }

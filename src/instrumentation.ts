@@ -15,6 +15,9 @@ export async function register(): Promise<void> {
     // servidor atienda peticiones, y la limpieza puede borrar muchas filas. El corte por instante de
     // arranque impide tocar una subida que llegue mientras tanto. Con el mismo corte se eliminan los
     // temporales `.part` de recepciones que quedaron a medias.
+    const { limpiarSubidasExpiradas } = await import("@/modules/subidas-archivo/infrastructure/arranque");
+    void limpiarSubidasExpiradas();
+
     const arranque = new Date();
     const { liberarProcesamientosBioestadisticaHuerfanos } = await import(
       "@/modules/bioestadistica/infrastructure/arranque/liberarProcesamientosHuerfanos"
