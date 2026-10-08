@@ -61,6 +61,19 @@ comprobar la descarga con fecha, cancelarla durante su preparación y reintentar
 usuario; el reintento debe poder iniciar una descarga nueva. Una segunda petición mientras la
 primera sigue activa conserva la respuesta `DESCARGA_EN_CURSO`.
 
+Los libros de al menos 50 MB sin tabla de textos compartidos y con dimensión compatible con los
+encabezados disponen de una inserción directa de la fecha en el XML de la primera hoja. La salida
+se comprime y entrega por bloques mientras se lee, sin una pasada completa previa ni objetos por
+cada celda. Conserva fórmulas, estilos y hojas auxiliares; agrega una celda de fecha real de Excel
+con el formato `dd-mm-yyyy hh:mm:ss` a cada fila existente. Usa la fecha de notificación guardada
+en la carga, no la hora de descarga. La compresión prioriza velocidad, por lo que la copia puede
+pesar más que el original. Los demás libros conservan la reconstrucción con ExcelJS.
+
+Prueba con el archivo RBB 2017 de 160.066.113 bytes (hoja de 1.934.043.970 bytes descomprimidos):
+medición local completa con celdas de fecha: primeros bytes en 334 ms, 55 s en total y RSS máximo de 231 MB.
+Son cifras locales, no una garantía de tiempo en producción. La prueba consume y descarta la
+salida sin guardar datos clínicos: `node --import tsx tests/descarga-xlsx-grande.manual.ts /ruta/archivo.xlsx`.
+
 Este cifrado protege los binarios almacenados. Las filas extraídas para procesamiento o consulta
 permanecen en PostgreSQL según el modelo existente: no es cifrado de la base de datos ni cifrado
 extremo a extremo. HTTPS sigue siendo necesario para proteger el transporte.
@@ -70,3 +83,5 @@ lector de Bioestadística y descarga generada, alteración, truncamiento, cambio
 sustitución de carga, clave incorrecta, rotación y compatibilidad con archivos previos/CSV.
 
 Cancelación y recuperación: `node --import tsx --test tests/descargas-cancelacion.unit.ts`.
+Inserción en XML, conservación del libro, calendario 1904 y lectura cifrada:
+`node --import tsx --test tests/descarga-xlsx-grande.unit.ts`.

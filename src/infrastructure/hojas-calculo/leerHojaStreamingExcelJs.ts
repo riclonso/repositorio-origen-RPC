@@ -175,7 +175,7 @@ function crearFuenteZip(origen: FuenteXlsx, abiertas: Readable[]): FuenteZip {
   };
 }
 
-function crearFuenteRastreada(origen: FuenteXlsx, signal?: AbortSignal): FuenteRastreada {
+export function crearFuenteRastreada(origen: FuenteXlsx, signal?: AbortSignal): FuenteRastreada {
   const abiertas: Readable[] = [];
   let cerrada = false;
   const fuenteZip = crearFuenteZip(origen, abiertas);

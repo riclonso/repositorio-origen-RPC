@@ -26,6 +26,7 @@ import {
 } from "@/modules/reporte-excel/infrastructure/validacion/ValidadorArchivoReporteStreaming";
 import { detectarCodificacionCsvStreaming } from "@/shared/utils/texto-csv";
 import { formatearFechaHoraSegundosChile, instanteAParedChile } from "@/shared/utils/fecha";
+import { generarXlsxGrande } from "./AnexarFechaXlsxGrande";
 
 export const NOMBRE_COLUMNA_NOTIFICACION = "Fecha y hora de notificación";
 export const NOMBRE_COLUMNA_NOTIFICACION_SISTEMA = "Fecha y hora de notificación (sistema)";
@@ -161,9 +162,11 @@ async function generarCsv(
 }
 
 // RF-38: implementación del puerto `GeneradorDescargaCarga`. Ni el libro de entrada ni el de salida se
-// cargan completos en memoria. Se pierde (y para eso existe "Descargar original"): formatos, otras
+// cargan completos en memoria. El camino de reconstrucción con ExcelJS pierde (y para eso existe
+// "Descargar original"): formatos, otras
 // hojas, fórmulas (queda el valor), combinación visual, validaciones, comentarios, hipervínculos
 // (queda el texto), paneles inmovilizados e imágenes.
+// En libros grandes compatibles, la inserción directa en el XML conserva estas propiedades.
 export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(referencia: string): string; fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip> }): GeneradorDescargaCarga {
   return {
     async generar({ fuente, tipoContenido, fechaNotificacion, signal }) {
@@ -178,6 +181,8 @@ export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(refer
 
       const fuenteXlsx: FuenteXlsx =
         "contenido" in fuente ? { buffer: fuente.contenido } : almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(fuente.referencia) } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
+      const flujoGrande = await generarXlsxGrande(fuenteXlsx, fechaNotificacion, nombreColumnaNotificacion, signal);
+      if (flujoGrande) return { flujo: flujoGrande, tipoContenido: TIPO_CONTENIDO_XLSX };
       return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion, signal), tipoContenido: TIPO_CONTENIDO_XLSX };
     },
   };
