@@ -2,11 +2,9 @@ import { NextResponse, after } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
 import { darVistoBueno } from "@/modules/reporte-excel/application/use-cases/DarVistoBueno";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
-import { lectorArchivoReporteExcelJs } from "@/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
 import { vistoBuenoCargaMailer } from "@/modules/reporte-excel/infrastructure/email/VistoBuenoCargaMailer";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
-import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import {
   MENSAJE_ERROR_INTERNO,
@@ -40,11 +38,10 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
   }
 
   try {
+    // RF-38: el visto bueno ya no relee el archivo ni copia filas: solo la transición y la cabecera.
     const resultado = await darVistoBueno(idValido.data, acceso.sesion.sub, {
       repositorio: prismaCargaArchivoRepository,
-      lector: lectorArchivoReporteExcelJs,
       repositorioSolicitudesReemplazo: prismaSolicitudReemplazoCargaRepository,
-      repositorioFormatosExcel: prismaFormatoExcelRepository,
     });
 
     if (!resultado.ok) {

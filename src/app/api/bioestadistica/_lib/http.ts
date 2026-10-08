@@ -7,6 +7,7 @@ import {
   type MotivoEncabezadosInvalidos,
 } from "@/modules/bioestadistica/domain/entities/ValidacionEncabezados";
 import type { MotivoAuditoria } from "@/infrastructure/logging/auditoria";
+import { respuestaDescarga } from "@/app/api/_lib/descarga";
 import {
   exigirBioestadistica,
   idRutaSchema,
@@ -97,24 +98,13 @@ export function motivoAuditoriaRecepcion(motivo: MotivoRechazoRecepcion): Motivo
   }
 }
 
-// `filename` ASCII de respaldo (sin comillas ni caracteres fuera de ASCII imprimible) y `filename*`
-// con el nombre real codificado (RFC 6266 / 5987), para que las tildes lleguen intactas.
-function contentDisposition(nombreArchivo: string): string {
-  const respaldo = nombreArchivo.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "'");
-  return `attachment; filename="${respaldo}"; filename*=UTF-8''${encodeURIComponent(nombreArchivo)}`;
-}
-
 // RF-37: descarga EN STREAMING (nunca se carga el archivo completo en memoria). Común a la
-// descarga propia y a la administrativa.
+// descarga propia y a la administrativa. Cabeceras del helper común de RF-38.
 export function respuestaDescargaArchivo(archivo: ArchivoParaDescarga): Response {
-  return new Response(archivo.flujo, {
-    status: 200,
-    headers: {
-      "Content-Type": archivo.tipoContenidoArchivo,
-      "Content-Length": String(archivo.tamanoBytes),
-      "Content-Disposition": contentDisposition(archivo.nombreArchivoOriginal),
-      "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "no-store",
-    },
+  return respuestaDescarga({
+    flujo: archivo.flujo,
+    tipoContenido: archivo.tipoContenidoArchivo,
+    nombreArchivo: archivo.nombreArchivoOriginal,
+    tamanoBytes: archivo.tamanoBytes,
   });
 }

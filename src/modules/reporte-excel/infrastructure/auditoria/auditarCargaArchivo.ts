@@ -17,6 +17,11 @@ export type DesenlaceAuditoriaCargaArchivo = {
   formatoExcelId?: string | null;
   cargaArchivoId?: string | null;
   cantidadErrores?: number | null;
+  // RF-38: `CARGA_ARCHIVO_REGISTRADA` lleva el tamaño recibido; `CARGA_ARCHIVO_PROCESADA` el estado
+  // resultante y las filas. Nunca el nombre del archivo, su contenido ni su ruta.
+  tamanoBytes?: number | null;
+  estadoResultante?: string | null;
+  cantidadFilasDatos?: number | null;
   // Dueño de la carga afectada. Se completa cuando el actor decide sobre la carga de un TERCERO
   // (`CARGA_ARCHIVO_RECHAZADA`, `CARGA_ARCHIVO_APROBADA`): las acciones propias del notificador
   // (registro/finalización) ya identifican al actor, no a un "objetivo" distinto de sí mismo.
@@ -33,6 +38,14 @@ export type DesenlaceAuditoriaCargaArchivo = {
   solicitudReemplazoId?: string | null;
 };
 
+// Datos de transporte capturados ANTES de responder: el desenlace del procesamiento asíncrono (RF-38)
+// se audita desde `after()`, cuando la respuesta ya salió.
+export type TransporteAuditoriaCarga = { ip: string | null; userAgent: string | null };
+
+export function capturarTransporteCarga(peticion: Request): TransporteAuditoriaCarga {
+  return { ip: extraerIp(peticion), userAgent: extraerUserAgent(peticion) };
+}
+
 // El RUT del actor no viaja en el JWT, así que se resuelve aquí, fuera del camino de respuesta.
 // Mismo patrón que `auditarFormatoExcel.ts` y `auditarUsuario.ts`.
 async function resolverRutActor(actorId: string): Promise<string | null> {
@@ -42,7 +55,7 @@ async function resolverRutActor(actorId: string): Promise<string | null> {
 
 async function construirYRegistrar(
   sesion: SesionPayload,
-  peticion: Request,
+  transporte: TransporteAuditoriaCarga,
   desenlace: DesenlaceAuditoriaCargaArchivo,
 ): Promise<void> {
   const evento: EventoAuditoria = {
@@ -61,11 +74,28 @@ async function construirYRegistrar(
     estadoOrigenRechazo: desenlace.estadoOrigenRechazo ?? null,
     origenRechazo: desenlace.origenRechazo ?? null,
     ...(desenlace.solicitudReemplazoId ? { solicitudReemplazoId: desenlace.solicitudReemplazoId } : {}),
-    ip: extraerIp(peticion),
-    userAgent: extraerUserAgent(peticion),
+    ...(desenlace.tamanoBytes !== undefined ? { tamanoBytes: desenlace.tamanoBytes } : {}),
+    ...(desenlace.estadoResultante !== undefined ? { estadoResultante: desenlace.estadoResultante } : {}),
+    ...(desenlace.cantidadFilasDatos !== undefined ? { cantidadFilasDatos: desenlace.cantidadFilasDatos } : {}),
+    ip: transporte.ip,
+    userAgent: transporte.userAgent,
   };
 
   registrarAuditoria(evento);
+}
+
+// Punto único de armado del evento para `after()` (RF-38), con el transporte ya capturado.
+export function auditarCargaArchivoConTransporte(
+  sesion: SesionPayload,
+  transporte: TransporteAuditoriaCarga,
+  desenlace: DesenlaceAuditoriaCargaArchivo,
+): void {
+  void construirYRegistrar(sesion, transporte, desenlace).catch((error: unknown) => {
+    logger.error("Error al construir el evento de auditoría de cargas de archivo", {
+      accion: desenlace.accion,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 }
 
 // Punto único de armado del evento para los Route Handlers de `/api/notificador/cargas`. Se
@@ -76,10 +106,5 @@ export function auditarCargaArchivo(
   peticion: Request,
   desenlace: DesenlaceAuditoriaCargaArchivo,
 ): void {
-  void construirYRegistrar(sesion, peticion, desenlace).catch((error: unknown) => {
-    logger.error("Error al construir el evento de auditoría de cargas de archivo", {
-      accion: desenlace.accion,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  });
+  auditarCargaArchivoConTransporte(sesion, capturarTransporteCarga(peticion), desenlace);
 }

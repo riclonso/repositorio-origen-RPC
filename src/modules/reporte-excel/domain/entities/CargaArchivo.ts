@@ -1,10 +1,12 @@
-// `CargaArchivo` no incluye `contenidoArchivo` a propósito, mismo motivo que `FormatoExcel` nunca
-// incluye `contenidoPlantilla`: al ser el tipo que viaja hasta la respuesta HTTP, dejar el
-// binario fuera hace imposible filtrarlo por descuido. El único lugar que sí lo necesita usa
-// `CargaArchivoParaDescarga`, más abajo.
+// `CargaArchivo` no incluye `contenidoArchivo` ni la ruta en disco a propósito, mismo motivo que
+// `FormatoExcel` nunca incluye `contenidoPlantilla`: al ser el tipo que viaja hasta la respuesta
+// HTTP, dejar el binario (o su ubicación) fuera hace imposible filtrarlo por descuido. El único
+// lugar que sí lo necesita usa `CargaArchivoParaDescarga`, más abajo.
 
 
 export const ESTADOS_CARGA_ARCHIVO = [
+  // RF-38: el archivo ya se recibió y se guardó en disco; su validación corre en segundo plano.
+  "PROCESANDO",
   "CON_ERRORES",
   "PENDIENTE_VISTO_BUENO",
   "APROBADA",
@@ -25,8 +27,26 @@ export const TIPOS_ERROR_CARGA_ARCHIVO = [
   // como `PENDIENTE_VISTO_BUENO` con 0 errores, sin que ninguna regla de columna requerida llegara
   // a evaluarse.
   "SIN_FILAS_DATOS",
+  // RF-38: el archivo trae más de `TOPE_FILAS_DATOS` filas de datos (antes se ignoraban sin aviso).
+  "TOPE_FILAS_EXCEDIDO",
+  // RF-38: el archivo no se pudo leer (ZIP inválido, demasiado grande descomprimido) o su validación
+  // se interrumpió (reinicio del servidor, expiración).
+  "ARCHIVO_NO_PROCESADO",
+  // RF-38: celda o encabezado con texto enriquecido (formato parcial: negrita,
+  // colores...). Nunca lleva el contenido de la celda.
+  "TEXTO_ENRIQUECIDO",
 ] as const;
 export type TipoErrorCargaArchivo = (typeof TIPOS_ERROR_CARGA_ARCHIVO)[number];
+
+export const MENSAJE_TOPE_FILAS_EXCEDIDO =
+  "El archivo supera el máximo de 500.000 filas de datos. Divide la información o contacta al equipo revisor.";
+export const MENSAJE_ARCHIVO_NO_PROCESADO =
+  "No se pudo leer el archivo. Verifica que sea un Excel válido y vuelve a subirlo.";
+export const MENSAJE_PROCESAMIENTO_INTERRUMPIDO = "La validación se interrumpió. Vuelve a subir el archivo.";
+export const MENSAJE_TEXTO_ENRIQUECIDO_CELDA =
+  "La celda tiene texto con formato (negrita, colores, etc.). Quita el formato y vuelve a subir el archivo.";
+export const MENSAJE_TEXTO_ENRIQUECIDO_ENCABEZADO =
+  "El encabezado tiene texto con formato (negrita, colores, etc.). Quita el formato y vuelve a subir el archivo.";
 
 // El lector toma siempre la primera fila de la hoja como encabezados: los errores de nombres de
 // columna (`COLUMNA_FALTANTE`/`COLUMNA_INESPERADA`) se informan en esta fila.
@@ -37,13 +57,32 @@ export const TIPOS_ERROR_DE_COLUMNA: ReadonlySet<TipoErrorCargaArchivo> = new Se
   "COLUMNA_INESPERADA",
 ]);
 
-// Tope de filas de DATOS validadas por carga (defensa adicional al límite de 10 MB de tamaño de
-// archivo, ya existente en RF-13): filas más allá de este número no se validan.
-export const TOPE_FILAS_DATOS = 20_000;
+// RF-38: tope de filas de DATOS por carga. Superarlo deja la carga `CON_ERRORES` con
+// `TOPE_FILAS_EXCEDIDO` (antes las filas sobrantes se ignoraban sin aviso).
+export const TOPE_FILAS_DATOS = 500_000;
+
+// RF-38: tamaño máximo del archivo del notificador, medido mientras se recibe.
+export const TAMANO_MAXIMO_ARCHIVO_CARGA = 100 * 1024 * 1024;
+export const TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO = "100 MB";
+
+// RF-38: un `PROCESANDO` con más antigüedad que esto se considera interrumpido (respaldo por si la
+// tarea en segundo plano quedó colgada sin que el proceso se reiniciara).
+export const HORAS_EXPIRACION_PROCESAMIENTO_CARGA = 2;
+
+export function limiteExpiracionProcesamientoCarga(ahora: Date): Date {
+  return new Date(ahora.getTime() - HORAS_EXPIRACION_PROCESAMIENTO_CARGA * 60 * 60 * 1000);
+}
+
+// RF-38: fecha y hora de notificación de una carga: cuándo el notificador la finalizó y envió; para
+// cargas anteriores a ese paso (RF-14b), cuándo se aprobó. `null` mientras no se haya notificado
+// (en validación, con errores o sin finalizar): su descarga es el archivo original.
+export function fechaHoraNotificacion(carga: { finalizadaEn: Date | null; vistoBuenoEn: Date | null }): Date | null {
+  return carga.finalizadaEn ?? carga.vistoBuenoEn ?? null;
+}
 
 // Tope de filas de `ErrorCargaArchivo` persistidas por carga: evita miles de INSERTs con un
 // archivo mal formado. Si se supera, se corta ahí y se agrega una fila resumen (ver
-// `acotarErrores` en `ValidarYCargarArchivo.ts`).
+// el acumulador de `MotorValidacionFilas.ts`).
 export const TOPE_ERRORES_PERSISTIDOS = 500;
 
 // Valor de una celda ya normalizado por el lector de archivo: agnóstico de si vino de un `.xlsx`
@@ -155,20 +194,40 @@ export type DatosNuevoErrorCargaArchivo = {
   mensaje: string;
 };
 
-export type DatosNuevaCargaArchivo = {
+// RF-38: una carga recién recibida. Nace `PROCESANDO` con 0 filas y 0 errores; el binario ya está en
+// disco (`rutaArchivo`, relativa al directorio base, generada por el servidor). La subida NO consume
+// ninguna autorización (ni `SolicitudReemplazoCarga` ni reapertura de `CargaArchivoRechazo`): un
+// intento con errores, o uno sin errores que el notificador no llegó a finalizar, no debe dejarlo
+// bloqueado. El consumo vive en `CargaArchivoRepository.finalizar()`.
+export type DatosNuevaCargaProcesando = {
+  id: string;
   formatoExcelId: string;
   ventanaCargaId: string;
   usuarioId: string;
   nombreArchivoOriginal: string;
   tipoContenidoArchivo: string;
-  contenidoArchivo: Buffer;
+  rutaArchivo: string;
+  tamanoBytes: number;
+  sha256: string;
+};
+
+// RF-38: resultado de validar un archivo. `errores` ya viene acotado a `TOPE_ERRORES_PERSISTIDOS`
+// (con la fila resumen); `cantidadErrores` es el total real.
+export type ResultadoValidacionArchivo = {
+  estado: Extract<EstadoCargaArchivo, "CON_ERRORES" | "PENDIENTE_VISTO_BUENO">;
   cantidadFilasDatos: number;
   cantidadErrores: number;
-  estado: EstadoCargaArchivo;
   errores: DatosNuevoErrorCargaArchivo[];
-  // La subida ya NO consume ninguna autorización (ni `SolicitudReemplazoCarga` ni reapertura de
-  // `CargaArchivoRechazo`): un intento con errores, o uno sin errores que el notificador no llegó
-  // a finalizar, no debe dejarlo bloqueado. El consumo vive en `CargaArchivoRepository.finalizar()`.
+};
+
+// RF-38: carga en `PROCESANDO` que el procesamiento asíncrono necesita leer.
+export type CargaArchivoParaProcesar = {
+  id: string;
+  formatoExcelId: string;
+  ventanaCargaId: string;
+  usuarioId: string;
+  estado: EstadoCargaArchivo;
+  rutaArchivo: string | null;
 };
 
 // Desenlace de `CargaArchivoRepository.finalizar()`. `CARGA_PENDIENTE_DECISION`: otra carga de la
@@ -191,26 +250,11 @@ export type UltimaCargaCombinacion = {
   createdAt: Date;
 };
 
-// Contenido binario ya resuelto, previo a dar visto bueno: lo usa `DarVistoBueno` (extensión de
-// publicación hacia el revisor) para reparsear el archivo y construir el detalle de filas antes de
-// abrir la transacción de escritura. A diferencia de `CargaArchivoParaDescarga`, no exige
-// `estado = APROBADA` (todavía no lo está en el momento en que se necesita).
-export type ContenidoCargaArchivo = {
-  contenidoArchivo: Buffer;
-  tipoContenidoArchivo: string;
-};
-
-// Una fila de datos ya validada, lista para publicarse como `CargaArchivoPublicadaFila`.
-export type FilaParaPublicar = {
-  numeroFila: number;
-  valores: Record<string, ValorCeldaArchivo>;
-};
-
-// Datos que `DarVistoBueno` resuelve en `application/` (parseo del archivo, resolución de si esta
-// carga reemplaza a una anterior) antes de pedirle al repositorio que ejecute, en una sola
-// transacción, la transición de estado y la publicación hacia el revisor.
+// Datos que `DarVistoBueno` resuelve en `application/` (si esta carga reemplaza a una anterior)
+// antes de pedirle al repositorio que ejecute, en una sola transacción, la transición de estado y
+// la cabecera de la publicación hacia el revisor. RF-38: ya no se copian filas (el revisor descarga el
+// archivo, generado desde el original).
 export type DatosPublicacionCarga = {
-  filas: FilaParaPublicar[];
   // No nulo cuando la combinación (usuario, ventana) de esta carga ya tenía una `APROBADA` vigente:
   // el repositorio desactiva TODAS las publicaciones activas de esa combinación distintas de la
   // nueva, enlazadas a esta carga y con este motivo (`motivoDesactivacionTipo = REEMPLAZO`). El
@@ -281,12 +325,20 @@ export type DatosRechazoCargaArchivo = {
   motivo: string;
 };
 
-// Único tipo que SÍ carga el binario. Lo usa exclusivamente el endpoint de descarga, y solo
-// cuando `estado = APROBADA`.
+// RF-38: dónde está el binario. `disco` para las cargas nuevas; `bd` para las cargas anteriores al
+// almacenamiento en disco, que conservan su binario en `contenidoArchivo` de forma permanente.
+export type FuenteArchivoCarga =
+  | { tipo: "disco"; referencia: string; tamanoBytes: number }
+  | { tipo: "bd"; contenido: Buffer };
+
+// Único tipo que SÍ apunta al binario. Lo usan exclusivamente los endpoints de descarga.
 export type CargaArchivoParaDescarga = {
+  id: string;
   nombreArchivoOriginal: string;
   tipoContenidoArchivo: string;
-  contenidoArchivo: Buffer;
+  finalizadaEn: Date | null;
+  vistoBuenoEn: Date | null;
+  fuente: FuenteArchivoCarga;
 };
 
 // "Mis cargas" (histórico de exitosas del notificador): no existe un concepto de "reemplazo"

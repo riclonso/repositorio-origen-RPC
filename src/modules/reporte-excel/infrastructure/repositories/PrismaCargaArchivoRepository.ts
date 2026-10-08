@@ -4,19 +4,22 @@ import { logger } from "@/infrastructure/logging/logger";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 import { marcarSolicitudUtilizadaEnTransaccion } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
-import type {
-  CargaArchivo,
-  CargaArchivoResumenConPublicacion,
-  CargaArchivoResumenPropia,
-  DatosNuevaCargaArchivo,
-  DatosPublicacionCarga,
-  DatosRechazoCargaArchivo,
-  ErrorCargaArchivo,
-  FiltroListadoCargasPendientesODecididas,
-  InfoRechazoCargaArchivo,
-  ResultadoFinalizarCargaArchivo,
-  ValorCeldaArchivo,
+import {
+  MENSAJE_PROCESAMIENTO_INTERRUMPIDO,
+  type CargaArchivo,
+  type CargaArchivoParaDescarga,
+  type CargaArchivoResumenConPublicacion,
+  type CargaArchivoResumenPropia,
+  type DatosNuevaCargaProcesando,
+  type DatosPublicacionCarga,
+  type DatosRechazoCargaArchivo,
+  type ErrorCargaArchivo,
+  type FiltroListadoCargasPendientesODecididas,
+  type InfoRechazoCargaArchivo,
+  type ResultadoFinalizarCargaArchivo,
+  type ResultadoValidacionArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { CargaArchivoEnProcesoError } from "@/modules/reporte-excel/domain/errors/CargaArchivoEnProcesoError";
 import {
   reaperturaAutorizaReemplazo,
   type CargaArchivoRechazo,
@@ -24,33 +27,8 @@ import {
 import { solicitudUtilizable } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { ventanaAdmiteAutorizaciones } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 
-// Filas de detalle insertadas por sentencia `createMany`: `TOPE_FILAS_DATOS` (20.000, ver
-// `domain/entities/CargaArchivo.ts`) por hasta ~4 columnas de parámetros por fila se acerca al
-// límite de 65.535 parámetros ligados de PostgreSQL, así que se trocea. Todos los lotes corren
-// dentro de la MISMA transacción abierta (ver `darVistoBueno`), no una por lote de forma aislada.
-const TAMANO_LOTE_FILAS_PUBLICADAS = 5_000;
-
 const COMENTARIO_SOLICITUD_CERRADA_POR_RECHAZO =
   "Cerrada automáticamente: la carga fue rechazada y ya puedes volver a subir un archivo.";
-
-// JSONB no admite `Date`: cada valor de celda se serializa a un tipo que Prisma acepta para un
-// campo `Json`, con las fechas ya convertidas a ISO string (mismo criterio de tipos que el resto
-// del módulo aplica tras serializar, ver DTOs de `_lib/http.ts`).
-function serializarValorCelda(valor: ValorCeldaArchivo): Prisma.InputJsonValue | null {
-  if (valor instanceof Date) return valor.toISOString();
-  return valor;
-}
-
-function serializarFilaParaPublicar(valores: Record<string, ValorCeldaArchivo>): Prisma.InputJsonObject {
-  // Se construye sobre un `Record` mutable (el índice de `Prisma.InputJsonObject` es de solo
-  // lectura) y se castea al devolver: es la misma forma final, solo evita el error de tipos al
-  // ensamblarla campo a campo.
-  const resultado: Record<string, Prisma.InputJsonValue | null> = {};
-  for (const [nombreColumna, valor] of Object.entries(valores)) {
-    resultado[nombreColumna] = serializarValorCelda(valor);
-  }
-  return resultado as Prisma.InputJsonObject;
-}
 
 const SELECCION_ERROR = {
   id: true,
@@ -261,14 +239,20 @@ const CODIGO_UNIQUE_VIOLADO = "P2002";
 
 // Índice único parcial de la migración `indice_unico_carga_pendiente_finalizada`.
 const INDICE_PENDIENTE_FINALIZADA = "carga_archivo_pendiente_finalizada_key";
+// RF-38: índice único parcial de la migración `cargas_archivo_en_disco` (un PROCESANDO por combinación).
+const INDICE_PROCESANDO = "carga_archivo_procesando_key";
 
-// ¿Es un P2002 causado por `INDICE_PENDIENTE_FINALIZADA`? Con `@prisma/adapter-pg` el nombre del
+function esViolacionIndicePendienteFinalizada(error: unknown): boolean {
+  return esViolacionIndice(error, INDICE_PENDIENTE_FINALIZADA);
+}
+
+// ¿Es un P2002 causado por el índice `nombreIndice`? Con `@prisma/adapter-pg` el nombre del
 // índice no viene en un campo propio: solo aparece en
 // `meta.driverAdapterError.cause.originalMessage` (texto del servidor, localizado, p.ej.
 // "llave duplicada viola restricción de unicidad «carga_archivo_pendiente_finalizada_key»"). Se
 // revisa también `meta.target` por si el motor sin adaptador lo informa ahí. Nunca se registra el
 // mensaje: solo se usa para clasificar.
-function esViolacionIndicePendienteFinalizada(error: unknown): boolean {
+function esViolacionIndice(error: unknown, nombreIndice: string): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== CODIGO_UNIQUE_VIOLADO) {
     return false;
   }
@@ -280,10 +264,10 @@ function esViolacionIndicePendienteFinalizada(error: unknown): boolean {
   const candidatos = [meta?.target, causa?.originalMessage, causa?.constraint];
 
   return candidatos.some((candidato) => {
-    if (typeof candidato === "string") return candidato.includes(INDICE_PENDIENTE_FINALIZADA);
-    if (Array.isArray(candidato)) return candidato.includes(INDICE_PENDIENTE_FINALIZADA);
+    if (typeof candidato === "string") return candidato.includes(nombreIndice);
+    if (Array.isArray(candidato)) return candidato.includes(nombreIndice);
     if (candidato && typeof candidato === "object") {
-      return JSON.stringify(candidato).includes(INDICE_PENDIENTE_FINALIZADA);
+      return JSON.stringify(candidato).includes(nombreIndice);
     }
     return false;
   });
@@ -356,28 +340,49 @@ function aCargaArchivoRechazo(registro: RegistroRechazoEntidad): CargaArchivoRec
   };
 }
 
-function datosCreacionCargaArchivo(datos: DatosNuevaCargaArchivo) {
-  return {
-    formatoExcelId: datos.formatoExcelId,
-    ventanaCargaId: datos.ventanaCargaId,
-    usuarioId: datos.usuarioId,
-    nombreArchivoOriginal: datos.nombreArchivoOriginal,
-    tipoContenidoArchivo: datos.tipoContenidoArchivo,
-    // Mismo motivo que `FormatoExcel.contenidoPlantilla`: `Uint8Array.from` produce el tipo
-    // exacto que exige el campo `Bytes` generado por Prisma.
-    contenidoArchivo: Uint8Array.from(datos.contenidoArchivo),
-    cantidadFilasDatos: datos.cantidadFilasDatos,
-    cantidadErrores: datos.cantidadErrores,
-    estado: datos.estado,
-    errores: {
-      create: datos.errores.map((error) => ({
-        numeroFila: error.numeroFila,
-        columna: error.columna,
-        tipoError: error.tipoError,
-        mensaje: error.mensaje,
-      })),
-    },
+// RF-38: metadatos de descarga, sin el binario. `contenidoArchivo` se lee aparte y SOLO si la carga no
+// tiene ruta en disco: es el soporte permanente de las cargas anteriores al almacenamiento en disco.
+const SELECCION_DESCARGA = {
+  id: true,
+  nombreArchivoOriginal: true,
+  tipoContenidoArchivo: true,
+  finalizadaEn: true,
+  vistoBuenoEn: true,
+  rutaArchivo: true,
+  tamanoBytes: true,
+} as const;
+
+type RegistroDescarga = Prisma.CargaArchivoGetPayload<{ select: typeof SELECCION_DESCARGA }>;
+
+async function aCargaParaDescarga(registro: RegistroDescarga | null): Promise<CargaArchivoParaDescarga | null> {
+  if (!registro) return null;
+
+  const base = {
+    id: registro.id,
+    nombreArchivoOriginal: registro.nombreArchivoOriginal,
+    tipoContenidoArchivo: registro.tipoContenidoArchivo,
+    finalizadaEn: registro.finalizadaEn,
+    vistoBuenoEn: registro.vistoBuenoEn,
   };
+
+  if (registro.rutaArchivo !== null && registro.tamanoBytes !== null) {
+    return { ...base, fuente: { tipo: "disco", referencia: registro.rutaArchivo, tamanoBytes: registro.tamanoBytes } };
+  }
+
+  const binario = await prisma.cargaArchivo.findUnique({ where: { id: registro.id }, select: { contenidoArchivo: true } });
+  if (!binario?.contenidoArchivo) return null;
+
+  return { ...base, fuente: { tipo: "bd", contenido: Buffer.from(binario.contenidoArchivo) } };
+}
+
+function datosErrores(cargaArchivoId: string, errores: ResultadoValidacionArchivo["errores"]) {
+  return errores.map((error) => ({
+    cargaArchivoId,
+    numeroFila: error.numeroFila,
+    columna: error.columna,
+    tipoError: error.tipoError,
+    mensaje: error.mensaje,
+  }));
 }
 
 // La APROBADA vigente de cada par (ventana, notificador) y si está en reemplazo: solicitud de
@@ -463,22 +468,102 @@ async function resolverAprobadasVigentesEnReemplazo(
 }
 
 export const prismaCargaArchivoRepository: CargaArchivoRepository = {
-  async crear(datos: DatosNuevaCargaArchivo) {
-    // Nested write de una sola escritura: la carga y sus errores en una única operación atómica,
-    // mismo patrón que `PrismaFormatoExcelRepository.crear`. La subida ya no consume ninguna
-    // autorización (solicitud de reemplazo ni reapertura): eso ocurre en `finalizar()`.
-    //
-    // La escritura anidada corre en una transacción implícita: devuelve solo el id, y el detalle
-    // (con relaciones) se lee después del commit. Leer `SELECCION_DETALLE` dentro de la transacción
-    // hace que Prisma 7 + adapter-pg lance consultas paralelas sobre su única conexión (aviso de
-    // deprecación de `pg`, error en pg@9). Mismo criterio en `darVistoBueno`, `finalizar` y
-    // `rechazar`.
-    const creada = await prisma.cargaArchivo.create({
-      data: datosCreacionCargaArchivo(datos),
+  async crearProcesando(datos: DatosNuevaCargaProcesando) {
+    // RF-38: el binario ya está en disco; aquí solo su referencia, tamaño y SHA-256. La subida no
+    // consume ninguna autorización (eso ocurre en `finalizar()`). El detalle (con relaciones) se lee
+    // después de la escritura: leer `SELECCION_DETALLE` dentro de una transacción hace que Prisma 7 +
+    // adapter-pg lance consultas paralelas sobre su única conexión. Mismo criterio en `darVistoBueno`,
+    // `finalizar` y `rechazar`.
+    try {
+      await prisma.cargaArchivo.create({
+        data: {
+          id: datos.id,
+          formatoExcelId: datos.formatoExcelId,
+          ventanaCargaId: datos.ventanaCargaId,
+          usuarioId: datos.usuarioId,
+          nombreArchivoOriginal: datos.nombreArchivoOriginal,
+          tipoContenidoArchivo: datos.tipoContenidoArchivo,
+          rutaArchivo: datos.rutaArchivo,
+          tamanoBytes: datos.tamanoBytes,
+          sha256: datos.sha256,
+          cantidadFilasDatos: 0,
+          cantidadErrores: 0,
+          estado: "PROCESANDO",
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      // Dos subidas simultáneas de la misma combinación: la segunda choca con el índice parcial.
+      if (esViolacionIndice(error, INDICE_PROCESANDO)) throw new CargaArchivoEnProcesoError();
+      throw error;
+    }
+
+    return leerDetalleTrasEscritura(datos.id);
+  },
+
+  async obtenerParaProcesar(id) {
+    return prisma.cargaArchivo.findUnique({
+      where: { id },
+      select: { id: true, formatoExcelId: true, ventanaCargaId: true, usuarioId: true, estado: true, rutaArchivo: true },
+    });
+  },
+
+  async obtenerProcesandoPorUsuarioYVentana(usuarioId, ventanaCargaId) {
+    return prisma.cargaArchivo.findFirst({
+      where: { usuarioId, ventanaCargaId, estado: "PROCESANDO" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, createdAt: true },
+    });
+  },
+
+  async completarProcesamiento(id, resultado: ResultadoValidacionArchivo) {
+    // Transición condicional y sus errores (≤ 500, ya acotados) en una sola transacción: si la carga
+    // ya no está en PROCESANDO (liberada por expiración o reinicio), no se inserta nada.
+    return prisma.$transaction(async (tx) => {
+      const actualizada = await tx.cargaArchivo.updateMany({
+        where: { id, estado: "PROCESANDO" },
+        data: {
+          estado: resultado.estado,
+          cantidadFilasDatos: resultado.cantidadFilasDatos,
+          cantidadErrores: resultado.cantidadErrores,
+        },
+      });
+      if (actualizada.count === 0) return false;
+
+      if (resultado.errores.length > 0) {
+        await tx.errorCargaArchivo.createMany({ data: datosErrores(id, resultado.errores) });
+      }
+      return true;
+    });
+  },
+
+  async marcarProcesamientosInterrumpidos(filtro) {
+    const candidatas = await prisma.cargaArchivo.findMany({
+      where: {
+        estado: "PROCESANDO",
+        createdAt: { lt: filtro.anterioresA },
+        ...(filtro.usuarioId ? { usuarioId: filtro.usuarioId } : {}),
+        ...(filtro.ventanaCargaId ? { ventanaCargaId: filtro.ventanaCargaId } : {}),
+      },
       select: { id: true },
     });
 
-    return leerDetalleTrasEscritura(creada.id);
+    const marcadas: string[] = [];
+    for (const { id } of candidatas) {
+      const marcada = await prisma.$transaction(async (tx) => {
+        const actualizada = await tx.cargaArchivo.updateMany({
+          where: { id, estado: "PROCESANDO" },
+          data: { estado: "CON_ERRORES", cantidadFilasDatos: 0, cantidadErrores: 1 },
+        });
+        if (actualizada.count === 0) return false;
+        await tx.errorCargaArchivo.create({
+          data: { cargaArchivoId: id, numeroFila: 0, columna: null, tipoError: "ARCHIVO_NO_PROCESADO", mensaje: MENSAJE_PROCESAMIENTO_INTERRUMPIDO },
+        });
+        return true;
+      });
+      if (marcada) marcadas.push(id);
+    }
+    return marcadas;
   },
 
   async obtenerPorId(id) {
@@ -527,25 +612,6 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     return registro ? aCargaArchivo(registro) : null;
   },
 
-  async obtenerContenidoParaProcesar(id, usuarioId) {
-    // A diferencia de `obtenerParaDescarga`, no exige `estado = APROBADA`: se necesita el binario
-    // antes de esa transición (`DarVistoBueno` reparsea el archivo para construir la publicación).
-    const registro = await prisma.cargaArchivo.findFirst({
-      where: { id, usuarioId },
-      select: {
-        tipoContenidoArchivo: true,
-        contenidoArchivo: true,
-      },
-    });
-
-    if (!registro) return null;
-
-    return {
-      contenidoArchivo: Buffer.from(registro.contenidoArchivo),
-      tipoContenidoArchivo: registro.tipoContenidoArchivo,
-    };
-  },
-
   async listarPropias(filtro) {
     const where = {
       usuarioId: filtro.usuarioId,
@@ -578,7 +644,13 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
     const registros = await prisma.cargaArchivo.findMany({
       where: {
         usuarioId,
-        OR: [FILTRO_APROBADA_NO_SUPERADA, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
+        // RF-38: también el procesamiento en curso (a lo más uno por ventana), para que la tarjeta lo
+        // muestre "validando" aunque la página de intentos recientes no lo traiga.
+        OR: [
+          FILTRO_APROBADA_NO_SUPERADA,
+          { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } },
+          { estado: "PROCESANDO" },
+        ],
       },
       select: SELECCION_RESUMEN_CON_PUBLICACION,
       orderBy: { createdAt: "desc" },
@@ -683,14 +755,10 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   },
 
   async darVistoBueno(id, aprobadoPorId, publicacion: DatosPublicacionCarga) {
-    // Transacción interactiva: la transición de estado, la publicación completa (cabecera + TODO
-    // el detalle) y la eventual desactivación de la publicación reemplazada corren atómicas. No
-    // puede quedar una carga APROBADA sin su publicación completa, ni una publicación anterior sin
-    // desactivar si la nueva ya se aprobó.
-    //
-    // `timeout` explícito (por encima del defecto de Prisma, 5000ms): con el tope de RF-14
-    // (`TOPE_FILAS_DATOS = 20_000`) esta transacción puede llegar a hacer 4 lotes de `createMany`
-    // además del resto de las escrituras; 5s puede no alcanzar fuera de localhost.
+    // Transacción interactiva: la transición de estado, la cabecera de la publicación y la eventual
+    // desactivación de la publicación reemplazada corren atómicas. No puede quedar una carga APROBADA
+    // sin su publicación, ni una publicación anterior sin desactivar si la nueva ya se aprobó. RF-38: ya
+    // no se copian filas a `carga_archivo_publicada_fila` (pendiente eliminar la tabla tras un respaldo).
     const aprobada = await prisma.$transaction(async (tx) => {
       // Corrección (fin de la autoaprobación): ya no filtra por `usuarioId` (quien aprueba es un
       // tercero, no el dueño de la carga), y exige `finalizadaEn` no nulo (el notificador ya
@@ -703,28 +771,14 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
 
       if (resultado.count === 0) return false;
 
-      const publicada = await tx.cargaArchivoPublicada.create({
+      await tx.cargaArchivoPublicada.create({
         data: { cargaArchivoId: id, publicadoPorId: aprobadoPorId },
         select: { id: true },
       });
 
-      // Inserción masiva troceada en lotes, todos dentro de esta misma transacción abierta: nunca
-      // un INSERT por fila.
-      for (let inicio = 0; inicio < publicacion.filas.length; inicio += TAMANO_LOTE_FILAS_PUBLICADAS) {
-        const lote = publicacion.filas.slice(inicio, inicio + TAMANO_LOTE_FILAS_PUBLICADAS);
-
-        await tx.cargaArchivoPublicadaFila.createMany({
-          data: lote.map((fila) => ({
-            cargaArchivoPublicadaId: publicada.id,
-            numeroFila: fila.numeroFila,
-            valores: serializarFilaParaPublicar(fila.valores),
-          })),
-        });
-      }
-
       // Si esta aprobación reemplaza a la vigente de su combinación (usuario, ventana), TODAS las
       // publicaciones activas de esa combinación distintas de la nueva dejan de ser visibles para el
-      // revisor (baja lógica, sus filas de detalle se conservan intactas) y quedan enlazadas a esta
+      // revisor (baja lógica) y quedan enlazadas a esta
       // carga con el motivo resuelto en `DarVistoBueno`. Barrer la combinación completa (y no solo
       // una carga anterior puntual) garantiza que nunca queden dos publicaciones activas, llegue
       // esta carga por solicitud de reemplazo o por reapertura tras un rechazo.
@@ -756,7 +810,7 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
       }
 
       return true;
-    }, { timeout: 15_000 });
+    });
 
     // Detalle leído después del commit (ver comentario de `crear`).
     return aprobada ? leerDetalleTrasEscritura(id) : null;
@@ -877,39 +931,23 @@ export const prismaCargaArchivoRepository: CargaArchivoRepository = {
   },
 
   async obtenerParaDescarga(id) {
-    // Única consulta de todo el módulo que trae `contenidoArchivo` para un revisor. Una pendiente
-    // solo queda disponible una vez finalizada por su dueño; un borrador o una carga con errores
-    // permanece inaccesible incluso para ADMIN/REVISOR_REPOSITORIO.
+    // Única consulta que ubica el binario para un revisor. Una pendiente solo queda disponible una vez
+    // finalizada por su dueño; un borrador, una carga en validación o con errores permanecen
+    // inaccesibles incluso para ADMIN/REVISOR_REPOSITORIO.
     const registro = await prisma.cargaArchivo.findFirst({
       where: {
         id,
         OR: [{ estado: "APROBADA" }, { estado: "PENDIENTE_VISTO_BUENO", finalizadaEn: { not: null } }],
       },
-      select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
+      select: SELECCION_DESCARGA,
     });
 
-    if (!registro) return null;
-
-    return {
-      nombreArchivoOriginal: registro.nombreArchivoOriginal,
-      tipoContenidoArchivo: registro.tipoContenidoArchivo,
-      contenidoArchivo: Buffer.from(registro.contenidoArchivo),
-    };
+    return aCargaParaDescarga(registro);
   },
 
   async obtenerPropiaParaDescarga(id, usuarioId) {
-    const registro = await prisma.cargaArchivo.findFirst({
-      where: { id, usuarioId },
-      select: { nombreArchivoOriginal: true, tipoContenidoArchivo: true, contenidoArchivo: true },
-    });
-
-    if (!registro) return null;
-
-    return {
-      nombreArchivoOriginal: registro.nombreArchivoOriginal,
-      tipoContenidoArchivo: registro.tipoContenidoArchivo,
-      contenidoArchivo: Buffer.from(registro.contenidoArchivo),
-    };
+    const registro = await prisma.cargaArchivo.findFirst({ where: { id, usuarioId }, select: SELECCION_DESCARGA });
+    return aCargaParaDescarga(registro);
   },
 
   async rechazar(id, datos: DatosRechazoCargaArchivo) {

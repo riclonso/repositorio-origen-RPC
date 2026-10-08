@@ -477,6 +477,9 @@ model TokenRecuperacion {
 // uno de los formatos que el ADMIN le tiene asignados.
 
 enum EstadoCargaArchivo {
+  // RF-38: archivo recibido y guardado en disco; su validación corre en segundo plano. A lo más uno por
+  // (usuarioId, ventanaCargaId): índice único parcial `carga_archivo_procesando_key`.
+  PROCESANDO
   CON_ERRORES
   PENDIENTE_VISTO_BUENO
   APROBADA
@@ -495,11 +498,19 @@ enum TipoErrorCargaArchivo {
   REGLA_VALIDACION
   // Estructural: el archivo trae la fila de encabezados pero ninguna fila de datos debajo.
   SIN_FILAS_DATOS
+  // RF-38: más de 500.000 filas de datos.
+  TOPE_FILAS_EXCEDIDO
+  // RF-38: archivo ilegible, demasiado grande una vez descomprimido, o validación interrumpida.
+  ARCHIVO_NO_PROCESADO
+  // RF-38: celda o encabezado con texto enriquecido (formato parcial).
+  TEXTO_ENRIQUECIDO
 }
 
-// El binario se persiste igual que `FormatoExcel.contenidoPlantilla` (`Bytes`, sin cifrado
-// adicional) — deuda técnica conocida, documentada en `docs/requerimientos.md`: es dato
-// potencialmente clínico y el proyecto no tiene hoy un mecanismo de cifrado de aplicación.
+// RF-38: el binario vive EN DISCO (`rutaArchivo`, relativa a `DIRECTORIO_ARCHIVOS_CARGAS`), igual que
+// Bioestadística: un archivo puede pesar hasta 100 MB. `contenidoArchivo` (`Bytes`) se conserva de
+// forma PERMANENTE para las cargas anteriores al almacenamiento en disco (no se migran a disco).
+// CHECK `carga_archivo_binario_presente` (SQL a mano): o hay `Bytes`, o hay ruta + tamaño + SHA-256.
+// Sin cifrado de aplicación — deuda técnica conocida, documentada en `docs/requerimientos.md`.
 model CargaArchivo {
   id                    String             @id @default(uuid())
   formatoExcelId        String
@@ -512,7 +523,16 @@ model CargaArchivo {
   ventanaCarga          VentanaCarga       @relation(fields: [ventanaCargaId], references: [id], onUpdate: Cascade, onDelete: Restrict)
   nombreArchivoOriginal String
   tipoContenidoArchivo  String
-  contenidoArchivo      Bytes
+  // RF-38: `NULL` en las cargas nuevas (binario en disco). Lo traen, de forma permanente, las cargas
+  // anteriores al almacenamiento en disco.
+  contenidoArchivo      Bytes?
+  // RF-38: `<anio>/<id>.xlsx`, generada por el servidor.
+  rutaArchivo           String?
+  // RF-38: tamaño real medido al recibir (≤ 100 MB, cabe en Int).
+  tamanoBytes           Int?
+  // RF-38: SHA-256 hexadecimal calculado mientras se recibe (integridad y trazabilidad).
+  sha256                String?            @db.Char(64)
+  // Una carga en `PROCESANDO` nace con 0/0; el procesamiento asíncrono fija los valores reales.
   cantidadFilasDatos    Int
   cantidadErrores       Int
   estado                EstadoCargaArchivo
@@ -535,8 +555,7 @@ model CargaArchivo {
   errores ErrorCargaArchivo[]
 
   // Relaciones inversas de la publicación hacia el revisor y de las solicitudes de reemplazo,
-  // exigidas por Prisma. NUNCA usarlas con `include` en listados: arrastrarían el detalle
-  // completo (hasta 20.000 filas) de cada carga.
+  // exigidas por Prisma. NUNCA usarlas con `include` en listados.
   publicacion                      CargaArchivoPublicada?    @relation("PublicacionDeCarga")
   publicacionesReemplazadasPorEsta CargaArchivoPublicada[]   @relation("PublicacionesReemplazadasPorCarga")
   solicitudesReemplazo             SolicitudReemplazoCarga[] @relation("SolicitudesDeCarga")
@@ -603,6 +622,8 @@ model CargaArchivoPublicada {
   @@map("carga_archivo_publicada")
 }
 
+// RF-38: esta tabla ya no se escribe ni se lee (el visto bueno solo crea la cabecera); pendiente
+// eliminarla tras un respaldo (ver deuda técnica en docs/requerimientos.md).
 // DETALLE: un registro POR CADA FILA de datos del archivo Excel/CSV ya aprobado. `valores` sigue
 // siendo JSONB porque el conjunto de columnas es dinámico por `FormatoExcel` (definidas por el
 // ADMIN, distintas entre formatos) — mismo motivo por el que el resto del motor de validación de

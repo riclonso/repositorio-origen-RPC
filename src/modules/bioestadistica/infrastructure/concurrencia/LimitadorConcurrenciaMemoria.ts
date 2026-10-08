@@ -1,38 +1,8 @@
-import type { LimitadorConcurrencia } from "@/modules/bioestadistica/application/ports";
+import { crearLimitadorConcurrencia } from "@/infrastructure/concurrencia/LimitadorConcurrenciaMemoria";
 
-// Semáforo dentro del proceso: a lo más `maximo` tareas a la vez; el resto espera su turno en orden
-// de llegada. Acota la memoria y la CPU que consumen los procesamientos de archivos de hasta 200 MB.
-// Vive en memoria del proceso (asume una sola instancia, igual que el scheduler de RF-17).
-export function crearLimitadorConcurrencia(maximo: number): LimitadorConcurrencia {
-  let enCurso = 0;
-  const enEspera: Array<() => void> = [];
-
-  async function adquirir(): Promise<void> {
-    if (enCurso < maximo) {
-      enCurso += 1;
-      return;
-    }
-    // El turno se transfiere directamente al liberar: `enCurso` no baja ni sube en el traspaso.
-    await new Promise<void>((resolver) => enEspera.push(resolver));
-  }
-
-  function liberar(): void {
-    const siguiente = enEspera.shift();
-    if (siguiente) siguiente();
-    else enCurso -= 1;
-  }
-
-  return {
-    async ejecutar<T>(tarea: () => Promise<T>): Promise<T> {
-      await adquirir();
-      try {
-        return await tarea();
-      } finally {
-        liberar();
-      }
-    },
-  };
-}
+// RF-37: instancias del limitador para Bioestadística. RF-38 movió la implementación a
+// `src/infrastructure/concurrencia/` (la comparten las cargas del notificador); los valores no cambian.
+export { crearLimitadorConcurrencia };
 
 // RF-37: máximo de procesamientos de archivos de Bioestadística simultáneos.
 const MAXIMO_PROCESAMIENTOS_SIMULTANEOS = 2;

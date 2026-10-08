@@ -39,6 +39,10 @@ export type AccionAuditoria =
   // Un solo evento por lote, con los ids afectados y omitidos en `usuarios*Ids`.
   | "FORMATO_EXCEL_ASIGNACION_MASIVA"
   | "CARGA_ARCHIVO_REGISTRADA"
+  // RF-38: desenlace de la validación asíncrona de una carga recibida (EXITO con el estado resultante,
+  // o RECHAZADO con motivo `ARCHIVO_NO_PROCESADO`). Se emite desde `after()`. Desde RF-38,
+  // `CARGA_ARCHIVO_REGISTRADA` ya no lleva `cantidadErrores` (la lleva este evento).
+  | "CARGA_ARCHIVO_PROCESADA"
   // Se conserva SOLO para poder leer el histórico anterior a la corrección que elimina la
   // autoaprobación del notificador (era el notificador dueño de la carga aprobándose a sí mismo).
   // No usar en eventos nuevos: reemplazada por `CARGA_ARCHIVO_APROBADA`.
@@ -271,7 +275,10 @@ export type MotivoAuditoria =
   | "SIN_FILAS_DATOS"
   | "TOPE_FILAS"
   | "ARCHIVO_ILEGIBLE"
-  | "PROCESAMIENTO_INTERRUMPIDO";
+  | "PROCESAMIENTO_INTERRUMPIDO"
+  // RF-38, de `CARGA_ARCHIVO_PROCESADA` (RECHAZADO): el archivo del notificador no se pudo leer. De
+  // `CARGA_ARCHIVO_REGISTRADA` además se usa `EN_PROCESO` (arriba): ya hay uno validándose.
+  | "ARCHIVO_NO_PROCESADO";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -326,6 +333,8 @@ export type EventoAuditoria = {
   // binario, solo estos metadatos.
   cargaArchivoId?: string | null;
   cantidadErrores?: number | null;
+  // RF-38, específico de `CARGA_ARCHIVO_PROCESADA` exitosa: `CON_ERRORES` o `PENDIENTE_VISTO_BUENO`.
+  estadoResultante?: string | null;
   // Específico de `CARGA_ARCHIVO_RECHAZADA` (ampliación RF-20): de qué estado venía la carga al
   // momento de rechazarla, para que el histórico distinga ambos orígenes sin ambigüedad.
   estadoOrigenRechazo?: "PENDIENTE_VISTO_BUENO" | "APROBADA" | null;

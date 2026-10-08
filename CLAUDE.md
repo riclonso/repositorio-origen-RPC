@@ -87,6 +87,8 @@ en vez de fallar en runtime más adelante:
 - `DIRECTORIO_ARCHIVOS_BIOESTADISTICA` — opcional (RF-37), ruta absoluta del directorio de archivos de
   Bioestadística; por defecto `<cwd>/almacenamiento/bioestadistica`. En producción, volumen persistente
   incluido en los respaldos.
+- `DIRECTORIO_ARCHIVOS_CARGAS` — opcional (RF-38), ruta absoluta del directorio de archivos subidos por
+  los notificadores; por defecto `<cwd>/almacenamiento/cargas`. Mismo criterio de volumen y respaldo.
 
 ## Arquitectura
 
@@ -127,7 +129,10 @@ src/
 │   ├── logging/            — logger.ts (Winston), auditoria.ts, leerLogs.ts
 │   ├── email/SmtpMailer.ts
 │   ├── hojas-calculo/      — abrirHojaExcelJs.ts (único punto de apertura/escritura exceljs, separador CSV);
-│   │                         leerHojaStreamingExcelJs.ts, leerCsvStreaming.ts, valorCelda.ts (RF-37)
+│   │                         leerHojaStreamingExcelJs.ts, leerCsvStreaming.ts, valorCelda.ts (RF-37);
+│   │                         escribirHojaStreamingExcelJs.ts, anexarColumnaCsv.ts, flujoWebDesdeNode.ts (RF-38)
+│   ├── almacenamiento/     — AlmacenArchivosDisco.ts (binarios en disco, compartido; RF-38)
+│   ├── concurrencia/       — LimitadorConcurrenciaMemoria.ts (turnos, espera máxima, exclusión por clave)
 │   └── rate-limit/LimitadorMemoria.ts
 ├── shared/
 │   ├── utils/              — rut.ts, peticion.ts (extraerIp)
@@ -220,6 +225,23 @@ lado contrario; del lado revisor es compartida por todos los revisores). Puntos 
   uno por tanda de no leídos POR VENTANA) no llevan el contenido ni su longitud.
 * **Conteos sin N+1**: `groupBy` sobre `mensaje_carga` usando los índices
   `[ventanaCargaId, ladoAutor, leidoEn]` y `[notificadorId, ventanaCargaId, creadoEn]`.
+
+### Archivos de reporte del notificador (`modules/reporte-excel/`, RF-14 + RF-38)
+
+* **Binario en disco** (`DIRECTORIO_ARCHIVOS_CARGAS`, `rutaArchivo`/`tamanoBytes`/`sha256`). Las cargas
+  anteriores a RF-38 conservan `contenidoArchivo` de forma permanente: toda lectura del binario debe
+  aceptar las dos fuentes. Hasta 100 MB y 500.000 filas de datos, solo `.xlsx`.
+* **Recepción y validación separadas.** `RecibirArchivoCarga` valida todo lo de negocio **antes** de leer
+  el cuerpo y deja la carga en `PROCESANDO` (202); `ProcesarCargaArchivo` valida en `after()` dentro de
+  un limitador. `PROCESANDO` no cuenta en ningún listado, tablero ni regla de RF-33/RF-34.
+* **La validación debe dar el mismo resultado que la de memoria.** Cualquier cambio al lector
+  (`leerHojaStreamingExcelJs.ts`) o al motor (`MotorValidacionFilas`) exige correr
+  `tests/equivalencia-validacion.unit.ts` (cero diferencias). No actualizar `exceljs` sin correrla.
+* **No hay filas publicadas.** `carga_archivo_publicada_fila` ya no se escribe; la columna "Fecha y hora
+  de notificación" se agrega al descargar (`GeneradorDescargaCarga`). La cabecera
+  `carga_archivo_publicada` sí se sigue creando en el visto bueno: de ella dependen RF-33/RF-34.
+* **Descargas** con `app/api/_lib/descarga.ts` (nombre exacto vía `filename*`); las generadas pasan por
+  el limitador de descargas, "Descargar original" no.
 
 ### `modules/bioestadistica/` (perfil Bioestadística, RF-37)
 

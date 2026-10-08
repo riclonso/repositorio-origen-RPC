@@ -63,6 +63,16 @@ const schema = z
         .refine((valor) => RUTA_ABSOLUTA.test(valor), "DIRECTORIO_ARCHIVOS_BIOESTADISTICA debe ser una ruta absoluta")
         .optional(),
     ),
+    // RF-38: directorio de los archivos que suben los notificadores (hasta 100 MB cada uno). OPCIONAL
+    // por el mismo motivo: sin ella se usa `<cwd>/almacenamiento/cargas` (ver
+    // `directorioArchivosCargas`). En producción, un volumen persistente incluido en los respaldos.
+    DIRECTORIO_ARCHIVOS_CARGAS: z.preprocess(
+      (valor) => (valor === "" ? undefined : valor),
+      z
+        .string()
+        .refine((valor) => RUTA_ABSOLUTA.test(valor), "DIRECTORIO_ARCHIVOS_CARGAS debe ser una ruta absoluta")
+        .optional(),
+    ),
   })
   // Validación de todo o nada: el peor escenario posible es una configuración a medias que
   // arranca sin quejarse y falla en cada envío. Con esto, o el grupo está completo o no está,
@@ -109,12 +119,18 @@ export const env = schema.parse({
   SMTP_REJECT_UNAUTHORIZED: process.env.SMTP_REJECT_UNAUTHORIZED,
   BUZON_COMPARTIDO_REVISOR_EMAIL: process.env.BUZON_COMPARTIDO_REVISOR_EMAIL,
   DIRECTORIO_ARCHIVOS_BIOESTADISTICA: process.env.DIRECTORIO_ARCHIVOS_BIOESTADISTICA,
+  DIRECTORIO_ARCHIVOS_CARGAS: process.env.DIRECTORIO_ARCHIVOS_CARGAS,
 });
 
 // RF-37: directorio base de los archivos de Bioestadística. Se resuelve al llamarla (nunca al
 // importar el módulo) y el directorio se crea recién en la primera escritura.
 export function directorioArchivosBioestadistica(): string {
   return env.DIRECTORIO_ARCHIVOS_BIOESTADISTICA ?? `${process.cwd()}/almacenamiento/bioestadistica`;
+}
+
+// RF-38: directorio base de los archivos de los notificadores. Mismo criterio que el de Bioestadística.
+export function directorioArchivosCargas(): string {
+  return env.DIRECTORIO_ARCHIVOS_CARGAS ?? `${process.cwd()}/almacenamiento/cargas`;
 }
 
 export type ConfigSmtp = {

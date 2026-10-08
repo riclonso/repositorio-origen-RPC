@@ -19,7 +19,7 @@ import {
 } from "../src/modules/formatos-excel/schemas/formato-excel.schema";
 import { resolverTiposEnumerados } from "../src/modules/formatos-excel/application/resolverTiposEnumerados";
 import { actualizarFormatoExcel } from "../src/modules/formatos-excel/application/use-cases/ActualizarFormatoExcel";
-import { validarYCargarArchivo } from "../src/modules/reporte-excel/application/use-cases/ValidarYCargarArchivo";
+import { crearMotorValidacionFilas } from "../src/modules/reporte-excel/infrastructure/validacion/MotorValidacionFilas";
 import type {
   ColumnaFormatoExcel,
   DatosEdicionFormatoExcel,
@@ -27,13 +27,8 @@ import type {
   TipoEnumeradoFormatoExcel,
 } from "../src/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { FormatoExcelRepository } from "../src/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
-import type { CargaArchivoRepository } from "../src/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
-import type { VentanaCargaRepository } from "../src/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
-import type { SolicitudReemplazoCargaRepository } from "../src/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
-import type { VentanaCarga } from "../src/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type {
-  CargaArchivo,
-  DatosNuevaCargaArchivo,
+  ResultadoValidacionArchivo,
   ValorCeldaArchivo,
 } from "../src/modules/reporte-excel/domain/entities/CargaArchivo";
 
@@ -272,54 +267,16 @@ function formatoConEnumerado(): FormatoExcel {
   };
 }
 
-async function ejecutarCarga(formato: FormatoExcel, filas: Record<string, ValorCeldaArchivo>[]): Promise<DatosNuevaCargaArchivo> {
-  let persistido: DatosNuevaCargaArchivo | null = null;
-  const ventana = {
-    id: "ventana-1",
-    anio: new Date().getFullYear(),
-    fechaApertura: new Date(2000, 0, 1),
-    fechaVencimiento: new Date(2100, 0, 1),
-    formatoExcelId: FORMATO_ID,
-    publicada: true,
-    archivada: false,
-    eliminadaEn: null,
-  } as unknown as VentanaCarga;
-
-  const resultado = await validarYCargarArchivo(
-    {
-      formatoExcelId: FORMATO_ID,
-      anio: ventana.anio,
-      usuarioId: "usuario-1",
-      nombreArchivoOriginal: "archivo.xlsx",
-      tipoContenidoArchivo: TIPO_XLSX,
-      tipoArchivoDetectado: "EXCEL",
-      contenidoArchivo: Buffer.alloc(0),
-    },
-    {
-      repositorio: {
-        obtenerReaperturaPendientePorUsuarioYVentana: async () => null,
-        obtenerPendienteFinalizadaPorUsuarioYVentana: async () => null,
-        obtenerAprobadaVigentePorUsuarioYVentana: async () => null,
-        crear: async (datos: DatosNuevaCargaArchivo) => {
-          persistido = datos;
-          return { id: "carga-1" } as unknown as CargaArchivo;
-        },
-      } as unknown as CargaArchivoRepository,
-      repositorioFormatosExcel: {
-        estaAsignadoYActivo: async () => true,
-        obtenerPorId: async () => formato,
-      } as unknown as FormatoExcelRepository,
-      repositorioVentanasCarga: { obtenerPorAnioYFormato: async () => ventana } as unknown as VentanaCargaRepository,
-      repositorioSolicitudesReemplazo: {
-        obtenerAprobadaUtilizablePorCarga: async () => null,
-      } as unknown as SolicitudReemplazoCargaRepository,
-      lector: { leer: async () => ({ encabezados: ["Sexo", "Respuesta"], filas }) },
-    },
-  );
-
-  assert.equal(resultado.ok, true);
-  assert.ok(persistido, "el caso de uso debería haber persistido la carga");
-  return persistido;
+// RF-38: la validación de la carga corre en el motor en streaming (`MotorValidacionFilas`).
+async function ejecutarCarga(formato: FormatoExcel, filas: Record<string, ValorCeldaArchivo>[]): Promise<ResultadoValidacionArchivo> {
+  const encabezados = ["Sexo", "Respuesta"];
+  const ventana = { anio: new Date().getFullYear(), fechaApertura: new Date(2000, 0, 1), fechaVencimiento: new Date(2100, 0, 1) };
+  const motor = crearMotorValidacionFilas({ formato, ventana });
+  motor.procesarEncabezados(encabezados.map((texto) => ({ texto, enriquecido: false })));
+  filas.forEach((registro, indice) => {
+    motor.procesarFila(indice + 2, encabezados.map((encabezado) => registro[encabezado] ?? null));
+  });
+  return motor.finalizar(filas.length + 1);
 }
 
 async function probarCasoDeUso(): Promise<void> {

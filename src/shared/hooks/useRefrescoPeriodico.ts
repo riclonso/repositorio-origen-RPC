@@ -10,8 +10,12 @@ export const INTERVALO_REFRESCO_MS = 20_000;
 // `INTERVALO_REFRESCO_MS` mientras la pestaña esté visible, y también apenas la pestaña vuelve a
 // estar visible (sin esperar al próximo tic). Cada consulta aborta la anterior; el intervalo y el
 // listener se limpian al desmontar (cerrar el modal) o al cambiar de clave. `clave = null`
-// desactiva la consulta.
-export function useRefrescoPeriodico(consultar: (senal: AbortSignal) => Promise<void>, clave: string | null): void {
+// desactiva la consulta. RF-38: `intervaloMs` opcional (la validación de una carga consulta cada 5 s).
+export function useRefrescoPeriodico(
+  consultar: (senal: AbortSignal) => Promise<void>,
+  clave: string | null,
+  intervaloMs: number = INTERVALO_REFRESCO_MS,
+): void {
   const consultarActual = useEffectEvent(consultar);
 
   useEffect(() => {
@@ -31,7 +35,7 @@ export function useRefrescoPeriodico(consultar: (senal: AbortSignal) => Promise<
 
     ejecutar();
 
-    const intervalo = window.setInterval(ejecutarSiVisible, INTERVALO_REFRESCO_MS);
+    const intervalo = window.setInterval(ejecutarSiVisible, intervaloMs);
     document.addEventListener("visibilitychange", ejecutarSiVisible);
 
     return () => {
@@ -39,5 +43,5 @@ export function useRefrescoPeriodico(consultar: (senal: AbortSignal) => Promise<
       document.removeEventListener("visibilitychange", ejecutarSiVisible);
       controlador.abort();
     };
-  }, [clave]);
+  }, [clave, intervaloMs]);
 }

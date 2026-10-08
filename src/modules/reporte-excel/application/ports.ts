@@ -1,26 +1,92 @@
-import type { ErrorCargaArchivo, ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import type { FormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type {
+  ErrorCargaArchivo,
+  ResultadoValidacionArchivo,
+} from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 
-// Interfaz técnica del módulo. `application/` nunca importa `exceljs` directamente: solo depende
-// de este puerto. Agnóstica de si el archivo es `.xlsx` o `.csv`; esa decisión la toma la
-// implementación de `infrastructure/` a partir del `tipoContenido` recibido.
-//
-// `filas[i]` corresponde siempre a la fila de archivo `i + 2` (la fila 1 es el encabezado): el
-// arreglo incluye toda fila entre la 2 y la última usada en la hoja, aunque venga totalmente
-// vacía, para que el índice nunca se desalinee del número de fila real que ve el usuario al abrir
-// el archivo.
-export interface LectorArchivoReporte {
-  leer(
-    buffer: Buffer,
-    tipoContenido: string,
-  ): Promise<{ encabezados: string[]; filas: Record<string, ValorCeldaArchivo>[] }>;
-}
+// Interfaces técnicas del módulo. `application/` nunca importa `exceljs`, `node:fs` ni SMTP
+// directamente: solo depende de estos puertos. Las implementaciones viven en `infrastructure/`.
 
 // Interfaz técnica para generar el Excel de errores descargable desde el detalle de una carga
-// propia (RF-14 ampliación). Mismo criterio que `LectorArchivoReporte`: `application/` nunca
-// importa `exceljs` directamente, solo depende de este puerto. Nunca recibe ni escribe datos de
-// contenido de celdas del archivo original (nombres, RUTs, etc.), solo el detalle de errores.
+// propia (RF-14 ampliación). Nunca recibe ni escribe datos de contenido de celdas del archivo
+// original (nombres, RUTs, etc.), solo el detalle de errores.
 export interface GeneradorExcelErrores {
   generar(errores: ErrorCargaArchivo[]): Promise<Buffer>;
+}
+
+// --- RF-38: binarios en disco ---
+
+export type ResultadoGuardadoTemporal =
+  | {
+      ok: true;
+      referenciaTemporal: string;
+      tamanoBytes: number;
+      sha256: string;
+      // Primeros bytes del archivo, para revisar la firma.
+      primerosBytes: Uint8Array;
+    }
+  | { ok: false; motivo: "VACIO" | "EXCEDE_TAMANO" };
+
+export type ArchivoAbierto = {
+  flujo: ReadableStream<Uint8Array>;
+  tamanoBytes: number;
+};
+
+// Almacén de los binarios de las cargas. Las referencias son RELATIVAS al directorio base y las
+// genera siempre el servidor (nunca a partir del nombre que envió el cliente). Lo satisface la
+// implementación compartida `infrastructure/almacenamiento/AlmacenArchivosDisco.ts`.
+export interface AlmacenArchivosCarga {
+  // Copia el flujo a un temporal contando bytes (corta al superar `limiteBytes`) y calculando el
+  // SHA-256 mientras recibe. Ante cualquier corte, el temporal ya queda eliminado.
+  guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number): Promise<ResultadoGuardadoTemporal>;
+  // Mueve el temporal a `<anio>/<cargaId>.<extension>` y devuelve su referencia.
+  moverDefinitivo(referenciaTemporal: string, anio: number, cargaId: string, extension: "xlsx" | "csv"): Promise<string>;
+  // `null` si el archivo ya no existe.
+  abrirLectura(referencia: string): Promise<ArchivoAbierto | null>;
+  // Idempotente: eliminar algo que ya no existe no es un error.
+  eliminar(referencia: string): Promise<void>;
+}
+
+// Acota cuántas tareas pesadas corren a la vez dentro del proceso (memoria y CPU).
+export interface LimitadorConcurrencia {
+  ejecutar<T>(tarea: () => Promise<T>): Promise<T>;
+}
+
+// --- RF-38: validación en streaming ---
+
+export type ContextoVentanaValidacion = { fechaApertura: Date; fechaVencimiento: Date; anio: number };
+
+// Valida el archivo ya guardado contra el formato (columnas, reglas y enumerados vigentes al
+// procesar) y la ventana. Lanza si el archivo no se puede leer (ZIP inválido, demasiado grande una
+// vez descomprimido, error de E/S); el caso de uso lo traduce a `ARCHIVO_NO_PROCESADO`.
+export interface ValidadorArchivoReporte {
+  validar(
+    fuente: { referencia: string },
+    formato: FormatoExcel,
+    ventana: ContextoVentanaValidacion,
+  ): Promise<ResultadoValidacionArchivo>;
+}
+
+// --- RF-38: descarga con "Fecha y hora de notificación" ---
+
+export type FuenteDescarga = { referencia: string } | { contenido: Buffer };
+
+export type ArchivoGenerado = {
+  flujo: ReadableStream<Uint8Array>;
+  tipoContenido: string;
+};
+
+// Genera, en streaming y desde el archivo original, la copia con la columna agregada. Lanza ANTES
+// de devolver si no puede abrir el archivo o leer su encabezado; un fallo posterior corta el flujo.
+export interface GeneradorDescargaCarga {
+  generar(entrada: {
+    fuente: FuenteDescarga;
+    tipoContenido: string;
+    fechaNotificacion: Date;
+    // Quién la pide (id de usuario): la implementación admite una sola generación a la vez por
+    // solicitante y lanza si ya tiene otra en curso o si no hay capacidad dentro de la espera máxima.
+    solicitanteId?: string;
+  }): Promise<ArchivoGenerado>;
 }
 
 // Puertos de correo (rechazo/confirmación de carga aprobada), mismo criterio que

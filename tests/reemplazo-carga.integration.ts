@@ -8,21 +8,25 @@
 //   REEMPLAZO_TEST_DATABASE=true DATABASE_URL=... AUTH_SECRET=... \
 //     npx tsx tests/reemplazo-carga.integration.ts
 //
-// Usa los repositorios Prisma reales; solo el formato (columnas) y el lector de archivo son dobles,
-// para controlar si cada subida trae o no errores sin construir binarios Excel.
+// Usa los repositorios Prisma reales; solo el formato (columnas), el almacén en disco y el validador
+// de archivo son dobles, para controlar si cada subida trae o no errores sin construir binarios
+// Excel. RF-38: cada subida es recepción (`RecibirArchivoCarga`, PROCESANDO) + procesamiento
+// (`ProcesarCargaArchivo`), como en producción.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../src/infrastructure/database/prisma";
 import { prismaCargaArchivoRepository as repositorio } from "../src/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { prismaSolicitudReemplazoCargaRepository as repositorioSolicitudes } from "../src/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import { prismaVentanaCargaRepository as repositorioVentanas } from "../src/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
-import { validarYCargarArchivo } from "../src/modules/reporte-excel/application/use-cases/ValidarYCargarArchivo";
+import { recibirArchivoCarga, TIPO_CONTENIDO_XLSX_CARGA } from "../src/modules/reporte-excel/application/use-cases/RecibirArchivoCarga";
+import { procesarCargaArchivo } from "../src/modules/reporte-excel/application/use-cases/ProcesarCargaArchivo";
+import { crearMotorValidacionFilas } from "../src/modules/reporte-excel/infrastructure/validacion/MotorValidacionFilas";
 import { finalizarYEnviarCarga } from "../src/modules/reporte-excel/application/use-cases/FinalizarYEnviarCarga";
 import { darVistoBueno } from "../src/modules/reporte-excel/application/use-cases/DarVistoBueno";
 import { rechazarCarga } from "../src/modules/reporte-excel/application/use-cases/RechazarCarga";
 import { solicitarReemplazoCarga } from "../src/modules/solicitudes-reemplazo/application/use-cases/SolicitarReemplazoCarga";
 import { revisarSolicitudReemplazo } from "../src/modules/solicitudes-reemplazo/application/use-cases/RevisarSolicitudReemplazo";
-import type { LectorArchivoReporte } from "../src/modules/reporte-excel/application/ports";
+import type { AlmacenArchivosCarga, ValidadorArchivoReporte } from "../src/modules/reporte-excel/application/ports";
 import type { ValorCeldaArchivo } from "../src/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { FormatoExcel } from "../src/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { FormatoExcelRepository } from "../src/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
@@ -35,14 +39,37 @@ let anioSiguiente = 6000 + Math.floor(Math.random() * 1000) * 10;
 let revisorId = "";
 let notificadorId = "";
 
-// --- Dobles: formato con una columna ENTERO requerida y un lector que devuelve filas fijas ---
+// --- Dobles: formato con una columna ENTERO requerida, un validador que valida filas fijas con el
+// motor real y un almacén en memoria (la base exige ruta + tamaño + SHA-256 en las cargas nuevas) ---
 let filasSiguientes: Record<string, ValorCeldaArchivo>[] = [];
 const FILAS_OK = [{ a: 1 }];
 const FILAS_CON_ERROR = [{ a: "no es entero" }];
 
-const lector: LectorArchivoReporte = {
-  leer: async () => ({ encabezados: ["a"], filas: filasSiguientes }),
+const validador: ValidadorArchivoReporte = {
+  async validar(_fuente, formatoValidado, ventana) {
+    const motor = crearMotorValidacionFilas({ formato: formatoValidado, ventana });
+    motor.procesarEncabezados([{ texto: "a", enriquecido: false }]);
+    filasSiguientes.forEach((fila, indice) => motor.procesarFila(indice + 2, [fila.a ?? null]));
+    return motor.finalizar(filasSiguientes.length + 1);
+  },
 };
+
+const almacen: AlmacenArchivosCarga = {
+  async guardarTemporal() {
+    return { ok: true, referenciaTemporal: "tmp/x.part", tamanoBytes: 10, sha256: "0".repeat(64), primerosBytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]) };
+  },
+  async moverDefinitivo(_temporal, anio, cargaId) {
+    return `${anio}/${cargaId}.xlsx`;
+  },
+  async abrirLectura() {
+    return null;
+  },
+  async eliminar() {},
+};
+
+function cuerpoFalso(): ReadableStream<Uint8Array> {
+  return new ReadableStream({ start: (controlador) => controlador.close() });
+}
 
 function formato(): FormatoExcel {
   return {
@@ -108,24 +135,36 @@ async function crearVentana(): Promise<Ventana> {
 
 async function subir(ventana: Ventana, filas: Record<string, ValorCeldaArchivo>[]) {
   filasSiguientes = filas;
-  return validarYCargarArchivo(
+  const recibido = await recibirArchivoCarga(
     {
       formatoExcelId: formatoId,
       anio: ventana.anio,
       usuarioId: notificadorId,
       nombreArchivoOriginal: `archivo-${randomUUID().slice(0, 4)}.xlsx`,
-      tipoContenidoArchivo: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      tipoArchivoDetectado: "EXCEL",
-      contenidoArchivo: Buffer.from("contenido"),
+      tamanoDeclarado: null,
+      cuerpo: cuerpoFalso(),
+      ahora: new Date(),
     },
     {
       repositorio,
       repositorioFormatosExcel,
       repositorioVentanasCarga: repositorioVentanas,
       repositorioSolicitudesReemplazo: repositorioSolicitudes,
-      lector,
+      almacen,
+      detectarTipoContenido: () => TIPO_CONTENIDO_XLSX_CARGA,
     },
   );
+  if (!recibido.ok) return recibido;
+
+  await procesarCargaArchivo(recibido.carga.id, {
+    repositorio,
+    repositorioFormatosExcel,
+    repositorioVentanasCarga: repositorioVentanas,
+    validador,
+  });
+  const carga = await repositorio.obtenerPorId(recibido.carga.id);
+  assert.ok(carga);
+  return { ok: true as const, carga };
 }
 
 async function subirOk(ventana: Ventana): Promise<string> {
@@ -147,9 +186,7 @@ async function aprobar(id: string): Promise<void> {
   filasSiguientes = FILAS_OK;
   const resultado = await darVistoBueno(id, revisorId, {
     repositorio,
-    lector,
     repositorioSolicitudesReemplazo: repositorioSolicitudes,
-    repositorioFormatosExcel,
   });
   assert.ok(resultado.ok, "visto bueno");
 }

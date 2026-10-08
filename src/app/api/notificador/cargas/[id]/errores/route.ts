@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { respuestaDescarga } from "@/app/api/_lib/descarga";
 import { logger } from "@/infrastructure/logging/logger";
 import { obtenerCargaPropia } from "@/modules/reporte-excel/application/use-cases/ObtenerCargaPropia";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
@@ -14,12 +14,10 @@ import {
 
 const TIPO_CONTENIDO_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-// El nombre de archivo viaja entre comillas dobles en `Content-Disposition`: se reemplazan por
-// comillas simples para que un nombre de archivo manipulado no pueda cerrar el valor antes de
-// tiempo, mismo criterio que la descarga del binario original en `/api/dashboard/cargas/[id]/archivo`.
+// `Content-Disposition` lo arma el helper común (`app/api/_lib/descarga.ts`), con `filename*`.
 function nombreParaDescarga(nombreArchivoOriginal: string): string {
   const sinExtension = nombreArchivoOriginal.replace(/\.[^./\\]+$/, "");
-  return `errores-${sinExtension}.xlsx`.replace(/"/g, "'");
+  return `errores-${sinExtension}.xlsx`;
 }
 
 // Ownership explícito por `usuarioId = sesión.sub`, mismo criterio que el resto de
@@ -50,12 +48,10 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
 
     const buffer = await generadorErroresExcelJs.generar(carga.errores);
 
-    return new NextResponse(new Uint8Array(buffer), {
-      status: 200,
-      headers: {
-        "Content-Type": TIPO_CONTENIDO_XLSX,
-        "Content-Disposition": `attachment; filename="${nombreParaDescarga(carga.nombreArchivoOriginal)}"`,
-      },
+    return respuestaDescarga({
+      flujo: new Uint8Array(buffer),
+      tipoContenido: TIPO_CONTENIDO_XLSX,
+      nombreArchivo: nombreParaDescarga(carga.nombreArchivoOriginal),
     });
   } catch (error) {
     logger.error("Error al generar el Excel de errores de una carga propia", {

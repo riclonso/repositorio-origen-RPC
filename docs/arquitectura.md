@@ -134,7 +134,12 @@ src/
 │   ├── logging/            — logger.ts, auditoria.ts, leerLogs.ts, logUpload.ts (preparado, sin conectar — ver RF-13)
 │   ├── email/SmtpMailer.ts
 │   ├── hojas-calculo/      — abrirHojaExcelJs.ts; desde RF-37 también leerHojaStreamingExcelJs.ts,
-│   │                         leerCsvStreaming.ts y valorCelda.ts (lectura en streaming)
+│   │                         leerCsvStreaming.ts y valorCelda.ts (lectura en streaming); desde RF-38
+│   │                         escribirHojaStreamingExcelJs.ts, anexarColumnaCsv.ts, flujoWebDesdeNode.ts
+│   ├── almacenamiento/     — AlmacenArchivosDisco.ts (RF-38): fábrica compartida por Bioestadística y
+│   │                         las cargas del notificador (rutas generadas, prefijo, SHA-256, temporales)
+│   ├── concurrencia/       — LimitadorConcurrenciaMemoria.ts (RF-38): turnos, espera máxima, exclusión
+│   │                         por clave y liberación al terminar un flujo de respuesta
 │   └── rate-limit/LimitadorMemoria.ts   — cupo de recuperación de contraseña (RF-10)
 ├── proxy.ts                — guard de sesión por área protegida (reemplaza a middleware.ts en Next.js 16)
 └── shared/
@@ -1838,6 +1843,12 @@ aparte sin `"use client"`, y cualquier dato que cruce hacia el componente client
 
 ## Publicación JSONB de cargas aprobadas + solicitudes de reemplazo (RF-19)
 
+> **Desde RF-38 el visto bueno ya no copia las filas a `carga_archivo_publicada_fila`** (nadie las
+> leía): solo crea la cabecera `carga_archivo_publicada`, que sigue sosteniendo "APROBADA vigente",
+> el reemplazo y RF-33/RF-34. El dato publicado es el archivo, que se descarga con la columna "Fecha
+> y hora de notificación". Las subsecciones siguientes sobre el detalle JSONB se conservan como
+> registro de la decisión original. Ver "Archivos del notificador en disco… (RF-38)".
+
 ### Cabecera + detalle, no un array en una columna — porque se pidió explícitamente "cada fila es un registro"
 
 La primera versión de este diseño guardaba `CargaArchivoPublicada.datos: Json` con un array de todas
@@ -2528,3 +2539,82 @@ depender de una API privada:
 Por decisión explícita, una carga `REEMPLAZADA` conserva su archivo en disco y sus filas JSONB como
 historial descargable. Solo una `FALLIDA` se limpia. El crecimiento del almacenamiento está
 registrado como deuda técnica en `docs/requerimientos.md`.
+
+## Archivos del notificador en disco, validación asíncrona y descarga con fecha de notificación (RF-38)
+
+### Las filas no se materializan: la columna se agrega al descargar
+
+`carga_archivo_publicada_fila` se llenaba en el visto bueno y nadie la leía. El único dato extra que
+se quería agregar, la fecha y hora de notificación, es el mismo para todas las filas de un archivo,
+así que vive una sola vez en la cabecera (`finalizadaEn`, o `vistoBuenoEn` en cargas anteriores a
+RF-14b; función pura `fechaHoraNotificacion()` en `CargaArchivo.ts`) y la columna se agrega **al
+generar la descarga**, en streaming, desde el original. Si el archivo ya trae una columna con ese
+nombre, la agregada se llama "… (sistema)". El archivo generado contiene los datos validados (primera
+hoja, columnas declaradas, valores) y pierde formatos, otras hojas y fórmulas; por eso ADMIN y
+REVISOR tienen también "Descargar original" (`/archivo/original`), byte a byte y sin limitador.
+
+### Binario en disco con el mismo almacén que Bioestadística
+
+Con 100 MB por archivo, `Bytes` repetiría el problema que RF-37 evitó (el `Buffer` completo
+codificado en hexadecimal). `AlmacenArchivosDisco` pasó a `src/infrastructure/almacenamiento/` como
+fábrica, y Bioestadística y el notificador son dos composiciones con directorio propio
+(`DIRECTORIO_ARCHIVOS_BIOESTADISTICA`, `DIRECTORIO_ARCHIVOS_CARGAS`): una variable nueva y no un
+directorio común, porque las rutas de `carga_bioestadistica` son relativas a su base y cambiarla las
+rompería. Las cargas anteriores a RF-38 **conservan su binario en `contenidoArchivo` de forma
+permanente** (no se migran, por decisión explícita): las descargas aceptan las dos fuentes, y un
+CHECK (`carga_archivo_binario_presente`) exige que toda carga tenga una de las dos.
+
+### Recepción en streaming; validación en segundo plano
+
+La subida usa el patrón de RF-37: cuerpo crudo (no `formData()`), nombre en `X-Nombre-Archivo`, y
+`/api/**` fuera del proxy. `RecibirArchivoCarga` revisa primero todo lo barato (asignación, ventana,
+decisión pendiente, autorización de reemplazo, validación en curso) y **recién después lee el
+cuerpo**, midiendo el tamaño real, el SHA-256 y la firma ZIP. Crea la carga en `PROCESANDO` y
+responde 202; `ProcesarCargaArchivo` corre en `after()` dentro de un limitador. Un índice único
+parcial (`usuarioId, ventanaCargaId WHERE estado = 'PROCESANDO'`) impide dos validaciones de la
+misma combinación (P2002 → 409 `EN_PROCESO`). Validar 500.000 filas toma del orden de minutos, más
+de lo que un `requestTimeout` o un proxy razonables mantienen abierta una petición; el notificador ve
+"Validando archivo…" y la tarjeta consulta el estado cada 5 s. Los huérfanos se liberan al arrancar
+y por expiración (2 h). Un fallo de la BD al leer el formato no se reporta como "archivo ilegible":
+se propaga y la carga se libera por esas dos vías.
+
+### Validación fila a fila con resultado idéntico al de memoria
+
+El motor (`MotorValidacionFilas`) recibe las filas en orden y reutiliza sin cambios los validadores
+de tipo, las reglas y los mensajes. Lo que antes necesitaba el libro completo se reemplazó por
+estado acotado:
+- `FILA_DUPLICADA`: un `Set` con el resumen SHA-256 de la clave por regla (~25 MB con 500.000 filas).
+- `FILA_VACIA` y "sin filas de datos": un buffer de corridas de filas vacías que se resuelve al
+  llegar la siguiente fila con datos o al terminar la hoja, de modo que el orden de los errores es
+  el mismo de antes.
+- Errores: se conservan los primeros 500 en orden y se cuenta el total (mismo `acotarErrores`).
+
+El lector en streaming de exceljs no interpreta las celdas igual que `xlsx.load` (fórmulas, texto
+enriquecido en `inlineStr`, `_xHHHH_`, hipervínculos, celdas combinadas). Por eso
+`leerHojaStreamingExcelJs.ts` incluye una interpretación propia (`celdasComoLecturaEnMemoria`) que
+usa utilidades internas de exceljs (`src/types/exceljs-internos.d.ts`, versión fija 4.4.0).
+`tests/equivalencia-validacion.unit.ts` compara la referencia congelada de la validación en memoria
+(`tests/referencia/`) con la nueva sobre un corpus sintético y archivos reales; debe dar cero
+diferencias, salvo los cambios decididos:
+- **más de 500.000 filas de datos** → `TOPE_FILAS_EXCEDIDO` (antes se ignoraban las sobrantes);
+- **texto enriquecido** en un encabezado o una celda → `TEXTO_ENRIQUECIDO`;
+- **filas numeradas fuera de orden** (`<row r>` repetido o descendente) → `ARCHIVO_NO_PROCESADO`. El
+  conteo de filas usa el número que declara el propio archivo, igual que `rowCount` en memoria; sin
+  esa exigencia, un archivo fabricado se saltaba el tope. Una fila sin `r` toma la anterior + 1.
+
+Defensas frente a archivos maliciosos: tope de 256 MB descomprimidos por parte retenida en memoria,
+3 GiB para la hoja de datos, tope de rangos combinados y tope de filas.
+
+### Limitadores de concurrencia
+
+`crearLimitadorConcurrencia` pasó a `src/infrastructure/concurrencia/`. Para el notificador: 2
+validaciones y 2 descargas con columna a la vez (medido: el peor caso llega a 1,88 GB con 2 + 2). En
+una descarga el turno se mantiene **mientras el cliente lee** y se libera al terminar, fallar o
+cancelar; para que un cliente lento no bloquee a los demás, la espera máxima es de 30 s (503
+`OCUPADO`) y cada usuario tiene una sola descarga generada a la vez (409 `DESCARGA_EN_CURSO`).
+
+### `Content-Disposition` único
+
+`src/app/api/_lib/descarga.ts` (`encabezadoContentDisposition`, `respuestaDescarga`) lo usan todas
+las descargas: cargas, original, errores, plantilla y Bioestadística. `filename*` lleva el nombre
+exacto con que se subió el archivo (RFC 5987, con `'()*` codificados y sin CR/LF).

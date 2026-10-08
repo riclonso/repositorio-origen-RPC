@@ -12,7 +12,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 import {
+  HojaXlsxInvalidaError,
   ParteXlsxDemasiadoGrandeError,
   recorrerFilasPrimeraHojaXlsx,
   type FilaHojaStreaming,
@@ -151,6 +153,113 @@ async function main(): Promise<void> {
       const filas = await recolectar(recorrerFilasPrimeraHojaXlsx(rutaReferencia, { topeBytesParte: tamanoRealTextos }));
       assert.equal(filas.length, 4 + 200);
     });
+
+    // --- RF-38: opciones aditivas (Bioestadística no las usa) ---
+
+    await prueba("fuente { buffer } entrega lo mismo que la ruta", async () => {
+      const desdeRuta = await recolectar(recorrerFilasPrimeraHojaXlsx(rutaReferencia));
+      const desdeBuffer = await recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: contenido }));
+      assert.deepEqual(desdeBuffer, desdeRuta);
+    });
+
+    await prueba("topeBytesHoja corta una hoja inflada de filas vacías (bomba ZIP)", async () => {
+      const bomba = new ExcelJS.Workbook();
+      const hojaBomba = bomba.addWorksheet("D");
+      hojaBomba.addRow(["a"]);
+      for (let numero = 2; numero < 20_000; numero += 1) hojaBomba.getRow(numero).height = 15;
+      const binario = Buffer.from(await bomba.xlsx.writeBuffer());
+      await assert.rejects(
+        () => recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: binario }, { topeBytesHoja: 50_000 })),
+        (error: unknown) => error instanceof ParteXlsxDemasiadoGrandeError,
+      );
+      const completas = await recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: binario }, { topeBytesHoja: 50_000_000 }));
+      assert.equal(completas.length, 19_999);
+    });
+
+    await prueba("aplicarCeldasCombinadas rellena secundarias y genera filas cubiertas", async () => {
+      const libroCombinado = new ExcelJS.Workbook();
+      const hojaCombinada = libroCombinado.addWorksheet("D");
+      hojaCombinada.addRow(["a", "b"]);
+      hojaCombinada.getCell("A2").value = "principal";
+      hojaCombinada.mergeCells("A2:B4");
+      const binario = Buffer.from(await libroCombinado.xlsx.writeBuffer());
+      const filas = await recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: binario }, { aplicarCeldasCombinadas: true }));
+      assert.deepEqual(
+        filas.map((fila) => [fila.numeroFila, fila.valores[0] ?? null, fila.valores[1] ?? null]),
+        [
+          [1, "a", "b"],
+          [2, "principal", "principal"],
+          [3, "principal", "principal"],
+          [4, "principal", "principal"],
+        ],
+      );
+    });
+
+    await prueba("celdasComoLecturaEnMemoria decodifica UTF-8 sin cortar caracteres entre trozos", async () => {
+      const libroTildes = new ExcelJS.Workbook();
+      const hojaTildes = libroTildes.addWorksheet("D");
+      hojaTildes.addRow(["texto"]);
+      for (let indice = 0; indice < 30_000; indice += 1) hojaTildes.addRow([`ñandú ácido ${indice} ÁÉÍÓÚ`]);
+      const binario = Buffer.from(await libroTildes.xlsx.writeBuffer());
+      const filas = await recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: binario }, { celdasComoLecturaEnMemoria: true }));
+      assert.equal(filas.length, 30_001);
+      assert.ok(filas.every((fila) => typeof fila.valores[0] === "string" && !fila.valores[0].includes("�")));
+      assert.ok(filas.every((fila) => Array.isArray(fila.crudos)));
+    });
+
+    // --- Números de fila inválidos (revisión de RF-38): aplica a todos los caminos ---
+
+    async function conFilas(filasXml: string): Promise<Buffer> {
+      const base = new ExcelJS.Workbook();
+      base.addWorksheet("D").addRow(["A", "B"]);
+      const zip = await JSZip.loadAsync(Buffer.from(await base.xlsx.writeBuffer()));
+      const rutaHoja = Object.keys(zip.files).find((nombre) => /worksheets\/sheet1\.xml$/.test(nombre)) ?? "";
+      const xml = (await zip.file(rutaHoja)?.async("string")) ?? "";
+      zip.file(rutaHoja, xml.replace(/<\/row>/, `</row>${filasXml}`));
+      return Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
+    }
+
+    const caminos: { nombre: string; opciones: Parameters<typeof recorrerFilasPrimeraHojaXlsx>[1] }[] = [
+      { nombre: "por defecto (Bioestadística)", opciones: {} },
+      { nombre: "fiel (notificador)", opciones: { celdasComoLecturaEnMemoria: true, aplicarCeldasCombinadas: true } },
+    ];
+
+    for (const camino of caminos) {
+      await prueba(`filas: r repetido o descendente rechaza el archivo — ${camino.nombre}`, async () => {
+        const repetidas = await conFilas(Array.from({ length: 5 }, () => '<row r="2"><c r="A2" t="inlineStr"><is><t>x</t></is></c></row>').join(""));
+        const descendentes = await conFilas(
+          '<row r="5"><c r="A5" t="inlineStr"><is><t>x</t></is></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>y</t></is></c></row>',
+        );
+        for (const contenidoInvalido of [repetidas, descendentes]) {
+          await assert.rejects(
+            () => recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: contenidoInvalido }, camino.opciones)),
+            (error: unknown) => error instanceof HojaXlsxInvalidaError,
+          );
+        }
+      });
+
+      await prueba(`filas: sin r se numeran como la anterior + 1 (o se rechaza el archivo) — ${camino.nombre}`, async () => {
+        const sinNumero = await conFilas(
+          Array.from({ length: 3 }, (_, indice) => `<row><c r="A${indice + 2}" t="inlineStr"><is><t>v${indice}</t></is></c></row>`).join(""),
+        );
+        if (!camino.opciones?.celdasComoLecturaEnMemoria) {
+          // El lector en streaming de exceljs no admite `<row>` sin `r` ("Invalid Address: ANaN"),
+          // igual que antes de RF-38: el archivo se rechaza (ARCHIVO_ILEGIBLE), nunca filas `NaN`.
+          await assert.rejects(() => recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: sinNumero }, camino.opciones)));
+          return;
+        }
+        const filas = await recolectar(recorrerFilasPrimeraHojaXlsx({ buffer: sinNumero }, camino.opciones));
+        assert.deepEqual(
+          filas.map((fila) => [fila.numeroFila, fila.valores[0]]),
+          [
+            [1, "A"],
+            [2, "v0"],
+            [3, "v1"],
+            [4, "v2"],
+          ],
+        );
+      });
+    }
 
     await prueba("un archivo que no es ZIP lanza (se traduce a ARCHIVO_ILEGIBLE aguas arriba)", async () => {
       const rutaCorrupta = path.join(directorio, "corrupto.xlsx");

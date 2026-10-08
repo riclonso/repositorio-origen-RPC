@@ -74,6 +74,12 @@ export function tipoContenidoDesdeArchivo(nombreArchivo: string, buffer: Buffer)
   return muestra.includes(0x00) ? null : tipoPorExtension;
 }
 
+// RF-38: misma decisión que `tipoContenidoDesdeArchivo`, pero con solo los PRIMEROS bytes (el archivo
+// llega en streaming a disco y nunca está completo en memoria). Para `.xlsx` bastan los 4 de la firma.
+export function tipoContenidoDesdePrimerosBytes(nombreArchivo: string, primerosBytes: Uint8Array): string | null {
+  return tipoContenidoDesdeArchivo(nombreArchivo, Buffer.from(primerosBytes));
+}
+
 // Mapea el tipo de contenido real detectado del archivo (nunca el declarado por el cliente) al
 // tipo de archivo de dominio. Solo existen hoy los dos valores de `TIPO_CONTENIDO_XLSX`/
 // `TIPO_CONTENIDO_CSV`; un tercer valor no mapeado es un error de programación (un tipo de

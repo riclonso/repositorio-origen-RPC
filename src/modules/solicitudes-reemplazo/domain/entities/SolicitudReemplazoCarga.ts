@@ -110,7 +110,7 @@ export function fechaVencimientoSolicitud(
 
 // `true` solo si la solicitud está `APROBADA`, no se ha usado todavía y `ahora` no superó
 // `fechaVencimientoSolicitud`. Es la autorización real para subir el archivo de reemplazo
-// (`ValidarYCargarArchivo`, extensión de RF-14). No mira si la ventana sigue publicada o archivada:
+// (`RecibirArchivoCarga`, extensión de RF-14). No mira si la ventana sigue publicada o archivada:
 // esa regla vive en `resolverVentanaHabilitada` (`ventanaAdmiteAutorizaciones`).
 export function solicitudUtilizable(solicitud: CamposVigenciaSolicitud, ahora: Date): boolean {
   if (solicitud.utilizadaEn !== null) return false;

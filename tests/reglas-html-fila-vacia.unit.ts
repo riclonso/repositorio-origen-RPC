@@ -1,6 +1,7 @@
 // RF-32: reglas `CONTENIDO_HTML` y `FILA_VACIA`, más el rechazo global `SIN_FILAS_DATOS` cuando
-// el archivo no trae ninguna fila con datos. Sin base de datos: todas las dependencias del caso de
-// uso son interfaces y se reemplazan por dobles en memoria.
+// el archivo no trae ninguna fila con datos. Sin base de datos. RF-38: los casos de subida se ejecutan
+// sobre el motor de validación en streaming (`MotorValidacionFilas`), y el del lector real sobre el
+// validador completo; la publicación de filas al aprobar ya no existe.
 //
 //   npx tsx tests/reglas-html-fila-vacia.unit.ts
 import assert from "node:assert/strict";
@@ -11,25 +12,17 @@ import {
   filaCompletamenteVacia,
   indiceUltimaFilaConDatos,
 } from "../src/modules/reporte-excel/domain/reglas/filasArchivo";
-import { darVistoBueno } from "../src/modules/reporte-excel/application/use-cases/DarVistoBueno";
 import { etiquetaFila } from "../src/shared/utils/erroresCargaArchivo";
 import { crearFormatoExcelSchema } from "../src/modules/formatos-excel/schemas/formato-excel.schema";
-import { validarYCargarArchivo } from "../src/modules/reporte-excel/application/use-cases/ValidarYCargarArchivo";
-import { lectorArchivoReporteExcelJs } from "../src/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
+import { crearMotorValidacionFilas } from "../src/modules/reporte-excel/infrastructure/validacion/MotorValidacionFilas";
+import { validarXlsxEnStreaming } from "../src/modules/reporte-excel/infrastructure/validacion/ValidadorArchivoReporteStreaming";
 import type {
   FormatoExcel,
   ReglaValidacionFormatoExcel,
   TipoReglaValidacion,
 } from "../src/modules/formatos-excel/domain/entities/FormatoExcel";
-import type { FormatoExcelRepository } from "../src/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
-import type { CargaArchivoRepository } from "../src/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
-import type { VentanaCargaRepository } from "../src/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
-import type { SolicitudReemplazoCargaRepository } from "../src/modules/solicitudes-reemplazo/domain/repositories/SolicitudReemplazoCargaRepository";
-import type { LectorArchivoReporte } from "../src/modules/reporte-excel/application/ports";
-import type { VentanaCarga } from "../src/modules/ventanas-carga/domain/entities/VentanaCarga";
 import type {
-  CargaArchivo,
-  DatosNuevaCargaArchivo,
+  ResultadoValidacionArchivo,
   ValorCeldaArchivo,
 } from "../src/modules/reporte-excel/domain/entities/CargaArchivo";
 
@@ -252,15 +245,10 @@ function formatoCon(reglas: ReglaValidacionFormatoExcel[]): FormatoExcel {
 }
 
 const ventanaAbierta = {
-  id: "ventana-1",
   anio: new Date().getFullYear(),
   fechaApertura: new Date(2000, 0, 1),
   fechaVencimiento: new Date(2100, 0, 1),
-  formatoExcelId: FORMATO_ID,
-  publicada: true,
-  archivada: false,
-  eliminadaEn: null,
-} as unknown as VentanaCarga;
+};
 
 function fila(nombre: ValorCeldaArchivo, edad: ValorCeldaArchivo, comentario: ValorCeldaArchivo = null): Fila {
   return { Nombre: nombre, Edad: edad, Comentario: comentario };
@@ -268,61 +256,19 @@ function fila(nombre: ValorCeldaArchivo, edad: ValorCeldaArchivo, comentario: Va
 
 const FILA_VACIA_RESIDUAL = fila(null, null, null);
 
-// Ejecuta el caso de uso con dobles y devuelve lo que se habría persistido.
+// Valida filas ya leídas (fila 1 = encabezados, `filas[i]` = fila `i + 2`) con el motor de RF-38 y
+// devuelve lo que se persistiría.
 async function ejecutar(
   reglas: ReglaValidacionFormatoExcel[],
   filas: Fila[],
-  lector?: LectorArchivoReporte,
-  contenidoArchivo: Buffer = Buffer.alloc(0),
   encabezados: string[] = ENCABEZADOS,
-): Promise<DatosNuevaCargaArchivo> {
-  let persistido: DatosNuevaCargaArchivo | null = null;
-
-  const repositorioFormatosExcel = {
-    estaAsignadoYActivo: async () => true,
-    obtenerPorId: async () => formatoCon(reglas),
-  } as unknown as FormatoExcelRepository;
-
-  const repositorioVentanasCarga = {
-    obtenerPorAnioYFormato: async () => ventanaAbierta,
-  } as unknown as VentanaCargaRepository;
-
-  const repositorio = {
-    obtenerReaperturaPendientePorUsuarioYVentana: async () => null,
-    obtenerPendienteFinalizadaPorUsuarioYVentana: async () => null,
-    obtenerAprobadaVigentePorUsuarioYVentana: async () => null,
-    crear: async (datos: DatosNuevaCargaArchivo) => {
-      persistido = datos;
-      return { id: "carga-1" } as unknown as CargaArchivo;
-    },
-  } as unknown as CargaArchivoRepository;
-
-  const repositorioSolicitudesReemplazo = {
-    obtenerAprobadaUtilizablePorCarga: async () => null,
-  } as unknown as SolicitudReemplazoCargaRepository;
-
-  const resultado = await validarYCargarArchivo(
-    {
-      formatoExcelId: FORMATO_ID,
-      anio: ventanaAbierta.anio,
-      usuarioId: "usuario-1",
-      nombreArchivoOriginal: "archivo.xlsx",
-      tipoContenidoArchivo: TIPO_XLSX,
-      tipoArchivoDetectado: "EXCEL",
-      contenidoArchivo,
-    },
-    {
-      repositorio,
-      repositorioFormatosExcel,
-      repositorioVentanasCarga,
-      repositorioSolicitudesReemplazo,
-      lector: lector ?? { leer: async () => ({ encabezados, filas }) },
-    },
-  );
-
-  assert.equal(resultado.ok, true);
-  assert.ok(persistido, "el caso de uso debería haber persistido la carga");
-  return persistido;
+): Promise<ResultadoValidacionArchivo> {
+  const motor = crearMotorValidacionFilas({ formato: formatoCon(reglas), ventana: ventanaAbierta });
+  motor.procesarEncabezados(encabezados.map((texto) => ({ texto, enriquecido: false })));
+  filas.forEach((registro, indice) => {
+    motor.procesarFila(indice + 2, encabezados.map((encabezado) => registro[encabezado] ?? null));
+  });
+  return motor.finalizar(filas.length + 1);
 }
 
 async function probarCasoDeUso(): Promise<void> {
@@ -377,7 +323,7 @@ async function probarCasoDeUso(): Promise<void> {
   // Sin ningún encabezado reconocido: solo `COLUMNA_FALTANTE` (no "parece estar vacío", que sería
   // falso) y `cantidadFilasDatos = 0`, con y sin la regla.
   for (const reglas of [[reglaVacia], []]) {
-    const sinEncabezados = await ejecutar(reglas, [{}, {}], undefined, Buffer.alloc(0), []);
+    const sinEncabezados = await ejecutar(reglas, [{}, {}], []);
     assert.deepEqual(
       sinEncabezados.errores.map((error) => error.tipoError),
       ["COLUMNA_FALTANTE", "COLUMNA_FALTANTE", "COLUMNA_FALTANTE"],
@@ -433,75 +379,19 @@ async function probarLectorReal(): Promise<void> {
   filaResidual.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
 
   const contenido = Buffer.from(await libro.xlsx.writeBuffer());
-  const leido = await lectorArchivoReporteExcelJs.leer(contenido, TIPO_XLSX);
 
-  // Premisa del diseño: `rowCount` incluye la fila 50, así que llegan 49 filas de datos.
-  assert.equal(leido.filas.length, 49);
-  assert.equal(filaCompletamenteVacia(leido.filas[48]), true);
-  assert.equal(indiceUltimaFilaConDatos(leido.filas), 1);
-
-  const conRegla = await ejecutar(
-    [regla("FILA_VACIA", MENSAJE_FILA_VACIA, 1)],
-    [],
-    lectorArchivoReporteExcelJs,
-    contenido,
+  // La fila 50 (solo estilo) llega como residuo del final: con la regla no se valida ni se cuenta.
+  const conRegla = await validarXlsxEnStreaming(
+    { buffer: contenido },
+    formatoCon([regla("FILA_VACIA", MENSAJE_FILA_VACIA, 1)]),
+    ventanaAbierta,
   );
   assert.deepEqual(conRegla.errores, []);
   assert.equal(conRegla.cantidadFilasDatos, 2);
-}
 
-// ---------------------------------------------------------------------------------------------
-// 6. Publicación: con `FILA_VACIA`, `DarVistoBueno` publica solo hasta la última fila con datos;
-//    sin la regla, publica todas las filas leídas, como antes.
-// ---------------------------------------------------------------------------------------------
-async function publicar(reglas: ReglaValidacionFormatoExcel[], filas: Fila[]): Promise<number[]> {
-  let numerosPublicados: number[] | null = null;
-
-  const carga = {
-    id: "carga-1",
-    formatoExcelId: FORMATO_ID,
-    usuarioId: "usuario-1",
-    estado: "PENDIENTE_VISTO_BUENO",
-    finalizadaEn: new Date(),
-  } as unknown as CargaArchivo;
-
-  const repositorio = {
-    obtenerPorId: async () => carga,
-    // Sin una aprobación vigente anterior: no es un reemplazo (ver `DarVistoBueno.resolverReemplazo`).
-    obtenerAprobadaVigentePorUsuarioYVentana: async () => null,
-    obtenerContenidoParaProcesar: async () => ({
-      contenidoArchivo: Buffer.alloc(0),
-      tipoContenidoArchivo: TIPO_XLSX,
-    }),
-    darVistoBueno: async (_id: string, _aprobadoPorId: string, publicacion: { filas: { numeroFila: number }[] }) => {
-      numerosPublicados = publicacion.filas.map((filaPublicada) => filaPublicada.numeroFila);
-      return carga;
-    },
-  } as unknown as CargaArchivoRepository;
-
-  const resultado = await darVistoBueno("carga-1", "revisor-1", {
-    repositorio,
-    lector: { leer: async () => ({ encabezados: ENCABEZADOS, filas }) },
-    repositorioSolicitudesReemplazo: {
-      obtenerPorNuevaCargaArchivoId: async () => null,
-    } as unknown as SolicitudReemplazoCargaRepository,
-    repositorioFormatosExcel: {
-      obtenerPorId: async () => formatoCon(reglas),
-    } as unknown as FormatoExcelRepository,
-  });
-
-  assert.equal(resultado.ok, true);
-  assert.ok(numerosPublicados, "debería haberse publicado la carga");
-  return numerosPublicados;
-}
-
-async function probarPublicacion(): Promise<void> {
-  const filas = [fila("Ana", 30), fila("Luis", 40), FILA_VACIA_RESIDUAL, FILA_VACIA_RESIDUAL];
-
-  assert.deepEqual(await publicar([regla("FILA_VACIA", MENSAJE_FILA_VACIA, 1)], filas), [2, 3]);
-  assert.deepEqual(await publicar([], filas), [2, 3, 4, 5]);
-  // Otra regla distinta de `FILA_VACIA` no cambia lo publicado.
-  assert.deepEqual(await publicar([regla("CONTENIDO_HTML", MENSAJE_HTML, 1)], filas), [2, 3, 4, 5]);
+  // Sin la regla se cuentan hasta la fila 50, como `rowCount` en memoria.
+  const sinRegla = await validarXlsxEnStreaming({ buffer: contenido }, formatoCon([]), ventanaAbierta);
+  assert.equal(sinRegla.cantidadFilasDatos, 49);
 }
 
 // La etiqueta de la columna "Fila" del informe depende del tipo de error cuando la fila es 0.
@@ -521,10 +411,7 @@ async function main(): Promise<void> {
   probarEsquema();
   await probarCasoDeUso();
   await probarLectorReal();
-  await probarPublicacion();
-  console.log(
-    "OK: RF-32 detector HTML, filas vacías, esquema, caso de uso, SIN_FILAS_DATOS global, lector real y publicación",
-  );
+  console.log("OK: RF-32 detector HTML, filas vacías, esquema, motor de validación, SIN_FILAS_DATOS global y lector real");
 }
 
 main().catch((error: unknown) => {

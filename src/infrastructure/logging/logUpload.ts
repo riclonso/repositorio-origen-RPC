@@ -31,8 +31,10 @@ export type EventoUpload = {
   // Bioestadística (recibido con éxito, luego activado o fallido).
   evento: "subida_exitosa" | "subida_fallida" | "procesamiento_exitoso" | "procesamiento_fallido";
   usuarioId: string;
-  // Solo en subidas del notificador (RF-14).
+  // Solo en subidas del notificador (RF-14). RF-38: también `cargaArchivoId` (recepción exitosa y
+  // procesamiento), sin el campo `origen`.
   formatoExcelId?: string;
+  cargaArchivoId?: string;
   // Solo en archivos de Bioestadística (RF-37): metadatos, nunca contenido.
   origen?: "BIOESTADISTICA";
   anio?: number;

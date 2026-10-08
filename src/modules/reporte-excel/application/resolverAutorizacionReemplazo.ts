@@ -11,7 +11,7 @@ export type ResultadoAutorizacionReemplazo =
   | { autorizado: false };
 
 // Regla única de "¿puede este notificador subir/finalizar un archivo para esta combinación
-// (usuario, ventana) habiendo, o no, una carga ya aprobada?". La usan `ValidarYCargarArchivo` (al
+// (usuario, ventana) habiendo, o no, una carga ya aprobada?". La usan `RecibirArchivoCarga` (al
 // subir, sin consumir nada) y `FinalizarYEnviarCarga` (al finalizar, con `ahora` fresco, para
 // consumir lo que corresponda). Mismo patrón que `validarEstablecimientoUsuario.ts` de `usuarios`:
 // una función de aplicación compartida por varios casos de uso, contra interfaces de repositorio.

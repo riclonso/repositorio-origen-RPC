@@ -7,7 +7,7 @@ import { LONGITUD_MAXIMA_MOTIVO_RECHAZO } from "@/modules/reporte-excel/domain/e
 import { BadgeEstadoCarga } from "@/shared/components/BadgeEstadoCarga";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
-import { IconoAprobado, IconoDescargar, IconoMensaje, IconoRechazar } from "@/shared/components/iconos";
+import { IconoAprobado, IconoDescargar, IconoDocumento, IconoMensaje, IconoRechazar } from "@/shared/components/iconos";
 import {
   ModalConversacionesRevisor,
   type NotificadorInicialMensajes,
@@ -182,12 +182,22 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                 <td className="min-w-40 break-all px-3 py-2 text-gob-gray-a">
                   {fila.nombreArchivoOriginal}
                   {fila.estado === "APROBADA" ? (
-                    <a
-                      href={`/api/dashboard/cargas/${fila.id}/archivo`}
-                      className="ml-3 text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
-                    >
-                      Descargar
-                    </a>
+                    <>
+                      <a
+                        href={`/api/dashboard/cargas/${fila.id}/archivo`}
+                        aria-label={`Descargar ${fila.nombreArchivoOriginal} con fecha de notificación`}
+                        className="ml-3 text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                      >
+                        Descargar
+                      </a>
+                      <a
+                        href={`/api/dashboard/cargas/${fila.id}/archivo/original`}
+                        aria-label={`Descargar original de ${fila.nombreArchivoOriginal}, sin modificar`}
+                        className="ml-3 text-sm font-medium text-gob-primary underline-offset-2 hover:underline"
+                      >
+                        Descargar original
+                      </a>
+                    </>
                   ) : null}
                 </td>
                 <td className="px-3 py-2">
@@ -205,9 +215,14 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                     {fila.estado === "PENDIENTE_VISTO_BUENO" ? (
                       <>
                         <BotonIcono
-                          etiqueta={`Descargar ${fila.nombreArchivoOriginal}`}
+                          etiqueta={`Descargar ${fila.nombreArchivoOriginal} con fecha de notificación`}
                           Icono={IconoDescargar}
                           href={`/api/dashboard/cargas/${fila.id}/archivo`}
+                        />
+                        <BotonIcono
+                          etiqueta={`Descargar original de ${fila.nombreArchivoOriginal}`}
+                          Icono={IconoDocumento}
+                          href={`/api/dashboard/cargas/${fila.id}/archivo/original`}
                         />
                         <BotonIcono
                           etiqueta={`Aprobar ${fila.nombreArchivoOriginal} de ${fila.usuarioNombre}`}

@@ -32,7 +32,7 @@ async function tieneHabilitacionFueraDePlazo(
 }
 
 // Regla única de "¿admite esta ventana una subida (o la finalización de una carga) de este
-// notificador ahora?". La usan `ValidarYCargarArchivo` y `FinalizarYEnviarCarga` (que revalida, para
+// notificador ahora?". La usan `RecibirArchivoCarga` y `FinalizarYEnviarCarga` (que revalida, para
 // no aceptar la finalización de un archivo subido justo antes de que la ventana cerrara, se
 // despublicara o se archivara). Orden (RF-36, ajuste aprobado):
 //

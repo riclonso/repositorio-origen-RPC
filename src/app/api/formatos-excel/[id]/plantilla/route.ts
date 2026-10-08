@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { respuestaDescarga } from "@/app/api/_lib/descarga";
 import { logger } from "@/infrastructure/logging/logger";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { obtenerFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ObtenerFormatoExcel";
@@ -13,27 +13,6 @@ import {
 } from "@/app/api/formatos-excel/_lib/http";
 import { exigirSesion } from "@/app/api/_lib/http";
 import { esPerfilAdministrador, esPerfilNotificador, esPerfilRevisorRepositorio } from "@/modules/perfiles/domain/entities/Perfil";
-
-// El nombre de archivo viaja entre comillas dobles en `Content-Disposition`: se reemplazan por
-// comillas simples para que un nombre de archivo manipulado no pueda cerrar el valor antes de
-// tiempo.
-function nombreParaDescarga(nombreArchivo: string): string {
-  return nombreArchivo.replace(/"/g, "'");
-}
-
-// `filename` (ASCII, con los caracteres fuera de rango reemplazados) para clientes antiguos y
-// `filename*` (RFC 5987, UTF-8 percent-encoded) para que "Año_Región.csv" llegue con su nombre
-// real. Se quitan también los saltos de línea para que el nombre no pueda inyectar cabeceras.
-function encabezadoDescarga(nombreArchivo: string): string {
-  const nombreSeguro = nombreParaDescarga(nombreArchivo).replace(/[\r\n]/g, "");
-  const nombreAscii = nombreSeguro.replace(/[^\x20-\x7e]/g, "_");
-  // `encodeURIComponent` deja pasar `'()*`, que RFC 5987 no admite sin codificar.
-  const nombreCodificado = encodeURIComponent(nombreSeguro).replace(
-    /['()*]/g,
-    (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
-  return `attachment; filename="${nombreAscii}"; filename*=UTF-8''${nombreCodificado}`;
-}
 
 // Nombre de la plantilla generada: el del formato, sin los caracteres que Windows no admite en un
 // nombre de archivo (el nombre del archivo original no se expone).
@@ -91,14 +70,10 @@ export async function GET(_request: Request, contexto: { params: Promise<{ id: s
         ? `${TIPO_CONTENIDO_CSV}; charset=utf-8`
         : plantilla.tipoContenido;
 
-    return new NextResponse(new Uint8Array(plantilla.contenido), {
-      status: 200,
-      headers: {
-        "Content-Type": tipoContenido,
-        "Content-Disposition": encabezadoDescarga(
-          `${nombreArchivoDesdeFormato(formato.nombre)}.${plantilla.extension}`,
-        ),
-      },
+    return respuestaDescarga({
+      flujo: new Uint8Array(plantilla.contenido),
+      tipoContenido,
+      nombreArchivo: `${nombreArchivoDesdeFormato(formato.nombre)}.${plantilla.extension}`,
     });
   } catch (error) {
     logger.error("Error al descargar la plantilla de un formato de archivo", {

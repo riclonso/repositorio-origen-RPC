@@ -1,38 +1,45 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { logger } from "@/infrastructure/logging/logger";
+import { detalleErrorSeguro } from "@/infrastructure/logging/detalleErrorSeguro";
 import { registrarIntentoSubida } from "@/infrastructure/logging/logUpload";
-import { validarYCargarArchivo } from "@/modules/reporte-excel/application/use-cases/ValidarYCargarArchivo";
+import type { SesionPayload } from "@/modules/auth/infrastructure/auth/JwtService";
+import type { CargaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { recibirArchivoCarga } from "@/modules/reporte-excel/application/use-cases/RecibirArchivoCarga";
+import { procesarCargaArchivo } from "@/modules/reporte-excel/application/use-cases/ProcesarCargaArchivo";
 import { listarCargasPropias } from "@/modules/reporte-excel/application/use-cases/ListarCargasPropias";
 import { listarCargasPanelNotificador } from "@/modules/reporte-excel/application/use-cases/ListarCargasPanelNotificador";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
-import { lectorArchivoReporteExcelJs } from "@/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
-import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
-import { extraerIp } from "@/shared/utils/peticion";
+import { almacenArchivosCargas } from "@/modules/reporte-excel/infrastructure/almacenamiento/almacenArchivosCargas";
+import { limitadorValidacionCargas } from "@/modules/reporte-excel/infrastructure/concurrencia/limitadoresCargas";
+import { validadorArchivoReporte } from "@/modules/reporte-excel/infrastructure/composicion";
+import {
+  auditarCargaArchivoConTransporte,
+  capturarTransporteCarga,
+  type TransporteAuditoriaCarga,
+} from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
 import {
   listadoCargasSchema,
   subirCargaArchivoSchema,
 } from "@/modules/reporte-excel/schemas/reporte-excel.schema";
+import { CABECERA_NOMBRE_ARCHIVO, nombreArchivoSubidaSinRutaSchema } from "@/shared/schemas/nombreArchivoSubida.schema";
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
-  TAMANO_MAXIMO_ARCHIVO,
-  aCargaArchivoDTO,
   aCargaArchivoResumenDTO,
   exigirNotificador,
+  motivoAuditoriaRecepcionCarga,
   respuestaArchivoInvalido,
-  respuestaCargaPendienteDeDecision,
   respuestaError,
-  respuestaFormatoNoAsignado,
-  respuestaReemplazoNoAutorizado,
+  respuestaRechazoRecepcionCarga,
   respuestaSinAcceso,
-  respuestaSinVentanaAbierta,
-  tipoArchivoDesdeTipoContenido,
-  tipoContenidoDesdeArchivo,
-  tipoContenidoDesdeNombre,
+  tipoContenidoDesdePrimerosBytes,
 } from "@/app/api/notificador/cargas/_lib/http";
+
+const ACCION_REGISTRADA = "CARGA_ARCHIVO_REGISTRADA" as const;
+const ACCION_PROCESADA = "CARGA_ARCHIVO_PROCESADA" as const;
 
 // Cargas propias del notificador en sesión, paginadas y filtrables por estado/formato (o, con
 // `vista=panel`, las del panel `/notificador`). Incluyen `publicacionActiva`. Lectura, no se audita.
@@ -84,9 +91,93 @@ export async function GET(request: Request) {
   }
 }
 
-// Sube y valida un archivo contra un formato asignado. `formatoExcelId` del cliente SIEMPRE se
-// valida contra la asignación vigente antes de leer el archivo; nunca se confía en el valor
-// recibido.
+// `null` si falta la cabecera (`Number(null)` sería 0) o no es un entero no negativo.
+function tamanoDeclarado(request: Request): number | null {
+  const cabecera = request.headers.get("content-length");
+  if (cabecera === null || cabecera.trim() === "") return null;
+
+  const valor = Number(cabecera);
+  return Number.isSafeInteger(valor) && valor >= 0 ? valor : null;
+}
+
+// RF-38: validación asíncrona (en `after()`, ya respondido el 202), con a lo más
+// `MAXIMO_VALIDACIONES_CARGAS_SIMULTANEAS` a la vez en el proceso. Su desenlace se audita y se
+// registra en upload.txt; la causa técnica de un archivo ilegible va a errores.txt sin contenido.
+async function procesarEnSegundoPlano(
+  carga: CargaArchivo,
+  sesion: SesionPayload,
+  transporte: TransporteAuditoriaCarga,
+): Promise<void> {
+  try {
+    const resultado = await limitadorValidacionCargas.ejecutar(() =>
+      procesarCargaArchivo(carga.id, {
+        repositorio: prismaCargaArchivoRepository,
+        repositorioFormatosExcel: prismaFormatoExcelRepository,
+        repositorioVentanasCarga: prismaVentanaCargaRepository,
+        validador: validadorArchivoReporte,
+      }),
+    );
+
+    if (resultado.estado === "OMITIDA") return;
+
+    if (resultado.estado === "NO_PROCESADA") {
+      logger.error("No se pudo procesar el archivo de una carga del notificador", {
+        cargaArchivoId: carga.id,
+        error: resultado.causa instanceof Error ? resultado.causa.name : "desconocido",
+      });
+      registrarIntentoSubida({
+        evento: "procesamiento_fallido",
+        usuarioId: sesion.sub,
+        formatoExcelId: carga.formatoExcelId,
+        cargaArchivoId: carga.id,
+        motivo: "ARCHIVO_NO_PROCESADO",
+        ip: transporte.ip,
+      });
+      auditarCargaArchivoConTransporte(sesion, transporte, {
+        accion: ACCION_PROCESADA,
+        resultado: "RECHAZADO",
+        motivo: "ARCHIVO_NO_PROCESADO",
+        formatoExcelId: carga.formatoExcelId,
+        cargaArchivoId: carga.id,
+      });
+      return;
+    }
+
+    registrarIntentoSubida({
+      evento: "procesamiento_exitoso",
+      usuarioId: sesion.sub,
+      formatoExcelId: carga.formatoExcelId,
+      cargaArchivoId: carga.id,
+      cantidadFilasDatos: resultado.resultado.cantidadFilasDatos,
+      ip: transporte.ip,
+    });
+    auditarCargaArchivoConTransporte(sesion, transporte, {
+      accion: ACCION_PROCESADA,
+      resultado: "EXITO",
+      formatoExcelId: carga.formatoExcelId,
+      cargaArchivoId: carga.id,
+      estadoResultante: resultado.resultado.estado,
+      cantidadErrores: resultado.resultado.cantidadErrores,
+      cantidadFilasDatos: resultado.resultado.cantidadFilasDatos,
+    });
+  } catch (error) {
+    // Falla técnica (p. ej. la base cayó): la carga queda PROCESANDO y la libera el arranque o la
+    // expiración de 2 horas.
+    logger.error("Error al procesar una carga del notificador en segundo plano", {
+      cargaArchivoId: carga.id,
+      ...detalleErrorSeguro(error),
+    });
+  }
+}
+
+// RF-38: subida de un archivo del notificador. El CUERPO es el binario crudo (`fetch`/XHR con
+// `body: archivo`), leído en streaming desde `request.body` directo a disco: nunca `formData()`, que
+// cargaría hasta 100 MB en memoria. `formatoExcelId` y `anio` viajan en la URL y el nombre original
+// en la cabecera `X-Nombre-Archivo` (codificado con `encodeURIComponent`). Todo lo barato (asignación
+// del formato, ventana, decisión pendiente, reemplazo, procesamiento en curso) se revalida ANTES de
+// leer el cuerpo. Responde 202 con la carga en PROCESANDO; la validación ocurre en `after()`.
+//
+// `/api/**` no pasa por `src/proxy.ts` (que truncaría el cuerpo a 10 MB): el guard vive aquí.
 export async function POST(request: Request) {
   const acceso = await exigirNotificador();
 
@@ -94,117 +185,51 @@ export async function POST(request: Request) {
     return respuestaSinAcceso(acceso.estado);
   }
 
-  const formData = await request.formData().catch(() => null);
-  const archivo = formData?.get("archivo");
-  const formatoExcelIdBruto = formData?.get("formatoExcelId");
-  const anioBruto = formData?.get("anio");
-
-  const datos = subirCargaArchivoSchema.safeParse({
-    formatoExcelId: typeof formatoExcelIdBruto === "string" ? formatoExcelIdBruto : "",
-    anio: typeof anioBruto === "string" ? anioBruto : "",
-  });
+  const transporte = capturarTransporteCarga(request);
+  const datos = subirCargaArchivoSchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
 
   if (!datos.success) {
     return respuestaError(datos.error.issues[0]?.message ?? MENSAJE_DATOS_INVALIDOS, 400);
   }
 
-  if (!(archivo instanceof File)) {
+  const { formatoExcelId, anio } = datos.data;
+  const nombre = nombreArchivoSubidaSinRutaSchema.safeParse(request.headers.get(CABECERA_NOMBRE_ARCHIVO));
+
+  if (!nombre.success) {
     registrarIntentoSubida({
       evento: "subida_fallida",
       usuarioId: acceso.sesion.sub,
-      formatoExcelId: datos.data.formatoExcelId,
+      formatoExcelId,
       motivo: "ARCHIVO_INVALIDO",
-      ip: extraerIp(request),
+      ip: transporte.ip,
     });
-    auditarCargaArchivo(acceso.sesion, request, {
-      accion: "CARGA_ARCHIVO_REGISTRADA",
+    auditarCargaArchivoConTransporte(acceso.sesion, transporte, {
+      accion: ACCION_REGISTRADA,
       resultado: "RECHAZADO",
       motivo: "ARCHIVO_INVALIDO",
-      formatoExcelId: datos.data.formatoExcelId,
+      formatoExcelId,
     });
-    return respuestaArchivoInvalido("Selecciona un archivo para subir");
-  }
-
-  if (archivo.size === 0) {
-    auditarCargaArchivo(acceso.sesion, request, {
-      accion: "CARGA_ARCHIVO_REGISTRADA",
-      resultado: "RECHAZADO",
-      motivo: "ARCHIVO_INVALIDO",
-      formatoExcelId: datos.data.formatoExcelId,
-    });
-    return respuestaArchivoInvalido("El archivo está vacío. Selecciona un archivo con datos");
-  }
-
-  // Primer filtro, barato: rechaza una extensión no soportada sin leer el archivo completo.
-  if (!tipoContenidoDesdeNombre(archivo.name)) {
-    auditarCargaArchivo(acceso.sesion, request, {
-      accion: "CARGA_ARCHIVO_REGISTRADA",
-      resultado: "RECHAZADO",
-      motivo: "ARCHIVO_INVALIDO",
-      formatoExcelId: datos.data.formatoExcelId,
-    });
-    return respuestaArchivoInvalido("El archivo debe tener extensión .xlsx o .csv");
-  }
-
-  if (archivo.size > TAMANO_MAXIMO_ARCHIVO) {
-    auditarCargaArchivo(acceso.sesion, request, {
-      accion: "CARGA_ARCHIVO_REGISTRADA",
-      resultado: "RECHAZADO",
-      motivo: "ARCHIVO_INVALIDO",
-      formatoExcelId: datos.data.formatoExcelId,
-    });
-    return respuestaArchivoInvalido("El archivo no puede superar los 10 MB");
+    return respuestaArchivoInvalido(nombre.error.issues[0]?.message ?? MENSAJE_DATOS_INVALIDOS);
   }
 
   try {
-    const buffer = Buffer.from(await archivo.arrayBuffer());
-
-    if (buffer.byteLength > TAMANO_MAXIMO_ARCHIVO) {
-      auditarCargaArchivo(acceso.sesion, request, {
-        accion: "CARGA_ARCHIVO_REGISTRADA",
-        resultado: "RECHAZADO",
-        motivo: "ARCHIVO_INVALIDO",
-        formatoExcelId: datos.data.formatoExcelId,
-      });
-      return respuestaArchivoInvalido("El archivo no puede superar los 10 MB");
-    }
-
-    // Validación de fondo: la firma real de los primeros bytes, no solo la extensión del nombre.
-    const tipoContenido = tipoContenidoDesdeArchivo(archivo.name, buffer);
-
-    if (!tipoContenido) {
-      registrarIntentoSubida({
-        evento: "subida_fallida",
-        usuarioId: acceso.sesion.sub,
-        formatoExcelId: datos.data.formatoExcelId,
-        motivo: "ARCHIVO_INVALIDO",
-        ip: null,
-      });
-      auditarCargaArchivo(acceso.sesion, request, {
-        accion: "CARGA_ARCHIVO_REGISTRADA",
-        resultado: "RECHAZADO",
-        motivo: "ARCHIVO_INVALIDO",
-        formatoExcelId: datos.data.formatoExcelId,
-      });
-      return respuestaArchivoInvalido("El contenido del archivo no corresponde a su extensión");
-    }
-
-    const resultado = await validarYCargarArchivo(
+    const resultado = await recibirArchivoCarga(
       {
-        formatoExcelId: datos.data.formatoExcelId,
-        anio: datos.data.anio,
         usuarioId: acceso.sesion.sub,
-        nombreArchivoOriginal: archivo.name,
-        tipoContenidoArchivo: tipoContenido,
-        tipoArchivoDetectado: tipoArchivoDesdeTipoContenido(tipoContenido),
-        contenidoArchivo: buffer,
+        formatoExcelId,
+        anio,
+        nombreArchivoOriginal: nombre.data,
+        tamanoDeclarado: tamanoDeclarado(request),
+        cuerpo: request.body,
+        ahora: new Date(),
       },
       {
         repositorio: prismaCargaArchivoRepository,
         repositorioFormatosExcel: prismaFormatoExcelRepository,
         repositorioVentanasCarga: prismaVentanaCargaRepository,
         repositorioSolicitudesReemplazo: prismaSolicitudReemplazoCargaRepository,
-        lector: lectorArchivoReporteExcelJs,
+        almacen: almacenArchivosCargas,
+        detectarTipoContenido: tipoContenidoDesdePrimerosBytes,
       },
     );
 
@@ -212,58 +237,46 @@ export async function POST(request: Request) {
       registrarIntentoSubida({
         evento: "subida_fallida",
         usuarioId: acceso.sesion.sub,
-        formatoExcelId: datos.data.formatoExcelId,
+        formatoExcelId,
         motivo: resultado.motivo,
-        ip: null,
+        ip: transporte.ip,
       });
-      auditarCargaArchivo(acceso.sesion, request, {
-        accion: "CARGA_ARCHIVO_REGISTRADA",
+      auditarCargaArchivoConTransporte(acceso.sesion, transporte, {
+        accion: ACCION_REGISTRADA,
         resultado: "RECHAZADO",
-        motivo: resultado.motivo,
-        formatoExcelId: datos.data.formatoExcelId,
+        motivo: motivoAuditoriaRecepcionCarga(resultado.motivo),
+        formatoExcelId,
       });
-      if (resultado.motivo === "FORMATO_NO_ASIGNADO") {
-        return respuestaFormatoNoAsignado();
-      }
-
-      if (resultado.motivo === "ARCHIVO_NO_EXCEL") {
-        return respuestaArchivoInvalido("El archivo debe ser Excel (.xlsx)");
-      }
-
-      if (resultado.motivo === "REEMPLAZO_NO_AUTORIZADO") {
-        return respuestaReemplazoNoAutorizado();
-      }
-
-      if (resultado.motivo === "CARGA_PENDIENTE_DECISION") {
-        return respuestaCargaPendienteDeDecision();
-      }
-
-      // `SIN_VENTANA_ABIERTA` y `VENTANA_NO_PUBLICADA` comparten la misma respuesta genérica: no
-      // debe revelarse que existe un borrador, mismo criterio que ya distingue
-      // `FORMATO_NO_ASIGNADO` de "nunca existió" vs. "se dio de baja".
-      return respuestaSinVentanaAbierta();
+      return respuestaRechazoRecepcionCarga(resultado.motivo);
     }
 
-    // El archivo se pudo leer y procesar, tenga o no errores de fila: es una subida exitosa
-    // desde el punto de vista del log de subidas (distinto del resultado de validación).
+    const { carga, tamanoBytes } = resultado;
+
     registrarIntentoSubida({
       evento: "subida_exitosa",
       usuarioId: acceso.sesion.sub,
-      formatoExcelId: datos.data.formatoExcelId,
-      ip: extraerIp(request),
+      formatoExcelId,
+      cargaArchivoId: carga.id,
+      tamanoBytes,
+      ip: transporte.ip,
     });
-    auditarCargaArchivo(acceso.sesion, request, {
-      accion: "CARGA_ARCHIVO_REGISTRADA",
+    auditarCargaArchivoConTransporte(acceso.sesion, transporte, {
+      accion: ACCION_REGISTRADA,
       resultado: "EXITO",
-      formatoExcelId: datos.data.formatoExcelId,
-      cargaArchivoId: resultado.carga.id,
-      cantidadErrores: resultado.carga.cantidadErrores,
+      formatoExcelId,
+      cargaArchivoId: carga.id,
+      tamanoBytes,
     });
 
-    return NextResponse.json({ carga: aCargaArchivoDTO(resultado.carga) }, { status: 201 });
+    const sesion = acceso.sesion;
+    after(() => procesarEnSegundoPlano(carga, sesion, transporte));
+
+    return NextResponse.json({ carga: { id: carga.id, estado: carga.estado } }, { status: 202 });
   } catch (error) {
-    logger.error("Error al validar y cargar un archivo de reporte", {
-      error: error instanceof Error ? error.message : String(error),
+    // Solo nombre y código: un error de `fs` (disco lleno, permisos) llevaría la ruta en el mensaje.
+    logger.error("Error al recibir un archivo de reporte del notificador", {
+      formatoExcelId,
+      ...detalleErrorSeguro(error),
     });
     return respuestaError(MENSAJE_ERROR_INTERNO, 500);
   }

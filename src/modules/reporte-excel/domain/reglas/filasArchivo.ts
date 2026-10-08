@@ -1,9 +1,9 @@
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 
 // Reglas puras sobre celdas y filas de un archivo reportado, sin dependencias de infraestructura.
-// Viven en `domain/` porque las usan por igual la validación al subir (`ValidarYCargarArchivo`, vía
-// el evaluador de reglas) y la publicación al aprobar (`DarVistoBueno`): así ambos casos de uso
-// recortan las filas exactamente igual sin que `application/` dependa de `infrastructure/`.
+// Viven en `domain/` porque las usan la validación (`MotorValidacionFilas`, vía el evaluador de
+// reglas) y la descarga generada (RF-38), sin que `application/` dependa de `infrastructure/`.
+// `indiceUltimaFilaConDatos` solo la usa ya la referencia congelada de la prueba de equivalencia.
 
 // Normalización de una celda a texto, compartida con `ValidadoresTipoDato`.
 export function aTextoCelda(valor: ValorCeldaArchivo): string {

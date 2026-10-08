@@ -1,8 +1,6 @@
 import { z } from "zod";
-import {
-  LONGITUD_MAXIMA_NOMBRE_ARCHIVO,
-  extensionAdmitida,
-} from "@/modules/bioestadistica/domain/entities/CargaBioestadistica";
+import { extensionAdmitida } from "@/modules/bioestadistica/domain/entities/CargaBioestadistica";
+import { CABECERA_NOMBRE_ARCHIVO, nombreArchivoSubidaSchema } from "@/shared/schemas/nombreArchivoSubida.schema";
 import { TIPOS_ARCHIVO_BIOESTADISTICA } from "@/modules/bioestadistica/domain/entities/TipoArchivoBioestadistica";
 import { LONGITUD_MAXIMA_MOTIVO } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
 import { anioVentanaCargaSchema } from "@/modules/ventanas-carga/schemas/ventana-carga.schema";
@@ -18,36 +16,14 @@ export const subirArchivoBioestadisticaSchema = z.object({
   tipoArchivo: tipoArchivoBioestadisticaSchema,
 });
 
-// Cabecera usada para el nombre original del archivo (el cuerpo es binario, no multipart).
-export const CABECERA_NOMBRE_ARCHIVO = "x-nombre-archivo";
+// Cabecera y reglas del nombre original del archivo (el cuerpo es binario, no multipart): RF-38 las
+// movió a `shared/schemas/nombreArchivoSubida.schema.ts` para compartirlas con el notificador. Aquí
+// solo se agrega la extensión propia de Bioestadística.
+export { CABECERA_NOMBRE_ARCHIVO };
 
-// Caracteres de control (incluidos saltos de línea): no tienen cabida en un nombre de archivo y
-// podrían romper el `Content-Disposition` de la descarga.
-function tieneCaracteresControl(texto: string): boolean {
-  for (const caracter of texto) {
-    const codigo = caracter.charCodeAt(0);
-    if (codigo < 0x20 || codigo === 0x7f) return true;
-  }
-  return false;
-}
-
-// El cliente envía el nombre con `encodeURIComponent` (las cabeceras HTTP no admiten tildes). Se
-// decodifica aquí; un valor mal codificado se trata como inválido.
-export const nombreArchivoBioestadisticaSchema = z.preprocess(
-  (valor) => {
-    if (typeof valor !== "string") return valor;
-    try {
-      return decodeURIComponent(valor).trim();
-    } catch {
-      return "";
-    }
-  },
-  z
-    .string({ error: "Indica el nombre del archivo" })
-    .min(1, "Indica el nombre del archivo")
-    .max(LONGITUD_MAXIMA_NOMBRE_ARCHIVO, `El nombre del archivo no puede superar los ${LONGITUD_MAXIMA_NOMBRE_ARCHIVO} caracteres`)
-    .refine((nombre) => !tieneCaracteresControl(nombre), "El nombre del archivo no es válido")
-    .refine(extensionAdmitida, "El archivo debe tener extensión .xlsx o .csv"),
+export const nombreArchivoBioestadisticaSchema = nombreArchivoSubidaSchema.refine(
+  (nombre) => typeof nombre === "string" && extensionAdmitida(nombre),
+  "El archivo debe tener extensión .xlsx o .csv",
 );
 
 export const solicitarReemplazoBioestadisticaSchema = z.object({

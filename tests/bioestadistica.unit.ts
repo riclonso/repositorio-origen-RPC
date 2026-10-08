@@ -319,6 +319,45 @@ async function main(): Promise<void> {
       assert.ok(filas.every((fila) => !fila.valores.includes("lee")));
     });
 
+    // Regresión: un carácter multibyte (ñ, tildes) partido entre dos trozos descomprimidos quedaba
+    // como U+FFFD en el camino por defecto (el de Bioestadística). 60.000 filas de textos únicos con
+    // tildes garantizan que muchos caigan en el borde de un trozo de la tabla de textos y de la hoja.
+    const rutaTildes = path.join(directorio, "tildes.xlsx");
+    const libroTildes = new ExcelJS.Workbook();
+    const hojaTildes = libroTildes.addWorksheet("D");
+    hojaTildes.addRow(["Nombre", "Comuna"]);
+    for (let indice = 0; indice < 60_000; indice += 1) hojaTildes.addRow([`ñandú ácido ${indice} ÑÁÉÍÓÚ`, `peña ${indice}`]);
+    await libroTildes.xlsx.writeFile(rutaTildes);
+
+    await prueba("xlsx: caracteres multibyte en el borde de un trozo llegan intactos (cero U+FFFD)", async () => {
+      let filas = 0;
+      let corruptas = 0;
+      for await (const fila of recorrerFilasPrimeraHojaXlsx(rutaTildes)) {
+        filas += 1;
+        if (fila.valores.some((valor) => typeof valor === "string" && valor.includes("�"))) corruptas += 1;
+      }
+      assert.equal(filas, 60_001);
+      assert.equal(corruptas, 0);
+    });
+
+    const rutaCsvTildes = path.join(directorio, "tildes.csv");
+    await writeFile(
+      rutaCsvTildes,
+      ["Nombre;Comuna", ...Array.from({ length: 60_000 }, (_, indice) => `ñandú ácido ${indice} ÑÁÉÍÓÚ;peña ${indice}`)].join("\n"),
+      "utf8",
+    );
+
+    await prueba("CSV: caracteres multibyte en el borde de un trozo llegan intactos (cero U+FFFD)", async () => {
+      let registros = 0;
+      let corruptos = 0;
+      for await (const registro of recorrerRegistrosCsv(rutaCsvTildes)) {
+        registros += 1;
+        if (registro.campos.some((campo) => campo.includes("�"))) corruptos += 1;
+      }
+      assert.equal(registros, 60_001);
+      assert.equal(corruptos, 0);
+    });
+
     const { crearLectorArchivoLibreStreaming } = await import(
       "../src/modules/bioestadistica/infrastructure/lectura-archivo/LectorArchivoLibreStreamingExcelJs"
     );

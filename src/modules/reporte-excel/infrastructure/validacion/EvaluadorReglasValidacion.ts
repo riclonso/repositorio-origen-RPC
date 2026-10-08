@@ -1,3 +1,4 @@
+import { createHash, hash } from "node:crypto";
 import type { ReglaValidacionFormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import {
@@ -37,7 +38,7 @@ export type ContextoEvaluacionReglas = {
 // mismo archivo. Por eso NO se resuelve en `cumpleReglaValidacion` (que se mantiene puro y sin
 // estado): el `case` de abajo devuelve `true` (sin error) a propósito para esta regla, y el
 // chequeo real vive en `crearRastreadorFilasDuplicadas`/`evaluarFilaDuplicada`, más abajo, que
-// `ValidarYCargarArchivo` invoca aparte dentro del mismo recorrido de filas.
+// `MotorValidacionFilas` (RF-38) invoca aparte dentro del mismo recorrido de filas.
 export function cumpleReglaValidacion(
   regla: ReglaValidacionFormatoExcel,
   fila: Record<string, ValorCeldaArchivo>,
@@ -103,7 +104,7 @@ export function cumpleReglaValidacion(
     // RF-32: mismo criterio que `FILA_DUPLICADA`, ninguna de las dos cabe en un booleano puro por
     // fila. `CONTENIDO_HTML` produce un error POR CELDA (ver `columnasConContenidoHtml`) y
     // `FILA_VACIA` necesita la posición de la fila respecto de la última fila con datos del
-    // archivo (ver `domain/reglas/filasArchivo.ts`). `ValidarYCargarArchivo`
+    // archivo (ver `domain/reglas/filasArchivo.ts`). `MotorValidacionFilas`
     // las evalúa aparte, dentro del mismo recorrido de filas.
     case "CONTENIDO_HTML":
     case "FILA_VACIA":
@@ -113,15 +114,30 @@ export function cumpleReglaValidacion(
   }
 }
 
-// Estado por regla `FILA_DUPLICADA` del formato: la clave serializada de cada fila ya vista,
-// mapeada al número de la fila donde apareció por primera vez (el "original", que nunca se marca
-// como error — decisión de negocio: solo la 2ª aparición en adelante se rechaza). Una entrada de
-// mapa por regla, para que dos reglas `FILA_DUPLICADA` con columnas distintas del mismo formato no
-// interfieran entre sí.
-export type RastreadorFilasDuplicadas = Map<string, Map<string, number>>;
+// Estado por regla `FILA_DUPLICADA` del formato: el RESUMEN de la clave de cada fila ya vista (el
+// "original" nunca se marca como error — decisión de negocio: solo la 2ª aparición en adelante se
+// rechaza). Un conjunto por regla, para que dos reglas `FILA_DUPLICADA` con columnas distintas del
+// mismo formato no interfieran entre sí.
+//
+// RF-38: con hasta 500.000 filas, guardar la clave textual completa podía costar cientos de MB por
+// regla. Se guarda su SHA-256 truncado (132 bits, 22 caracteres base64): ~50-60 B por fila y regla.
+// La probabilidad de colisión con 500.000 filas es < 4·10⁻²⁸, equivalente en la práctica a comparar
+// el texto. El número de la fila original nunca se leía, así que basta un `Set`.
+export type RastreadorFilasDuplicadas = Map<string, Set<string>>;
+
+// 22 caracteres base64 = 132 bits del SHA-256 (≥ 128 bits).
+const LARGO_RESUMEN_BASE64 = 22;
+
+// `crypto.hash` (one-shot, Node ≥ 20.12) es ~2 veces más rápido y genera mucha menos basura que crear
+// un `Hash` por fila (medido: con 500.000 filas, ~25 MB retenidos por regla en ambos casos, pero el
+// pico de memoria transitoria baja a la mitad). Respaldo con `createHash` para un Node anterior.
+function resumirClave(clave: string): string {
+  const base64 = typeof hash === "function" ? hash("sha256", clave, "base64") : createHash("sha256").update(clave, "utf8").digest("base64");
+  return base64.slice(0, LARGO_RESUMEN_BASE64);
+}
 
 // Se construye una sola vez por carga de archivo (no por fila), a partir de las reglas
-// `FILA_DUPLICADA` del formato. `ValidarYCargarArchivo` lo crea antes de recorrer las filas y lo
+// `FILA_DUPLICADA` del formato. `MotorValidacionFilas` lo crea antes de recorrer las filas y lo
 // reutiliza durante todo el recorrido, manteniendo la evaluación en O(filas) por regla (un solo
 // recorrido, sin bucles anidados ni una segunda pasada sobre el archivo).
 export function crearRastreadorFilasDuplicadas(
@@ -131,7 +147,7 @@ export function crearRastreadorFilasDuplicadas(
 
   for (const regla of reglas) {
     if (regla.tipo === "FILA_DUPLICADA") {
-      rastreador.set(regla.id, new Map());
+      rastreador.set(regla.id, new Set());
     }
   }
 
@@ -150,7 +166,6 @@ export function evaluarFilaDuplicada(
   rastreador: RastreadorFilasDuplicadas,
   regla: ReglaValidacionFormatoExcel,
   fila: Record<string, ValorCeldaArchivo>,
-  numeroFila: number,
 ): boolean {
   const clavesPorRegla = rastreador.get(regla.id);
   if (!clavesPorRegla) return false; // config inconsistente (no debería pasar), no reporta error
@@ -166,14 +181,15 @@ export function evaluarFilaDuplicada(
   // textual unívoca de la combinación de valores: distingue automáticamente `null` (columna vacía,
   // serializa sin comillas) de la cadena literal "null" (serializa como `"null"`, con comillas), y
   // escapa comillas/backslashes/cualquier carácter especial dentro de los valores de texto sin
-  // depender de que algún separador esté ausente del contenido real de la celda.
-  const clave = JSON.stringify(valoresClave);
+  // depender de que algún separador esté ausente del contenido real de la celda. Se resume (ver
+  // `RastreadorFilasDuplicadas`) después de serializar, así que la decisión es la misma.
+  const clave = resumirClave(JSON.stringify(valoresClave));
 
   if (clavesPorRegla.has(clave)) {
     return true; // 2ª aparición en adelante: duplicada
   }
 
-  clavesPorRegla.set(clave, numeroFila);
+  clavesPorRegla.add(clave);
   return false; // primera aparición: es "el original", no se marca
 }
 

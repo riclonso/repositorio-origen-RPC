@@ -3,9 +3,9 @@ import type {
   CargaArchivoParaDescarga,
   CargaArchivoResumenConPublicacion,
   CargaArchivoResumenPropia,
+  CargaArchivoParaProcesar,
   ConsumoFinalizacionCarga,
-  ContenidoCargaArchivo,
-  DatosNuevaCargaArchivo,
+  DatosNuevaCargaProcesando,
   DatosPublicacionCarga,
   DatosRechazoCargaArchivo,
   FiltroListadoCargasAprobadas,
@@ -15,14 +15,32 @@ import type {
   PaginaCargas,
   PaginaCargasConPublicacion,
   ResultadoFinalizarCargaArchivo,
+  ResultadoValidacionArchivo,
   UltimaCargaCombinacion,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import type { CargaArchivoRechazo } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 
 export interface CargaArchivoRepository {
-  // Transaccional: crea la carga y sus errores en una sola operación atómica (nested write, mismo
-  // patrón que `FormatoExcelRepository.crear`).
-  crear(datos: DatosNuevaCargaArchivo): Promise<CargaArchivo>;
+  // RF-38: crea la carga recién recibida en `PROCESANDO` (0 filas, 0 errores), con el binario ya en
+  // disco. Lanza `CargaArchivoEnProcesoError` si el índice parcial `carga_archivo_procesando_key`
+  // la rechaza (otra subida simultánea de la misma combinación).
+  crearProcesando(datos: DatosNuevaCargaProcesando): Promise<CargaArchivo>;
+  // RF-38: lo mínimo que necesita el procesamiento asíncrono, o `null` si la carga no existe.
+  obtenerParaProcesar(id: string): Promise<CargaArchivoParaProcesar | null>;
+  // RF-38: el procesamiento en curso (`PROCESANDO`) de una combinación (usuario, ventana), o `null`.
+  obtenerProcesandoPorUsuarioYVentana(usuarioId: string, ventanaCargaId: string): Promise<UltimaCargaCombinacion | null>;
+  // RF-38: en una transacción, `PROCESANDO -> estado resultante` con sus conteos (updateMany condicional
+  // por `estado = PROCESANDO`) más los errores. `false` si la carga ya no estaba en `PROCESANDO`
+  // (idempotencia: no inserta errores).
+  completarProcesamiento(id: string, resultado: ResultadoValidacionArchivo): Promise<boolean>;
+  // RF-38: pasa a `CON_ERRORES` (con un error `ARCHIVO_NO_PROCESADO` "La validación se interrumpió")
+  // toda carga `PROCESANDO` creada antes de `anterioresA`, opcionalmente solo de una combinación.
+  // Condicional por estado: nunca pisa un procesamiento que terminó entretanto. Devuelve sus ids.
+  marcarProcesamientosInterrumpidos(filtro: {
+    anterioresA: Date;
+    usuarioId?: string;
+    ventanaCargaId?: string;
+  }): Promise<string[]>;
   obtenerPorId(id: string): Promise<CargaArchivo | null>;
   // Filtra `usuarioId` a nivel de consulta SQL, nunca solo en la UI: una carga que no pertenece
   // al actor debe comportarse como si no existiera desde el propio `WHERE`, no por descarte en JS.
@@ -40,15 +58,11 @@ export interface CargaArchivoRepository {
   // El intento más reciente (por `createdAt`, cualquier estado) de un usuario en una ventana, o
   // `null`. `FinalizarYEnviarCarga` solo admite finalizar el último intento de su combinación.
   obtenerUltimaPorUsuarioYVentana(usuarioId: string, ventanaCargaId: string): Promise<UltimaCargaCombinacion | null>;
-  // Corrección (fin de la autoaprobación): defensa de servidor de `ValidarYCargarArchivo` — una
+  // Corrección (fin de la autoaprobación): defensa de servidor de `RecibirArchivoCarga` — una
   // `PENDIENTE_VISTO_BUENO` con `finalizadaEn` no nulo de esta combinación (usuario, ventana)
   // todavía no fue decidida (ni aprobada ni rechazada) por ADMIN/REVISOR_REPOSITORIO, así que no
   // admite una subida nueva. El mecanismo PRINCIPAL para evitarlo es de UI (la tarjeta desaparece).
   obtenerPendienteFinalizadaPorUsuarioYVentana(usuarioId: string, ventanaCargaId: string): Promise<CargaArchivo | null>;
-  // Único método que trae el binario ANTES de que la carga esté `APROBADA` (a diferencia de
-  // `obtenerParaDescarga`): lo usa `DarVistoBueno` para reparsear el archivo y construir el
-  // detalle de filas a publicar. Ownership por `usuarioId` siempre en el `WHERE`.
-  obtenerContenidoParaProcesar(id: string, usuarioId: string): Promise<ContenidoCargaArchivo | null>;
   // Incluye `publicacionActiva` (join 1:1 a la publicación, sin N+1) para que el panel del
   // notificador descarte como vigente una `APROBADA` ya superada.
   listarPropias(filtro: FiltroListadoCargasPropias): Promise<PaginaCargasConPublicacion>;
@@ -91,8 +105,8 @@ export interface CargaArchivoRepository {
   // `application/`, que decide el mensaje comparando contra el estado ya conocido.
   //
   // Extensión "publicación hacia el revisor": en la MISMA transacción que la transición de estado,
-  // inserta la cabecera `CargaArchivoPublicada` y su detalle (`createMany`, troceado en lotes si
-  // hace falta) y, si `publicacion.reemplazo` no es nulo, desactiva TODAS las publicaciones activas
+  // inserta la cabecera `CargaArchivoPublicada` (RF-38: ya sin filas de detalle) y, si
+  // `publicacion.reemplazo` no es nulo, desactiva TODAS las publicaciones activas
   // de la misma combinación (usuario, ventana) distintas de la nueva (`activo = false`,
   // `desactivadaEn`, `reemplazadaPorCargaArchivoId = id`, `motivoDesactivacion`,
   // `motivoDesactivacionTipo = REEMPLAZO`): nunca quedan dos publicaciones activas de la misma
@@ -111,13 +125,15 @@ export interface CargaArchivoRepository {
   // reaperturas pendientes de la combinación (la más reciente queda enlazada a esta carga, el
   // resto solo recibe `reaperturaConsumidaEn`), con la ventana abierta o cerrada.
   finalizar(id: string, usuarioId: string, consumo: ConsumoFinalizacionCarga): Promise<ResultadoFinalizarCargaArchivo>;
-  // Única operación que trae el binario para ADMIN/REVISOR_REPOSITORIO. Devuelve una carga ya
+  // Única operación que ubica el binario para ADMIN/REVISOR_REPOSITORIO. Devuelve una carga ya
   // `APROBADA` o una `PENDIENTE_VISTO_BUENO` que el notificador finalizó y envió: esto permite
-  // revisar el archivo original antes de aprobarlo, sin exponer borradores ni cargas con errores.
+  // revisar el archivo antes de aprobarlo, sin exponer borradores ni cargas con errores. RF-38: la
+  // fuente es el disco, o `Bytes` para las cargas anteriores al almacenamiento en disco (soporte
+  // permanente; nunca se lee `Bytes` si hay ruta).
   obtenerParaDescarga(id: string): Promise<CargaArchivoParaDescarga | null>;
   // Descarga para el propio notificador desde "Mis cargas": a diferencia de `obtenerParaDescarga`,
-  // sin restricción de `estado` (aprobada, pendiente de decisión o rechazada, todas descargables por
-  // su dueño), pero con `usuarioId` en el mismo `WHERE` — ownership, nunca filtrado después en JS.
+  // sin restricción de `estado`, pero con `usuarioId` en el mismo `WHERE` — ownership, nunca
+  // filtrado después en JS.
   obtenerPropiaParaDescarga(id: string, usuarioId: string): Promise<CargaArchivoParaDescarga | null>;
   // RF-16 (tablero de seguimiento): cuántos usuarios DISTINTOS "ya reportaron" en cada ventana:
   // tienen una APROBADA vigente que NO está en reemplazo (RF-34). En reemplazo = solicitud de

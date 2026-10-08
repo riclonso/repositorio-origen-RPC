@@ -4,6 +4,8 @@ import type { EstadoCargaArchivo } from "@/modules/reporte-excel/domain/entities
 // (`panel-carga-archivo.tsx`) y el detalle de una carga propia (`DetalleCargaPropia.tsx`): un único
 // lugar evita que ambas vistas del mismo dato diverjan.
 export const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
+  // RF-38: el archivo se recibió y su validación corre en segundo plano.
+  PROCESANDO: "Validando",
   CON_ERRORES: "Con errores",
   PENDIENTE_VISTO_BUENO: "Pendiente de Aprobación",
   APROBADA: "Aprobada",
@@ -14,6 +16,7 @@ export const ETIQUETAS_ESTADO: Record<EstadoCargaArchivo, string> = {
 // `shared/components/BadgeEstadoCarga.tsx`: un único lugar evita que la paleta de cada estado
 // diverja entre vistas.
 export const CLASES_ESTADO: Record<EstadoCargaArchivo, string> = {
+  PROCESANDO: "bg-gob-warning-fondo text-gob-tertiary border-gob-accent",
   CON_ERRORES: "bg-gob-danger text-white border-gob-danger",
   PENDIENTE_VISTO_BUENO: "bg-gob-success text-white border-gob-success",
   APROBADA: "bg-gob-primary text-white border-gob-primary",

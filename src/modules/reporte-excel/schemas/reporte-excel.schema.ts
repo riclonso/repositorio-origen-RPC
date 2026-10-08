@@ -22,7 +22,8 @@ export const subirCargaArchivoSchema = z.object({
   // RF-15: año de la ventana de carga elegida por el notificador. Reutiliza el mismo rango que
   // `ventanas-carga` (evita que ambos esquemas diverjan con el tiempo). Solo valida la FORMA
   // (entero razonable); que exista una ventana ABIERTA para ese año se revalida siempre en
-  // `ValidarYCargarArchivo`, nunca se confía en lo que el cliente declara.
+  // `RecibirArchivoCarga`, nunca se confía en lo que el cliente declara. RF-38: viaja en la URL (el
+  // cuerpo de la subida es el binario crudo).
   anio: anioVentanaCargaSchema,
 });
 export type SubirCargaArchivoInput = z.infer<typeof subirCargaArchivoSchema>;

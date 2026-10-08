@@ -20,5 +20,12 @@ export async function register(): Promise<void> {
       "@/modules/bioestadistica/infrastructure/arranque/liberarProcesamientosHuerfanos"
     );
     void liberarProcesamientosBioestadisticaHuerfanos(arranque);
+
+    // RF-38: mismo criterio para las cargas del notificador (validaciones en PROCESANDO que el proceso
+    // anterior no terminó y temporales de recepciones a medias).
+    const { ejecutarTareasArranqueCargas } = await import(
+      "@/modules/reporte-excel/infrastructure/arranque/tareasArranqueCargas"
+    );
+    void ejecutarTareasArranqueCargas(arranque);
   }
 }

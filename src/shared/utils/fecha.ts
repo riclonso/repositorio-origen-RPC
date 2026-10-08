@@ -43,6 +43,17 @@ export function formatearFechaCalendario(fecha: Date): string {
   return FORMATEADOR_FECHA_CALENDARIO.format(fecha);
 }
 
+// RF-38: "DD-MM-AAAA HH:mm:ss" en hora de Chile, SIN coma (el de `formatearFechaHora` lleva coma y no
+// sirve como valor de una celda CSV sin comillas). Lo usa la columna "Fecha y hora de notificación".
+export function formatearFechaHoraSegundosChile(instante: Date): string {
+  const pared = instanteAParedChile(instante);
+  const dosDigitos = (numero: number) => String(numero).padStart(2, "0");
+  return (
+    `${dosDigitos(pared.getUTCDate())}-${dosDigitos(pared.getUTCMonth() + 1)}-${pared.getUTCFullYear()} ` +
+    `${dosDigitos(pared.getUTCHours())}:${dosDigitos(pared.getUTCMinutes())}:${dosDigitos(pared.getUTCSeconds())}`
+  );
+}
+
 // --- Conversión entre instantes reales y la hora "de pared" de Chile ---
 //
 // Las fechas de una ventana de carga se guardan como hora de pared de Chile escrita en UTC

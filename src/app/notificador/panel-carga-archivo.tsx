@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState, ViewTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, ViewTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type {
-  CargaArchivoResumenConPublicacion,
-  ErrorCargaArchivo,
+import {
+  TAMANO_MAXIMO_ARCHIVO_CARGA,
+  TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO,
+  type CargaArchivoResumenConPublicacion,
+  type ErrorCargaArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import { useRefrescoPeriodico } from "@/shared/hooks/useRefrescoPeriodico";
+import { useSubidaConProgreso } from "@/shared/hooks/useSubidaConProgreso";
 import { rechazoPosteriorAAprobacion } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import type {
   EstadoSolicitudReemplazoCarga,
@@ -84,6 +88,11 @@ export type CombinacionCargaVista = {
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
+
+// RF-38: cada cuánto se consulta una carga en validación (solo con la pestaña visible).
+const INTERVALO_CONSULTA_VALIDACION_MS = 5_000;
+// Errores seguidos (distintos de 404) tras los que se deja de consultar y se avisa.
+const MAXIMO_FALLOS_CONSULTA_VALIDACION = 3;
 
 function formatearFechaHoraIso(iso: string): string {
   return formatearFechaHora(new Date(iso));
@@ -193,7 +202,17 @@ type EstadoTarjetaCombinacion = {
   cargaPendienteDecision: CargaResumenVista | null;
   solicitudPendienteDeCargaPendiente: boolean;
   intentosFallidos: CargaResumenVista[];
+  // RF-38: la carga más reciente de la combinación, si su archivo todavía se está validando.
+  cargaProcesando: CargaResumenVista | null;
 };
+
+// RF-38: el intento más reciente (por `createdAt`) de la combinación, si está en `PROCESANDO`.
+function cargaEnValidacion(cargas: CargaResumenVista[], ventanaCargaId: string): CargaResumenVista | null {
+  const masReciente = cargas
+    .filter((carga) => carga.ventanaCargaId === ventanaCargaId)
+    .reduce<CargaResumenVista | null>((actual, carga) => (!actual || carga.createdAt > actual.createdAt ? carga : actual), null);
+  return masReciente?.estado === "PROCESANDO" ? masReciente : null;
+}
 
 // Deriva, sin consultas nuevas, el estado de la tarjeta de una combinación a partir de lo que el
 // panel ya tiene cargado. Se consideran TODAS las solicitudes de la carga (no solo la primera): si
@@ -232,7 +251,26 @@ function derivarEstadoTarjeta(
     intentosFallidos: cargas.filter(
       (carga) => carga.ventanaCargaId === ventanaCargaId && carga.estado === "CON_ERRORES",
     ),
+    cargaProcesando: cargaEnValidacion(cargas, ventanaCargaId),
   };
+}
+
+// RF-38: aviso mientras el servidor valida el archivo recién subido.
+function AvisoValidando() {
+  return (
+    <div role="status" className="rounded-md border border-gob-accent bg-gob-warning-fondo px-3 py-3 text-sm text-gob-tertiary">
+      <p className="font-semibold">Validando archivo…</p>
+      <p className="mt-1 text-gob-gray-a">Puede tardar algunos minutos; puedes salir de esta página y volver.</p>
+    </div>
+  );
+}
+
+// Validación en el cliente antes de enviar (el servidor vuelve a exigir ambas cosas).
+function errorArchivoAntesDeSubir(archivo: File): string | null {
+  if (!archivo.name.toLowerCase().endsWith(".xlsx")) return "El archivo debe ser Excel (.xlsx)";
+  if (archivo.size > TAMANO_MAXIMO_ARCHIVO_CARGA) return `El archivo no puede superar los ${TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO}`;
+  if (archivo.size === 0) return "El archivo está vacío. Selecciona un archivo con datos";
+  return null;
 }
 
 // Aviso de que la tarjeta admite subir el archivo de reemplazo, con el texto según qué lo habilita.
@@ -526,6 +564,9 @@ type TarjetaCargaArchivoProps = {
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`), visible en los tres
   // estados de la tarjeta.
   avisoMensajes: ReactNode;
+  // RF-38: carga de la combinación cuyo archivo se está validando (al recargar la página).
+  cargaProcesando: CargaResumenVista | null;
+  // Se invoca cuando la validación termina (no al recibir el 202), con el mismo resultado de antes.
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onSolicitudReemplazoEnviada: () => void;
 };
@@ -544,40 +585,99 @@ function TarjetaCargaArchivo({
   solicitudPendienteDeCargaPendiente,
   reapertura,
   avisoMensajes,
+  cargaProcesando,
   onSubidaExitosa,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaArchivoProps) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
   const [errorSubida, setErrorSubida] = useState<string | null>(null);
+  // RF-38: id de la carga recién subida (202) cuya validación se espera; al recargar la página, la que
+  // venga en `PROCESANDO` desde el servidor.
+  const [idSubido, setIdSubido] = useState<string | null>(null);
+  // La consulta periódica se corta si la carga ya no existe (404) o tras varios errores seguidos.
+  const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
+  const terminadasRef = useRef<Set<string>>(new Set());
+  const fallosConsultaRef = useRef(0);
+  const { subir, progreso } = useSubidaConProgreso();
 
-  const idBase = `carga-${claveCombinacion(combinacion)}`;
+  const idEnValidacion = idSubido ?? cargaProcesando?.id ?? null;
+  const claveTarjeta = claveCombinacion(combinacion);
+
+  const idBase = `carga-${claveTarjeta}`;
   const idTitulo = `${idBase}-titulo`;
   const idArchivo = `${idBase}-archivo`;
 
+  function registrarFalloConsulta() {
+    fallosConsultaRef.current += 1;
+    if (fallosConsultaRef.current >= MAXIMO_FALLOS_CONSULTA_VALIDACION) {
+      setErrorConsulta("No pudimos consultar el estado de la validación. Recarga la página en unos minutos.");
+    }
+  }
+
+  // Consulta la carga en validación cada 5 s (solo con la pestaña visible). Al terminar, entrega el
+  // mismo resultado que antes entregaba la subida (errores o el modal "Finalizar y enviar").
+  useRefrescoPeriodico(
+    async (senal) => {
+      if (!idEnValidacion) return;
+      try {
+        const respuesta = await fetch(`/api/notificador/cargas/${idEnValidacion}`, { signal: senal });
+        if (respuesta.status === 404) {
+          setIdSubido(null);
+          setErrorConsulta("El archivo que se estaba validando ya no está disponible. Recarga la página.");
+          return;
+        }
+        if (!respuesta.ok) {
+          registrarFalloConsulta();
+          return;
+        }
+        fallosConsultaRef.current = 0;
+        const { carga } = (await respuesta.json()) as { carga: CargaDetalleVista };
+        if (carga.estado === "PROCESANDO" || terminadasRef.current.has(carga.id)) return;
+        terminadasRef.current.add(carga.id);
+        setIdSubido(null);
+        onSubidaExitosa(claveTarjeta, carga);
+      } catch {
+        // Una consulta abortada (cambio de clave, pestaña cerrada) no cuenta como fallo.
+        if (!senal.aborted) registrarFalloConsulta();
+      }
+    },
+    errorConsulta ? null : idEnValidacion,
+    INTERVALO_CONSULTA_VALIDACION_MS,
+  );
+
   async function subirArchivo() {
     if (!archivo) return;
+
+    const errorPrevio = errorArchivoAntesDeSubir(archivo);
+    if (errorPrevio) {
+      setErrorSubida(errorPrevio);
+      return;
+    }
 
     setSubiendo(true);
     setErrorSubida(null);
 
     try {
-      const formData = new FormData();
-      formData.set("formatoExcelId", combinacion.formatoExcelId);
-      formData.set("anio", combinacion.anio.toString());
-      formData.set("archivo", archivo);
+      // RF-38: el archivo viaja como cuerpo crudo; formato y año en la URL, el nombre en una cabecera.
+      const parametros = new URLSearchParams({
+        formatoExcelId: combinacion.formatoExcelId,
+        anio: combinacion.anio.toString(),
+      });
+      const respuesta = await subir(`/api/notificador/cargas?${parametros.toString()}`, archivo, {
+        "Content-Type": "application/octet-stream",
+        "X-Nombre-Archivo": encodeURIComponent(archivo.name),
+      });
 
-      const respuesta = await fetch("/api/notificador/cargas", { method: "POST", body: formData });
-
-      if (!respuesta.ok) {
-        const datos = await respuesta.json().catch(() => null);
-        setErrorSubida(datos?.error ?? MENSAJE_ERROR_GENERICO);
+      if (respuesta.estado !== 202) {
+        const cuerpo = respuesta.cuerpo as { error?: string } | null;
+        setErrorSubida(cuerpo?.error ?? MENSAJE_ERROR_GENERICO);
         return;
       }
 
-      const datos = (await respuesta.json()) as { carga: CargaDetalleVista };
+      const { carga } = respuesta.cuerpo as { carga: { id: string } };
       setArchivo(null);
-      onSubidaExitosa(claveCombinacion(combinacion), datos.carga);
+      setIdSubido(carga.id);
     } catch {
       setErrorSubida(MENSAJE_ERROR_GENERICO);
     } finally {
@@ -663,14 +763,25 @@ function TarjetaCargaArchivo({
       ) : null}
 
       <div className="mt-4 flex flex-col gap-4">
-        <CargadorArchivo
-          id={idArchivo}
-          archivo={archivo}
-          extension=".xlsx"
-          descripcionTipo="Excel (.xlsx)"
-          disabled={subiendo}
-          onArchivo={(archivo) => setArchivo(archivo)}
-        />
+        {errorConsulta ? (
+          <p role="alert" className="text-sm font-medium text-gob-danger">
+            {errorConsulta}
+          </p>
+        ) : null}
+
+        {idEnValidacion && !errorConsulta ? <AvisoValidando /> : null}
+
+        {idEnValidacion ? null : (
+          <CargadorArchivo
+            id={idArchivo}
+            archivo={archivo}
+            extension=".xlsx"
+            descripcionTipo="Excel (.xlsx)"
+            tamanoMaximoTexto={TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO}
+            disabled={subiendo}
+            onArchivo={(archivo) => setArchivo(archivo)}
+          />
+        )}
 
         {errorSubida ? (
           <p role="alert" className="text-sm font-medium text-gob-danger">
@@ -694,9 +805,9 @@ function TarjetaCargaArchivo({
         </a>
         <Boton
           onClick={() => void subirArchivo()}
-          disabled={!archivo}
+          disabled={!archivo || idEnValidacion !== null}
           cargando={subiendo}
-          textoCargando="Subiendo y validando..."
+          textoCargando={progreso === null ? "Subiendo archivo…" : `Subiendo archivo… ${progreso} %`}
           className="w-fit"
         >
           <IconoSubir className="shrink-0" />
@@ -902,6 +1013,7 @@ export function PanelCargaArchivo({
               solicitudPendienteDeCargaPendiente={estadoTarjeta.solicitudPendienteDeCargaPendiente}
               reapertura={reapertura}
               avisoMensajes={avisoMensajesDeCombinacion(combinacion, mensajesPorVentana)}
+              cargaProcesando={estadoTarjeta.cargaProcesando}
               onSubidaExitosa={registrarResultado}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
             />
