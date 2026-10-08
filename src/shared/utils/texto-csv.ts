@@ -28,7 +28,7 @@ export function decodificarTextoCsv(contenido: Uint8Array): string {
 export type CodificacionCsv = "utf-8" | "windows-1252";
 
 // RF-37: misma decisión que `decodificarTextoCsv` (UTF-8 estricto; si falla, Windows-1252), pero
-// sobre un flujo de bytes que no cabe en memoria (archivos de hasta 200 MB). Recorre los trozos con
+// sobre un flujo de bytes que no cabe en memoria (archivos de hasta 300 MB). Recorre los trozos con
 // un `TextDecoder` estricto en modo `stream` (una secuencia multibyte partida entre dos trozos no es
 // un error) y descarta el texto decodificado: solo importa si alguna secuencia es inválida. El BOM
 // es UTF-8 válido, así que no altera la decisión. Sin E/S propia: el llamador aporta los trozos.

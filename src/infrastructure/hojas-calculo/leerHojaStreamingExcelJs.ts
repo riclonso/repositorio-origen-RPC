@@ -57,7 +57,7 @@ const RUTA_HOJA_POR_DEFECTO = "xl/worksheets/sheet1.xml";
 
 // Tope de bytes DESCOMPRIMIDOS de cada parte que los parsers de exceljs retienen completa en memoria
 // (relaciones, libro, estilos y textos compartidos). Defensa contra una bomba ZIP: un archivo de
-// 200 MB comprimido podría declarar gigabytes de `sharedStrings.xml`. La hoja NO lleva este tope:
+// 300 MB comprimido podría declarar gigabytes de `sharedStrings.xml`. La hoja NO lleva este tope:
 // se recorre fila a fila sin retenerla. Su volumen lo acota el tope de filas del procesamiento o,
 // si quien lee lo pide, `topeBytesHoja`.
 export const TOPE_BYTES_PARTE_XLSX = 256 * 1024 * 1024;

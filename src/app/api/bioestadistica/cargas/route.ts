@@ -102,7 +102,7 @@ async function procesarEnSegundoPlano(
 
 // RF-37: subida de un archivo de Defunciones o Egresos para un año. El CUERPO es el binario crudo
 // (`fetch(url, { body: archivo })`), leído en streaming desde `request.body`: nunca `formData()`, que
-// cargaría hasta 200 MB en memoria. `anio` y `tipoArchivo` viajan en la URL y el nombre original en la
+// cargaría hasta 300 MB en memoria. `anio` y `tipoArchivo` viajan en la URL y el nombre original en la
 // cabecera `X-Nombre-Archivo` (codificado con `encodeURIComponent`). Responde 202 con la carga en
 // PROCESANDO; el resto ocurre en `after()`.
 //

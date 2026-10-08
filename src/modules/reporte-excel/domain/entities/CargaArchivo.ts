@@ -62,8 +62,8 @@ export const TIPOS_ERROR_DE_COLUMNA: ReadonlySet<TipoErrorCargaArchivo> = new Se
 export const TOPE_FILAS_DATOS = 500_000;
 
 // RF-38: tamaño máximo del archivo del notificador, medido mientras se recibe.
-export const TAMANO_MAXIMO_ARCHIVO_CARGA = 100 * 1024 * 1024;
-export const TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO = "100 MB";
+export const TAMANO_MAXIMO_ARCHIVO_CARGA = 300 * 1024 * 1024;
+export const TAMANO_MAXIMO_ARCHIVO_CARGA_TEXTO = "300 MB";
 
 // RF-38: un `PROCESANDO` con más antigüedad que esto se considera interrumpido (respaldo por si la
 // tarea en segundo plano quedó colgada sin que el proceso se reiniciara).

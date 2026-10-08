@@ -52,7 +52,7 @@ const schema = z
       (valor) => (valor === "" ? undefined : valor),
       z.email("BUZON_COMPARTIDO_REVISOR_EMAIL debe ser un correo válido").optional(),
     ),
-    // RF-37: directorio donde se guardan los archivos de Bioestadística (hasta 200 MB cada uno).
+    // RF-37: directorio donde se guardan los archivos de Bioestadística (hasta 300 MB cada uno).
     // OPCIONAL por el mismo motivo que el grupo SMTP (si fuera obligatoria rompería `next build`):
     // sin ella se usa `<cwd>/almacenamiento/bioestadistica` (ver `directorioArchivosBioestadistica`).
     // En producción debe apuntar a un volumen persistente incluido en los respaldos.
@@ -63,7 +63,7 @@ const schema = z
         .refine((valor) => RUTA_ABSOLUTA.test(valor), "DIRECTORIO_ARCHIVOS_BIOESTADISTICA debe ser una ruta absoluta")
         .optional(),
     ),
-    // RF-38: directorio de los archivos que suben los notificadores (hasta 100 MB cada uno). OPCIONAL
+    // RF-38: directorio de los archivos que suben los notificadores (hasta 300 MB cada uno). OPCIONAL
     // por el mismo motivo: sin ella se usa `<cwd>/almacenamiento/cargas` (ver
     // `directorioArchivosCargas`). En producción, un volumen persistente incluido en los respaldos.
     DIRECTORIO_ARCHIVOS_CARGAS: z.preprocess(

@@ -55,7 +55,7 @@ async function leerPrimeraLinea(ruta: string, codificacion: CodificacionCsv): Pr
   }
 }
 
-// RF-37: lectura en streaming de un CSV de formato libre (hasta 200 MB) sin cargarlo en memoria.
+// RF-37: lectura en streaming de un CSV de formato libre (hasta 300 MB) sin cargarlo en memoria.
 //  1. Primera pasada: decide UTF-8 o Windows-1252 (`detectarCodificacionCsvStreaming`).
 //  2. Detecta el separador sobre la primera línea (`detectarSeparadorCsv`).
 //  3. Segunda pasada: archivo → decodificador → `@fast-csv/parse`, registro a registro.

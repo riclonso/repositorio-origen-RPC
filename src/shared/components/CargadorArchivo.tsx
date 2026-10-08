@@ -12,7 +12,7 @@ type CargadorArchivoProps = {
   // vuelve a exigir el tipo del formato.
   extension?: string;
   descripcionTipo?: string;
-  // Tamaño máximo visible en la etiqueta (RF-37: Bioestadística admite 200 MB). Solo informativo:
+  // Tamaño máximo visible en la etiqueta (RF-37: Bioestadística admite 300 MB). Solo informativo:
   // el servidor vuelve a medir el tamaño real.
   tamanoMaximoTexto?: string;
   archivo?: File | null;

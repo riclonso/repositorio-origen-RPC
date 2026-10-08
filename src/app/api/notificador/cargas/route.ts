@@ -172,7 +172,7 @@ async function procesarEnSegundoPlano(
 
 // RF-38: subida de un archivo del notificador. El CUERPO es el binario crudo (`fetch`/XHR con
 // `body: archivo`), leído en streaming desde `request.body` directo a disco: nunca `formData()`, que
-// cargaría hasta 100 MB en memoria. `formatoExcelId` y `anio` viajan en la URL y el nombre original
+// cargaría hasta 300 MB en memoria. `formatoExcelId` y `anio` viajan en la URL y el nombre original
 // en la cabecera `X-Nombre-Archivo` (codificado con `encodeURIComponent`). Todo lo barato (asignación
 // del formato, ventana, decisión pendiente, reemplazo, procesamiento en curso) se revalida ANTES de
 // leer el cuerpo. Responde 202 con la carga en PROCESANDO; la validación ocurre en `after()`.

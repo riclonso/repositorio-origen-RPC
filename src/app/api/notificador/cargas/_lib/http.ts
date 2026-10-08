@@ -41,7 +41,7 @@ export const MENSAJE_DATOS_INVALIDOS = "Los datos enviados no son válidos";
 
 export const idCargaArchivoSchema = idRutaSchema;
 
-// RF-38: 100 MB, medido mientras se recibe (antes 10 MB, el mismo de la plantilla de formato).
+// RF-38: 300 MB, medido mientras se recibe (antes 10 MB, el mismo de la plantilla de formato).
 export const TAMANO_MAXIMO_ARCHIVO = TAMANO_MAXIMO_ARCHIVO_CARGA;
 
 export type CargaArchivoDTO = Omit<CargaArchivo, "createdAt" | "updatedAt" | "vistoBuenoEn" | "finalizadaEn"> & {

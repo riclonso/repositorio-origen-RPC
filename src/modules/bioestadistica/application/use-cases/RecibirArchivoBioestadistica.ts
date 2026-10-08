@@ -126,7 +126,7 @@ export async function recibirArchivoBioestadistica(
 
   await liberarProcesamientosExpirados(datos, dependencias);
 
-  // Antes de recibir 200 MB: si ya hay un procesamiento vigente, la subida se rechazaría igual.
+  // Antes de recibir 300 MB: si ya hay un procesamiento vigente, la subida se rechazaría igual.
   const hayProcesando = await dependencias.repositorioCargas.existeProcesandoVigente(
     datos.usuarioId,
     datos.anio,

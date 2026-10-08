@@ -1,5 +1,5 @@
 // RF-37: archivo de Defunciones o Egresos reportado por una persona con perfil Bioestadística para un
-// año. Formato libre (.xlsx o .csv), hasta 200 MB, guardado en disco y procesado de forma asíncrona:
+// año. Formato libre (.xlsx o .csv), hasta 300 MB, guardado en disco y procesado de forma asíncrona:
 // recibido → `PROCESANDO` → `ACTIVA` (o `FALLIDA`). Al activarse un reemplazo autorizado, la anterior
 // pasa a `REEMPLAZADA` (desactivada, conserva sus filas y su archivo).
 import {
@@ -35,8 +35,8 @@ export const MENSAJES_MOTIVO_FALLO: Record<MotivoFalloCargaBioestadistica, strin
 const BYTES_POR_MB = 1024 * 1024;
 
 // Límites de recepción y procesamiento (defensa contra denegación de servicio).
-export const TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA = 200 * BYTES_POR_MB;
-export const TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA_TEXTO = "200 MB";
+export const TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA = 300 * BYTES_POR_MB;
+export const TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA_TEXTO = "300 MB";
 export const TOPE_FILAS_BIOESTADISTICA = 2_000_000;
 export const MAXIMO_COLUMNAS_BIOESTADISTICA = 500;
 export const TAMANO_LOTE_FILAS_BIOESTADISTICA = 5000;

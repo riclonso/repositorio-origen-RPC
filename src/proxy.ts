@@ -46,7 +46,7 @@ export async function proxy(request: NextRequest) {
 // petición, Next copia el cuerpo en memoria con un límite por defecto de 10 MB y lo TRUNCA sin dar
 // error (`proxyClientMaxBodySize`, ver
 // node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/proxyClientMaxBodySize.md):
-// agregar `/api/bioestadistica` corrompería en silencio las subidas de hasta 200 MB. Los Route
+// agregar `/api/bioestadistica` corrompería en silencio las subidas de hasta 300 MB. Los Route
 // Handlers se protegen con su propio guard (`exigirBioestadistica`, `exigirAdminORevisor`, ...).
 export const config = {
   matcher: ["/dashboard/:path*", "/notificador/:path*", "/revisor/:path*", "/bioestadistica/:path*"],

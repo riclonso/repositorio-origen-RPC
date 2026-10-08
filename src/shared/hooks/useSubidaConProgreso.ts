@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type RespuestaSubida = { estado: number; cuerpo: unknown };
 
 // RF-38: sube un archivo como CUERPO CRUDO (no multipart) con `XMLHttpRequest`, que a diferencia de
-// `fetch` informa el avance de la subida: con archivos de hasta 100 MB el porcentaje es
+// `fetch` informa el avance de la subida: con archivos de hasta 300 MB el porcentaje es
 // imprescindible. `progreso` es 0..100 mientras se sube y `null` en reposo. Al desmontar se aborta.
 // Las cabeceras viajan tal cual (el nombre del archivo debe ir ya con `encodeURIComponent`).
 export function useSubidaConProgreso(): {

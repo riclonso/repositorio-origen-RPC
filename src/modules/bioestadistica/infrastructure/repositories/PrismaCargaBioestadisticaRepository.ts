@@ -81,7 +81,7 @@ function aCarga(registro: RegistroCarga): CargaBioestadistica {
     establecimientoNombre: registro.establecimiento.nombre,
     nombreArchivoOriginal: registro.nombreArchivoOriginal,
     tipoContenidoArchivo: registro.tipoContenidoArchivo,
-    // 200 MB como máximo: cabe sin pérdida en un `number`.
+    // 300 MB como máximo: cabe sin pérdida en un `number`.
     tamanoBytes: Number(registro.tamanoBytes),
     sha256: registro.sha256,
     encabezados: registro.encabezados,
