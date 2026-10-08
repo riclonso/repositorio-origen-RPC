@@ -154,7 +154,7 @@ async function generarCsv(
 // cargan completos en memoria. Se pierde (y para eso existe "Descargar original"): formatos, otras
 // hojas, fórmulas (queda el valor), combinación visual, validaciones, comentarios, hipervínculos
 // (queda el texto), paneles inmovilizados e imágenes.
-export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(referencia: string): string }): GeneradorDescargaCarga {
+export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(referencia: string): string; fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip> }): GeneradorDescargaCarga {
   return {
     async generar({ fuente, tipoContenido, fechaNotificacion }) {
       if (tipoContenido === TIPO_CONTENIDO_CSV) {
@@ -166,7 +166,7 @@ export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(refer
       }
 
       const fuenteXlsx: FuenteXlsx =
-        "contenido" in fuente ? { buffer: fuente.contenido } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
+        "contenido" in fuente ? { buffer: fuente.contenido } : almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(fuente.referencia) } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
       return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion), tipoContenido: TIPO_CONTENIDO_XLSX };
     },
   };

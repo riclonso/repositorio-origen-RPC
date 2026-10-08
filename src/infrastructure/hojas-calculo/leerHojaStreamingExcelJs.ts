@@ -73,7 +73,7 @@ const MAXIMO_COLUMNAS_HOJA = 16_384;
 
 // `{ buffer }` (RF-38): soporte permanente de las cargas del notificador anteriores al almacenamiento en
 // disco, cuyo binario sigue en la base.
-export type FuenteXlsx = string | { ruta: string } | { buffer: Buffer };
+export type FuenteXlsx = string | { ruta: string } | { buffer: Buffer } | { fuenteZip: FuenteZip };
 
 // Todas las opciones de RF-38 son ADITIVAS: sin ellas (como llama Bioestadística) el lector se comporta
 // exactamente como en RF-37.
@@ -144,6 +144,12 @@ function crearContadorConTope(rutaParte: string, topeBytes: number): Transform {
 }
 
 function crearFuenteZip(origen: FuenteXlsx, abiertas: Readable[]): FuenteZip {
+  if (typeof origen === "object" && "fuenteZip" in origen) {
+    return {
+      stream(offset, length) { const lectura = origen.fuenteZip.stream(offset, length); abiertas.push(lectura); return lectura; },
+      size: () => origen.fuenteZip.size(),
+    };
+  }
   if (typeof origen === "object" && "buffer" in origen) {
     const contenido = origen.buffer;
     return {

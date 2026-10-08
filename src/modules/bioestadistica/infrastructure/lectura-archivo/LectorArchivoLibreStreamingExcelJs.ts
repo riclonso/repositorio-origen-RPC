@@ -16,7 +16,7 @@ function celdaATexto(valor: ValorCeldaPrimitivo): string {
   return String(valor);
 }
 
-async function* filasXlsx(ruta: string): AsyncGenerator<FilaArchivoLibre> {
+async function* filasXlsx(ruta: import("@/infrastructure/hojas-calculo/leerHojaStreamingExcelJs").FuenteXlsx): AsyncGenerator<FilaArchivoLibre> {
   for await (const fila of recorrerFilasPrimeraHojaXlsx(ruta)) {
     if (fila.numeroFila <= 1) continue;
     yield { numeroFila: fila.numeroFila, valores: fila.valores };
@@ -37,6 +37,7 @@ async function* filasCsv(ruta: string): AsyncGenerator<FilaArchivoLibre> {
 // una ruta local, para no conocer el directorio base.
 export function crearLectorArchivoLibreStreaming(almacen: {
   rutaAbsoluta(referencia: string): string;
+  fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip>;
 }): LectorArchivoLibreStreaming {
   return {
     async leerEncabezados(referencia: string, formato: FormatoArchivoBioestadistica): Promise<string[]> {
@@ -49,15 +50,16 @@ export function crearLectorArchivoLibreStreaming(almacen: {
 
       // Si la fila 1 está vacía exceljs no la emite: la primera emitida sería otra, y entonces no
       // hay encabezados válidos.
-      for await (const fila of recorrerFilasPrimeraHojaXlsx(ruta)) {
+      for await (const fila of recorrerFilasPrimeraHojaXlsx(almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(referencia) } : ruta)) {
         return fila.numeroFila === 1 ? fila.valores.map(celdaATexto) : [];
       }
       return [];
     },
 
-    recorrerFilas(referencia: string, formato: FormatoArchivoBioestadistica): AsyncIterable<FilaArchivoLibre> {
+    async *recorrerFilas(referencia: string, formato: FormatoArchivoBioestadistica): AsyncIterable<FilaArchivoLibre> {
       const ruta = almacen.rutaAbsoluta(referencia);
-      return formato === "CSV" ? filasCsv(ruta) : filasXlsx(ruta);
+      if (formato === "CSV") yield* filasCsv(ruta);
+      else yield* filasXlsx(almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(referencia) } : ruta);
     },
   };
 }

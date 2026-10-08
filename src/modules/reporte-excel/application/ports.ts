@@ -38,7 +38,7 @@ export type ArchivoAbierto = {
 export interface AlmacenArchivosCarga {
   // Copia el flujo a un temporal contando bytes (corta al superar `limiteBytes`) y calculando el
   // SHA-256 mientras recibe. Ante cualquier corte, el temporal ya queda eliminado.
-  guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number): Promise<ResultadoGuardadoTemporal>;
+  guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number, cifrado?: { usuarioId: string; excel: boolean; archivoId: string }): Promise<ResultadoGuardadoTemporal>;
   // Mueve el temporal a `<anio>/<cargaId>.<extension>` y devuelve su referencia.
   moverDefinitivo(referenciaTemporal: string, anio: number, cargaId: string, extension: "xlsx" | "csv"): Promise<string>;
   // `null` si el archivo ya no existe.

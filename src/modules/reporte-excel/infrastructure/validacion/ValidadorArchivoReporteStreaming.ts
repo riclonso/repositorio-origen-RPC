@@ -87,10 +87,12 @@ export async function validarXlsxEnStreaming(
 // resolver una referencia a una ruta local, para no conocer el directorio base.
 export function crearValidadorArchivoReporteStreaming(almacen: {
   rutaAbsoluta(referencia: string): string;
+  fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip>;
 }): ValidadorArchivoReporte {
   return {
-    validar(fuente, formato, ventana) {
-      return validarXlsxEnStreaming({ ruta: almacen.rutaAbsoluta(fuente.referencia) }, formato, ventana);
+    async validar(fuente, formato, ventana) {
+      const origen = almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(fuente.referencia) } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
+      return validarXlsxEnStreaming(origen, formato, ventana);
     },
   };
 }

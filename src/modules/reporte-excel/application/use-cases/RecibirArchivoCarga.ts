@@ -138,7 +138,8 @@ export async function recibirArchivoCarga(
 
   if (!datos.cuerpo) return { ok: false, motivo: "ARCHIVO_VACIO" };
 
-  const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_CARGA);
+  const cargaId = crypto.randomUUID();
+  const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_CARGA, { usuarioId: datos.usuarioId, archivoId: cargaId, excel: true });
   if (!guardado.ok) {
     return { ok: false, motivo: guardado.motivo === "VACIO" ? "ARCHIVO_VACIO" : "ARCHIVO_DEMASIADO_GRANDE" };
   }
@@ -150,7 +151,6 @@ export async function recibirArchivoCarga(
     const tipoContenido = dependencias.detectarTipoContenido(datos.nombreArchivoOriginal, guardado.primerosBytes);
     if (tipoContenido !== TIPO_CONTENIDO_XLSX_CARGA) return { ok: false, motivo: "ARCHIVO_NO_COINCIDE" };
 
-    const cargaId = crypto.randomUUID();
     referenciaVigente = await dependencias.almacen.moverDefinitivo(referenciaVigente, ventana.anio, cargaId, "xlsx");
 
     const carga = await dependencias.repositorio.crearProcesando({

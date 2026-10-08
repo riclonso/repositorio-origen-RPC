@@ -3,6 +3,8 @@ import { createReadStream } from "node:fs";
 import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import type { FuenteZip } from "unzipper";
+import { abrirFuenteExcelCifrado, crearEscritorExcelCifrado, clavesExcelDesdeEntorno, type ClavesExcel } from "@/infrastructure/cifrado/CifradoExcel";
 import { logger } from "@/infrastructure/logging/logger";
 // Los errores de `fs` llevan rutas en el mensaje: en los logs, solo nombre y código.
 import { detalleErrorSeguro } from "@/infrastructure/logging/detalleErrorSeguro";
@@ -35,9 +37,10 @@ export type ResultadoLimpiezaTemporales = { eliminados: number; fallidos: number
 // Satisface por tipado estructural los puertos `AlmacenArchivos` (Bioestadística) y
 // `AlmacenArchivosCarga` (reporte-excel).
 export type AlmacenArchivosDisco = {
+  // Con contexto Excel, cifra incluso el temporal. Tamaño, firma y SHA-256 son del original.
   // Copia el flujo a un temporal contando bytes (corta al superar `limiteBytes`) y calculando el
   // SHA-256 mientras recibe. Ante cualquier corte, el temporal ya queda eliminado.
-  guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number): Promise<ResultadoGuardadoTemporalDisco>;
+  guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number, cifrado?: { usuarioId: string; excel: boolean; archivoId: string }): Promise<ResultadoGuardadoTemporalDisco>;
   moverDefinitivo(referenciaTemporal: string, anio: number, cargaId: string, extension: "xlsx" | "csv"): Promise<string>;
   // `null` si el archivo ya no existe.
   abrirLectura(referencia: string): Promise<ArchivoAbiertoDisco | null>;
@@ -45,6 +48,7 @@ export type AlmacenArchivosDisco = {
   eliminar(referencia: string): Promise<void>;
   // Ruta absoluta de una referencia ya validada. Solo para los lectores de infraestructura.
   rutaAbsoluta(referencia: string): string;
+  fuenteXlsx(referencia: string): Promise<FuenteZip>;
   // Al arrancar: elimina los `tmp/*.part` modificados ANTES de `instante` (recepciones que el proceso
   // anterior no alcanzó a terminar). Nunca lanza: cada fallo se registra en errores.txt y se sigue.
   eliminarTemporalesAnterioresA(instante: Date): Promise<ResultadoLimpiezaTemporales>;
@@ -57,6 +61,7 @@ export type ConfiguracionAlmacenDisco = {
   etiqueta: string;
   // Cuántos bytes iniciales se devuelven para revisar la firma del archivo.
   bytesPrimeros: number;
+  obtenerClavesExcel?: () => ClavesExcel;
 };
 
 function codigoError(error: unknown): string | undefined {
@@ -88,8 +93,10 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
   async function guardarTemporal(
     origen: ReadableStream<Uint8Array>,
     limiteBytes: number,
+    cifrado?: { usuarioId: string; excel: boolean; archivoId: string },
   ): Promise<ResultadoGuardadoTemporalDisco> {
-    const referenciaTemporal = `${SUBDIRECTORIO_TEMPORAL}/${randomUUID()}${EXTENSION_TEMPORAL}`;
+    const claves = cifrado?.excel ? (configuracion.obtenerClavesExcel ?? clavesExcelDesdeEntorno)() : null;
+    const referenciaTemporal = `${SUBDIRECTORIO_TEMPORAL}/${randomUUID()}${EXTENSION_TEMPORAL}${claves ? ".enc" : ""}`;
     const destino = rutaAbsoluta(referenciaTemporal);
     await asegurarDirectorio(path.dirname(destino));
 
@@ -101,7 +108,9 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
     let tamanoBytes = 0;
     let completado = false;
 
+    let escritor: Awaited<ReturnType<typeof crearEscritorExcelCifrado>> | undefined;
     try {
+      if (claves && cifrado) escritor = await crearEscritorExcelCifrado(archivo, cifrado.usuarioId, claves, cifrado.archivoId);
       for (;;) {
         const { done, value } = await lector.read();
         if (done) break;
@@ -125,11 +134,20 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
         }
 
         // Escritura secuencial: el siguiente trozo no se lee hasta escribir este (contrapresión).
-        await archivo.write(value);
+        if (escritor) await escritor.escribir(value);
+        else {
+          let offset = 0;
+          while (offset < value.byteLength) {
+            const { bytesWritten } = await archivo.write(value, offset, value.byteLength - offset);
+            if (!bytesWritten) throw new Error("Escritura de archivo interrumpida");
+            offset += bytesWritten;
+          }
+        }
       }
 
       if (tamanoBytes === 0) return { ok: false, motivo: "VACIO" };
 
+      if (escritor) await escritor.finalizar();
       completado = true;
       return {
         ok: true,
@@ -139,6 +157,7 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
         primerosBytes: Buffer.concat(primerosBytes),
       };
     } finally {
+      escritor?.destruir();
       lector.releaseLock();
       // Un fallo al cerrar no debe reemplazar el error (o el resultado) original del bloque `try`: se
       // registra y se sigue. Si el archivo no se completó, igual se intenta eliminar.
@@ -161,7 +180,7 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
       throw new Error("Datos inválidos para ubicar el archivo definitivo");
     }
 
-    const referencia = `${anio}/${cargaId}.${extension}`;
+    const referencia = `${anio}/${cargaId}.${extension}${referenciaTemporal.endsWith(".enc") ? ".enc" : ""}`;
     const destino = rutaAbsoluta(referencia);
     await asegurarDirectorio(path.dirname(destino));
     await rename(rutaAbsoluta(referenciaTemporal), destino);
@@ -175,12 +194,22 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
       const informacion = await stat(ruta);
       if (!informacion.isFile()) return null;
 
-      const flujo = Readable.toWeb(createReadStream(ruta)) as ReadableStream<Uint8Array>;
-      return { flujo, tamanoBytes: informacion.size };
+      const cifrado = await abrirFuenteExcelCifrado(ruta, configuracion.obtenerClavesExcel ?? clavesExcelDesdeEntorno, referencia.endsWith(".enc"));
+      const flujo = Readable.toWeb(cifrado ? cifrado.stream(0) : createReadStream(ruta)) as ReadableStream<Uint8Array>;
+      return { flujo, tamanoBytes: cifrado ? await cifrado.size() : informacion.size };
     } catch (error) {
       if (codigoError(error) === "ENOENT") return null;
       throw error;
     }
+  }
+
+  async function fuenteXlsx(referencia: string): Promise<FuenteZip> {
+    const ruta = rutaAbsoluta(referencia);
+    const cifrado = await abrirFuenteExcelCifrado(ruta, configuracion.obtenerClavesExcel ?? clavesExcelDesdeEntorno, referencia.endsWith(".enc"));
+    return cifrado ?? {
+      stream: (offset, length) => createReadStream(ruta, { start: offset, ...(length ? { end: offset + length } : {}) }),
+      size: async () => (await stat(ruta)).size,
+    };
   }
 
   async function eliminar(referencia: string): Promise<void> {
@@ -205,7 +234,7 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
     }
 
     const temporales = nombres.filter(
-      (nombre) => nombre.endsWith(EXTENSION_TEMPORAL) && FORMA_UUID.test(nombre.slice(0, -EXTENSION_TEMPORAL.length)),
+      (nombre) => FORMA_UUID.test(nombre.replace(/\.part(?:\.enc)?$/, "")) && /\.part(?:\.enc)?$/.test(nombre),
     );
 
     await Promise.all(
@@ -230,5 +259,5 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
     return resultado;
   }
 
-  return { guardarTemporal, moverDefinitivo, abrirLectura, eliminar, rutaAbsoluta, eliminarTemporalesAnterioresA };
+  return { guardarTemporal, moverDefinitivo, abrirLectura, eliminar, rutaAbsoluta, fuenteXlsx, eliminarTemporalesAnterioresA };
 }

@@ -147,7 +147,8 @@ export async function recibirArchivoBioestadistica(
 
   if (!datos.cuerpo) return { ok: false, motivo: "ARCHIVO_VACIO" };
 
-  const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA);
+  const cargaId = crypto.randomUUID();
+  const guardado = await dependencias.almacen.guardarTemporal(datos.cuerpo, TAMANO_MAXIMO_ARCHIVO_BIOESTADISTICA, { usuarioId: datos.usuarioId, archivoId: cargaId, excel: /\.xlsx$/i.test(datos.nombreArchivoOriginal) });
   if (!guardado.ok) {
     return { ok: false, motivo: guardado.motivo === "VACIO" ? "ARCHIVO_VACIO" : "ARCHIVO_DEMASIADO_GRANDE" };
   }
@@ -162,7 +163,6 @@ export async function recibirArchivoBioestadistica(
     const estructura = await validarEstructura(referenciaVigente, formato, dependencias.lector);
     if (!estructura.ok) return estructura;
 
-    const cargaId = crypto.randomUUID();
     referenciaVigente = await dependencias.almacen.moverDefinitivo(
       referenciaVigente,
       datos.anio,
