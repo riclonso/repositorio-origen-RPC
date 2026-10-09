@@ -88,6 +88,9 @@ export type FiltroListadoUsuarios = {
   // RF-30: id del establecimiento. Filtro de búsqueda: un id bien formado pero inexistente devuelve
   // una lista vacía.
   establecimiento?: string;
+  // Id de un formato de archivo asignado a la cuenta (`usuario_formato_excel`). Mismo criterio:
+  // un id inexistente devuelve una lista vacía.
+  formato?: string;
   activo?: boolean;
   pagina: number;
   tamano: number;

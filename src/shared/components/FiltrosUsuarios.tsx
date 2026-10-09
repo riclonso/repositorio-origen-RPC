@@ -18,6 +18,9 @@ const OPCION_TODOS_LOS_ESTABLECIMIENTOS: OpcionSelect = {
   etiqueta: "Todos los establecimientos",
 };
 
+// Formatos de archivo asignados a usuarios: también llegan por props, incluidos los inactivos.
+const OPCION_TODOS_LOS_FORMATOS: OpcionSelect = { valor: "", etiqueta: "Todos los formatos" };
+
 const OPCIONES_ESTADO = [
   { valor: "", etiqueta: "Todos los estados" },
   { valor: "true", etiqueta: "Activos" },
@@ -33,10 +36,12 @@ type FiltrosUsuariosProps = {
   terminoInicial: string;
   perfilInicial: string;
   establecimientoInicial: string;
+  formatoInicial: string;
   activoInicial: string;
   tamano: number;
   opcionesPerfil: OpcionSelect[];
   opcionesEstablecimiento: OpcionSelect[];
+  opcionesFormato: OpcionSelect[];
   rutaBase: string;
 };
 
@@ -46,10 +51,12 @@ export function FiltrosUsuarios({
   terminoInicial,
   perfilInicial,
   establecimientoInicial,
+  formatoInicial,
   activoInicial,
   tamano,
   opcionesPerfil,
   opcionesEstablecimiento,
+  opcionesFormato,
   rutaBase,
 }: FiltrosUsuariosProps) {
   const router = useRouter();
@@ -65,12 +72,14 @@ export function FiltrosUsuarios({
     const termino = String(datos.get("q") ?? "").trim();
     const perfil = String(datos.get("perfil") ?? "");
     const establecimiento = String(datos.get("establecimiento") ?? "");
+    const formato = String(datos.get("formato") ?? "");
     const activo = String(datos.get("activo") ?? "");
 
     const parametros = new URLSearchParams();
     if (termino) parametros.set("q", termino);
     if (perfil) parametros.set("perfil", perfil);
     if (establecimiento) parametros.set("establecimiento", establecimiento);
+    if (formato) parametros.set("formato", formato);
     if (activo) parametros.set("activo", activo);
     if (tamano !== FILTRO_LISTADO_POR_DEFECTO.tamano) {
       parametros.set("tamano", String(tamano));
@@ -92,7 +101,7 @@ export function FiltrosUsuarios({
       aria-busy={buscando || undefined}
       className="card-sistema mt-6 p-4"
     >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr]">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
         <CampoTexto
           id="filtro-q"
           name="q"
@@ -117,6 +126,14 @@ export function FiltrosUsuarios({
           etiqueta="Establecimiento"
           opciones={[OPCION_TODOS_LOS_ESTABLECIMIENTOS, ...opcionesEstablecimiento]}
           defaultValue={establecimientoInicial}
+        />
+
+        <CampoSelect
+          id="filtro-formato"
+          name="formato"
+          etiqueta="Formato de archivo"
+          opciones={[OPCION_TODOS_LOS_FORMATOS, ...opcionesFormato]}
+          defaultValue={formatoInicial}
         />
 
         <CampoSelect

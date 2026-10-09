@@ -9,7 +9,7 @@ const TAMANO_POR_DEFECTO = 20;
 const TAMANO_MAXIMO = 100;
 const LARGO_MAXIMO_TERMINO = 100;
 
-const CLAVES_FILTRO = ["pagina", "tamano", "q", "perfil", "establecimiento", "activo"] as const;
+const CLAVES_FILTRO = ["pagina", "tamano", "q", "perfil", "establecimiento", "formato", "activo"] as const;
 
 // Un token con forma de RUT ("14.212.602-8") se normaliza antes de compararlo contra la
 // columna `rut`, que guarda "14212602-8".
@@ -64,6 +64,8 @@ export const listadoUsuariosSchema = z
       // RF-30: mismo criterio que `perfil`, solo la FORMA (UUID). Un id inexistente devuelve una
       // lista vacía, no un 400.
       establecimiento: z.uuid("El establecimiento indicado no es válido").optional(),
+      // Formato de archivo asignado: mismo criterio que `establecimiento`, solo la FORMA (UUID).
+      formato: z.uuid("El formato de archivo indicado no es válido").optional(),
       activo: z
         .enum(["true", "false"])
         .optional()
@@ -74,6 +76,7 @@ export const listadoUsuariosSchema = z
     termino: datos.q,
     perfil: datos.perfil,
     establecimiento: datos.establecimiento,
+    formato: datos.formato,
     activo: datos.activo,
     pagina: datos.pagina,
     tamano: datos.tamano,

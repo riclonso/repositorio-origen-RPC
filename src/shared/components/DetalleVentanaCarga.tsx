@@ -6,7 +6,7 @@ import { ListadoCargasVentana } from "@/shared/components/ListadoCargasVentana";
 import { ListadoCargasRechazadasVentana } from "@/shared/components/ListadoCargasRechazadasVentana";
 import { PestanasNotificacionesVentana } from "@/shared/components/PestanasNotificacionesVentana";
 import { PestanasEnviosAlertaVentana } from "@/shared/components/PestanasEnviosAlertaVentana";
-import { listarCargasPendientesODecididas } from "@/modules/reporte-excel/application/use-cases/ListarCargasPendientesODecididas";
+import { listarCargasAprobadas } from "@/modules/reporte-excel/application/use-cases/ListarCargasAprobadas";
 import { listarCargasRechazadas } from "@/modules/reporte-excel/application/use-cases/ListarCargasRechazadas";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { FormularioAlertasVentana } from "@/shared/components/FormularioAlertasVentana";
@@ -96,9 +96,9 @@ export async function DetalleVentanaCarga({
         enviadorCorreo: alertaVentanaMailer,
       },
     ),
-    // Solo para el contador de la pestaña: `ListadoCargasVentana`/`ListadoCargasRechazadasVentana`
-    // hacen su propio fetch (con la paginación real) para renderizar las filas.
-    listarCargasPendientesODecididas(
+    // Solo para el contador de la pestaña: `ListadoCargasVentana` hace su propio fetch (con la paginación real)
+    // para renderizar las filas. Aquí solo contamos las cargas APROBADAS.
+    listarCargasAprobadas(
       { ventanaCargaId: ventana.id, pagina: 1, tamano: 1 },
       { repositorio: prismaCargaArchivoRepository },
     ),
@@ -120,32 +120,82 @@ export async function DetalleVentanaCarga({
 
   return (
     <ViewTransition>
-      <div id="inicio-detalle-ventana" className="mx-auto flex w-full max-w-7xl flex-col gap-7 pb-8">
-        <header className="border-b border-[#cbd9e7] pb-6">
-          <Link
-            href={rutaVolver}
-            className="inline-flex text-sm font-semibold text-gob-primary underline-offset-2 transition-colors hover:text-gob-primary-oscuro hover:underline"
-          >
-            {textoVolver}
-          </Link>
+      <div id="inicio-detalle-ventana" className="mx-auto flex w-full max-w-7xl flex-col gap-8 pb-8 pt-6 px-4 md:px-6">
+        <Link
+          href={rutaVolver}
+          className="inline-flex w-fit items-center gap-2 rounded-lg bg-gob-primary px-4 py-2.5 text-base font-bold text-white transition-all hover:bg-gob-primary-oscuro"
+        >
+          {textoVolver}
+        </Link>
 
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-gob-primary">Ventana de carga</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-gob-tertiary md:text-4xl">Carga {ventana.anio}</h1>
-          <p className="mt-2 text-base text-gob-gray-a">Revisa las cargas recibidas y gestiona las alertas de esta ventana.</p>
+        <header className="space-y-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-gob-primary/70">Ventana de carga</p>
+            <h1 className="mt-2 text-4xl md:text-5xl font-extrabold tracking-tight text-gob-black">
+              Carga {ventana.anio}
+            </h1>
+          </div>
+          <p className="max-w-2xl text-lg text-gob-gray-a">Revisa las cargas recibidas y gestiona las alertas de esta ventana.</p>
         </header>
 
-        <section aria-label="Contexto de la ventana" className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoDocumento /></span><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Formato</p><p className="mt-1 truncate text-sm font-bold text-gob-tertiary">{ventana.formatoExcelNombre}</p></div></div>
-          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoCalendario /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Vigencia</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{formatearFechaCalendario(ventana.fechaApertura)} — {formatearFechaCalendario(ventana.fechaVencimiento)}</p></div></div>
-          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoCalendario /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Creada el</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{formatearFechaCalendario(ventana.createdAt)}</p></div></div>
-          {/* RF-36: plazo de la habilitación fuera de plazo (solicitud aprobada o reapertura). */}
-          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary"><IconoCalendario /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Días para reemplazar</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{ventana.diasVigenciaReemplazo} {ventana.diasVigenciaReemplazo === 1 ? "día" : "días"} tras aprobar</p></div></div>
-          <div className="flex gap-3 rounded-xl border border-[#d8e4f0] bg-white p-4"><span className="flex size-9 items-center justify-center rounded-lg bg-[#eaf5ef] text-gob-success"><IconoAdvertencia /></span><div><p className="text-xs font-semibold uppercase tracking-wide text-[#58738e]">Alertas por email</p><p className="mt-1 text-sm font-bold text-gob-tertiary">{ventana.diasAnticipacionInicio === null ? "Sin programación" : "Programadas"}</p></div></div>
+        <section aria-label="Contexto de la ventana" className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-2xl border border-gob-primary/10 bg-linear-to-br from-gob-primary/5 to-transparent p-5 backdrop-blur-sm hover:border-gob-primary/20 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gob-primary/10 text-gob-primary"><IconoDocumento /></div>
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gob-primary/70">Formato</p>
+                <p className="truncate text-sm font-bold text-gob-tertiary">{ventana.formatoExcelNombre}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gob-primary/10 bg-linear-to-br from-gob-primary/5 to-transparent p-5 backdrop-blur-sm hover:border-gob-primary/20 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gob-primary/10 text-gob-primary"><IconoCalendario /></div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gob-primary/70">Vigencia</p>
+                <p className="text-sm font-bold text-gob-tertiary">{formatearFechaCalendario(ventana.fechaApertura)} — {formatearFechaCalendario(ventana.fechaVencimiento)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gob-primary/10 bg-linear-to-br from-gob-primary/5 to-transparent p-5 backdrop-blur-sm hover:border-gob-primary/20 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gob-primary/10 text-gob-primary"><IconoCalendario /></div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gob-primary/70">Creada el</p>
+                <p className="text-sm font-bold text-gob-tertiary">{formatearFechaCalendario(ventana.createdAt)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gob-primary/10 bg-linear-to-br from-gob-primary/5 to-transparent p-5 backdrop-blur-sm hover:border-gob-primary/20 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gob-primary/10 text-gob-primary"><IconoCalendario /></div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gob-primary/70">Días para reemplazar</p>
+                <p className="text-sm font-bold text-gob-tertiary">{ventana.diasVigenciaReemplazo} {ventana.diasVigenciaReemplazo === 1 ? "día" : "días"} tras aprobar</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gob-success/20 bg-linear-to-br from-gob-success/10 to-transparent p-5 backdrop-blur-sm hover:border-gob-success/30 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gob-success/10 text-gob-success"><IconoAdvertencia /></div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gob-success/70">Alertas por email</p>
+                <p className="text-sm font-bold text-gob-tertiary">{ventana.diasAnticipacionInicio === null ? "Sin programación" : "Programadas"}</p>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <section aria-labelledby="titulo-cargas" className="overflow-hidden rounded-xl border border-[#d8e4f0] bg-white shadow-[0_8px_22px_rgba(23,59,105,0.05)]">
-          <div className="border-b border-[#e6edf5] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-wide text-gob-primary">Revisión de archivos</p><h2 id="titulo-cargas" className="mt-1 text-xl font-bold text-gob-tertiary">Cargas de la ventana</h2></div>
-          <div className="p-3 md:p-5">
+        <section aria-labelledby="titulo-cargas" className="overflow-hidden rounded-3xl border border-gob-primary/10 bg-white shadow-[0_8px_16px_rgba(23,59,105,0.08)]">
+          <div className="border-b border-gob-primary/5 bg-linear-to-r from-gob-primary/2 to-transparent px-6 py-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-gob-primary/60">Revisión de archivos</p>
+            <h2 id="titulo-cargas" className="mt-2 text-2xl font-bold text-gob-black">Cargas de la ventana</h2>
+          </div>
+          <div className="p-5 md:p-6">
         <PestanasNotificacionesVentana
           notificacionesArchivo={
             <ListadoCargasVentana
@@ -174,14 +224,14 @@ export async function DetalleVentanaCarga({
 
         <section
           aria-labelledby="titulo-alertas-ventana"
-          className="flex flex-col gap-6 rounded-xl border border-[#d8e4f0] bg-white p-5 shadow-[0_8px_22px_rgba(23,59,105,0.05)]"
+          className="flex flex-col gap-6 rounded-3xl border border-gob-primary/10 bg-white p-6 md:p-8 shadow-[0_8px_16px_rgba(23,59,105,0.08)]"
         >
-          <div className="border-b border-[#dbe8f3] bg-[#eff7fc] -mx-5 -mt-5 px-5 py-4">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-gob-primary">Notificaciones</p>
-            <h2 id="titulo-alertas-ventana" className="text-2xl font-bold text-gob-black">
+          <div className="space-y-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-gob-primary/60">Notificaciones</p>
+            <h2 id="titulo-alertas-ventana" className="text-3xl font-bold text-gob-black">
               Alertas por email
             </h2>
-            <p className="mt-1 text-sm text-gob-gray-a">Configura recordatorios y consulta el historial de envíos.</p>
+            <p className="text-base text-gob-gray-a">Configura recordatorios y consulta el historial de envíos.</p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">

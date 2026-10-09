@@ -14,6 +14,7 @@ export function construirRutaUsuariosRevisor(
   if (filtro.termino) parametros.set("q", filtro.termino);
   if (filtro.perfil) parametros.set("perfil", filtro.perfil);
   if (filtro.establecimiento) parametros.set("establecimiento", filtro.establecimiento);
+  if (filtro.formato) parametros.set("formato", filtro.formato);
   if (filtro.activo !== undefined) parametros.set("activo", String(filtro.activo));
   if (filtro.tamano !== FILTRO_LISTADO_POR_DEFECTO.tamano) {
     parametros.set("tamano", String(filtro.tamano));

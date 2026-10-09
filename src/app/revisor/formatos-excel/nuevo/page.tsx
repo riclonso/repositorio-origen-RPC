@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function NuevoFormatoExcelRevisorPage() {
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="text-xl font-semibold text-gob-black">Nuevo formato de archivo</h1>
       <p className="mt-2 text-sm text-gob-gray-a">
         Define la estructura que deben cumplir los archivos que suban los notificadores.

@@ -30,7 +30,7 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl">
       <h1 className="text-xl font-semibold text-gob-black">Editar formato de archivo</h1>
       <p className="mt-2 text-sm text-gob-gray-a">
         Actualiza el nombre, la descripción y las reglas de las columnas. Para cambiar la

@@ -201,6 +201,14 @@ function construirPredicado(filtro: FiltroListadoUsuarios): Prisma.Sql {
     condiciones.push(Prisma.sql`u."establecimientoId" = ${filtro.establecimiento}`);
   }
 
+  // EXISTS (no JOIN) para no duplicar filas ni alterar el conteo; usa el índice único
+  // `[usuarioId, formatoExcelId]` de `usuario_formato_excel`.
+  if (filtro.formato) {
+    condiciones.push(
+      Prisma.sql`EXISTS (SELECT 1 FROM "usuario_formato_excel" ufe WHERE ufe."usuarioId" = u."id" AND ufe."formatoExcelId" = ${filtro.formato})`,
+    );
+  }
+
   if (filtro.activo !== undefined) {
     condiciones.push(Prisma.sql`u."activo" = ${filtro.activo}`);
   }

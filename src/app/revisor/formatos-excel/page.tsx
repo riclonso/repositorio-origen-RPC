@@ -28,7 +28,7 @@ export default async function FormatosExcelRevisorPage() {
   const formatos = await listarFormatosExcel({ repositorio: prismaFormatoExcelRepository });
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-8xl">
       <section className="mb-8 border-b border-gob-accent/30 pb-6">
         <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div className="space-y-3">

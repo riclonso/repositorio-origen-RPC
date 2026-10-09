@@ -6,6 +6,8 @@ import { listarPerfiles } from "@/modules/perfiles/application/use-cases/ListarP
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { listarEstablecimientosParaSelect } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientosParaSelect";
 import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
+import { listarFormatosExcel } from "@/modules/formatos-excel/application/use-cases/ListarFormatosExcel";
+import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import type { FiltroListadoUsuarios } from "@/modules/usuarios/domain/entities/Usuario";
 import {
   FILTRO_LISTADO_POR_DEFECTO,
@@ -14,6 +16,7 @@ import {
 import { EsqueletoTablaUsuarios } from "@/shared/components/EsqueletoTablaUsuarios";
 import { aOpcionesPerfil } from "@/shared/components/opciones-perfil";
 import { aOpcionesEstablecimiento } from "@/shared/components/opciones-establecimiento";
+import { aOpcionesFormatoUsuario } from "@/shared/components/opciones-formato-usuario";
 import {
   PERFILES_GESTIONABLES_POR_REVISOR,
   esPerfilAdministrador,
@@ -49,13 +52,14 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
   // Se ofrecen TODOS los perfiles, incluidos los dados de baja: un perfil desactivado que aún
   // tiene usuarios debe poder filtrarse, si no esas cuentas quedan sin forma de encontrarse. Mismo
   // criterio para los establecimientos (RF-30).
-  const [sesion, perfiles, establecimientos] = await Promise.all([
+  const [sesion, perfiles, establecimientos, formatos] = await Promise.all([
     obtenerSesionActual(),
     listarPerfiles({}, { repositorio: prismaPerfilRepository }),
     listarEstablecimientosParaSelect(
       { soloActivos: false },
       { repositorio: prismaEstablecimientoRepository },
     ),
+    listarFormatosExcel({ repositorio: prismaFormatoExcelRepository }),
   ]);
 
   const actorId = sesion?.sub ?? "";
@@ -86,10 +90,12 @@ export default async function UsuariosRevisorPage({ searchParams }: UsuariosRevi
         terminoInicial={filtro.termino ?? ""}
         perfilInicial={filtro.perfil ?? ""}
         establecimientoInicial={filtro.establecimiento ?? ""}
+        formatoInicial={filtro.formato ?? ""}
         activoInicial={filtro.activo === undefined ? "" : String(filtro.activo)}
         tamano={filtro.tamano}
         opcionesPerfil={aOpcionesPerfil(perfiles.filter((perfil) => !esPerfilAdministrador(perfil.codigo)))}
         opcionesEstablecimiento={aOpcionesEstablecimiento(establecimientos)}
+        opcionesFormato={aOpcionesFormatoUsuario(formatos)}
         rutaBase={RUTA_USUARIOS_REVISOR}
       />
 
