@@ -1,17 +1,95 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import type { BandejaRevision } from "@/modules/notificaciones/domain/NotificacionRevision";
+import { formatearFechaHora } from "@/shared/utils/fecha";
 import { IconoNotificaciones } from "@/shared/components/iconos";
 
 type MenuNotificacionesRevisorProps = {
-  cantidad: number;
+  bandeja: BandejaRevision;
 };
 
-// La campana representa archivos que el notificador ya envió y que esperan revisión, no un
-// contador local que pudiera quedar desactualizado. Su menú es un aviso breve con una salida
-// directa a las ventanas donde ese trabajo se resuelve.
-export function MenuNotificacionesRevisor({ cantidad }: MenuNotificacionesRevisorProps) {
+function useBandejaNotificaciones(bandeja: BandejaRevision) {
+  const [ampliacion, setAmpliacion] = useState<{ base: BandejaRevision; datos: BandejaRevision; pagina: number } | null>(null);
+  const datos = ampliacion?.base === bandeja ? ampliacion.datos : bandeja;
+  const pagina = ampliacion?.base === bandeja ? ampliacion.pagina : 1;
+  const cantidad = datos.total;
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function mostrarMas() {
+    if (cargando) return;
+    setCargando(true);
+    setError(null);
+    try {
+      const respuesta = await fetch(`/api/revisor/notificaciones?pagina=${pagina + 1}`, { cache: "no-store" });
+      if (!respuesta.ok) throw new Error("No se pudieron cargar las notificaciones. Intenta nuevamente.");
+      const nuevas: BandejaRevision = await respuesta.json();
+      const unicas = new Map([...datos.notificaciones, ...nuevas.notificaciones].map(aviso => [aviso.id, aviso]));
+      setAmpliacion({ base: bandeja, datos: { notificaciones: [...unicas.values()], total: nuevas.total }, pagina: pagina + 1 });
+    } catch {
+      setError("No se pudieron cargar las notificaciones. Intenta nuevamente.");
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  return { datos, cantidad, cargando, error, mostrarMas };
+}
+
+function useCerrarMenu(abierto: boolean, contenedor: RefObject<HTMLDivElement | null>, alEscape: () => void, alSalir: () => void) {
+  useEffect(() => {
+    if (!abierto) return;
+
+    function alHacerClicFuera(evento: MouseEvent) {
+      if (!contenedor.current?.contains(evento.target as Node)) alSalir();
+    }
+
+    document.addEventListener("mousedown", alHacerClicFuera);
+    return () => document.removeEventListener("mousedown", alHacerClicFuera);
+  }, [abierto, contenedor, alEscape, alSalir]);
+
+  useEffect(() => {
+    if (!abierto) return;
+
+    function alPresionarTecla(evento: KeyboardEvent) {
+      if (evento.key === "Escape") alEscape();
+    }
+
+    document.addEventListener("keydown", alPresionarTecla);
+    return () => document.removeEventListener("keydown", alPresionarTecla);
+  }, [abierto, contenedor, alEscape, alSalir]);
+
+}
+
+function ListaAvisos({ notificaciones, referenciaEnlace, alElegir }: {
+  notificaciones: BandejaRevision["notificaciones"];
+  referenciaEnlace: RefObject<HTMLAnchorElement | null>;
+  alElegir: () => void;
+}) {
+  return (
+            <ul className="mt-3 max-h-80 overflow-y-auto divide-y divide-gob-accent/60">
+              {notificaciones.map((aviso, indice) => (
+                <li key={aviso.id}>
+                  <Link
+                    ref={indice === 0 ? referenciaEnlace : undefined}
+                    href={`/revisor/ventanas-carga/${aviso.ventanaCargaId}?origen=inicio#inicio-detalle-ventana`}
+                    onClick={alElegir}
+                    className="block rounded-md px-2 py-3 text-sm text-gob-gray-a hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-gob-primary"
+                  >
+                    <span className="font-semibold text-[#173b69]">{aviso.nombre}</span>{" "}
+                    {aviso.accion === "ARCHIVO_ENVIADO" ? "subió un archivo para revisión." : "solicitó un reemplazo de archivo."}
+                    <time dateTime={aviso.fecha} className="mt-1 block text-xs text-gob-gray-b">{formatearFechaHora(new Date(aviso.fecha))}</time>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+  );
+}
+
+// Bandeja de archivos enviados y solicitudes de reemplazo pendientes de revisión.
+export function MenuNotificacionesRevisor({ bandeja }: MenuNotificacionesRevisorProps) {
+  const { datos, cantidad, cargando, error, mostrarMas } = useBandejaNotificaciones(bandeja);
   const [abierto, setAbierto] = useState(false);
   const referenciaContenedor = useRef<HTMLDivElement>(null);
   const referenciaBoton = useRef<HTMLButtonElement>(null);
@@ -27,27 +105,7 @@ export function MenuNotificacionesRevisor({ cantidad }: MenuNotificacionesReviso
     referenciaBoton.current?.focus();
   }
 
-  useEffect(() => {
-    if (!abierto) return;
-
-    function alHacerClicFuera(evento: MouseEvent) {
-      if (!referenciaContenedor.current?.contains(evento.target as Node)) setAbierto(false);
-    }
-
-    document.addEventListener("mousedown", alHacerClicFuera);
-    return () => document.removeEventListener("mousedown", alHacerClicFuera);
-  }, [abierto]);
-
-  useEffect(() => {
-    if (!abierto) return;
-
-    function alPresionarTecla(evento: KeyboardEvent) {
-      if (evento.key === "Escape") cerrarYDevolverFoco();
-    }
-
-    document.addEventListener("keydown", alPresionarTecla);
-    return () => document.removeEventListener("keydown", alPresionarTecla);
-  }, [abierto]);
+  useCerrarMenu(abierto, referenciaContenedor, cerrarYDevolverFoco, () => setAbierto(false));
 
   useEffect(() => {
     if (abierto && hayNotificaciones) referenciaEnlace.current?.focus();
@@ -80,7 +138,7 @@ export function MenuNotificacionesRevisor({ cantidad }: MenuNotificacionesReviso
           id={idMenu}
           role="dialog"
           aria-label="Notificaciones"
-          className="absolute right-0 z-10 mt-2 w-72 rounded-xl border border-[#d7e2ed] bg-white p-4 shadow-[0_12px_28px_rgba(23,59,105,0.16)]"
+          className="absolute right-0 z-10 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-[#d7e2ed] bg-white p-4 shadow-[0_12px_28px_rgba(23,59,105,0.16)]"
         >
           <div className="flex items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f2fb] text-gob-primary">
@@ -93,15 +151,15 @@ export function MenuNotificacionesRevisor({ cantidad }: MenuNotificacionesReviso
           </div>
 
           {hayNotificaciones ? (
-            <Link
-              ref={referenciaEnlace}
-              href="/revisor/ventanas-carga"
-              onClick={cerrarYDevolverFoco}
-              className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-gob-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0f5fa5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-            >
-              Ver ventanas de carga
-            </Link>
+            <ListaAvisos notificaciones={datos.notificaciones} referenciaEnlace={referenciaEnlace} alElegir={() => setAbierto(false)} />
           ) : null}
+          {datos.notificaciones.length < cantidad ? (
+            <button type="button" disabled={cargando} onClick={() => void mostrarMas()}
+              className="mt-3 w-full rounded-lg bg-gob-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f5fa5] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
+              {cargando ? "Cargando…" : "Mostrar más"}
+            </button>
+          ) : null}
+          {error ? <p role="alert" className="mt-2 text-sm text-gob-danger">{error}</p> : null}
         </div>
       ) : null}
     </div>

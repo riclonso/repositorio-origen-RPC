@@ -1,3 +1,4 @@
+import type { BandejaRevision } from "@/modules/notificaciones/domain/NotificacionRevision";
 import { MenuConfiguracionUsuario } from "@/shared/components/MenuConfiguracionUsuario";
 import { MenuNotificacionesRevisor } from "@/shared/components/MenuNotificacionesRevisor";
 import { obtenerSesionAdministradorOrigen } from "@/modules/auth/infrastructure/auth/SesionDelegada";
@@ -10,7 +11,7 @@ type EncabezadoPanelProps = {
   rutaBase: "/dashboard" | "/notificador" | "/revisor" | "/bioestadistica";
   // Solo el revisor recibe la bandeja de trabajo de solicitudes pendientes; los demás perfiles
   // conservan el encabezado actual sin un control que no les corresponde.
-  cantidadNotificaciones?: number;
+  bandejaNotificaciones?: BandejaRevision;
 };
 
 // Color de fondo de cada área: distingue de un vistazo en qué panel se está.
@@ -26,7 +27,7 @@ const COLOR_FONDO_AREA: Record<EncabezadoPanelProps["rutaBase"], string> = {
 // configuración de la cuenta ("Mi perfil"/"Cambiar contraseña") a la derecha. La identidad de la
 // sesión (nombre, avatar de iniciales y perfil) no vive aquí: está al tope de la barra lateral
 // (`BarraLateralPanel`).
-export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: EncabezadoPanelProps) {
+export async function EncabezadoPanel({ rutaBase, bandejaNotificaciones }: EncabezadoPanelProps) {
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
   const colorFondo = COLOR_FONDO_AREA[rutaBase];
   const colorSubtitulo = rutaBase === "/notificador" || rutaBase === "/bioestadistica" ? "text-white" : "text-white/60";
@@ -40,8 +41,8 @@ export async function EncabezadoPanel({ rutaBase, cantidadNotificaciones }: Enca
 
       <div className="flex items-center gap-3">
         {sesionAdministradorOrigen ? <VolverSesionAdministrador altoContraste /> : null}
-        {rutaBase === "/revisor" && cantidadNotificaciones !== undefined ? (
-          <MenuNotificacionesRevisor cantidad={cantidadNotificaciones} />
+        {rutaBase === "/revisor" && bandejaNotificaciones !== undefined ? (
+          <MenuNotificacionesRevisor bandeja={bandejaNotificaciones} />
         ) : null}
         <MenuConfiguracionUsuario rutaBase={rutaBase} altoContraste />
       </div>
