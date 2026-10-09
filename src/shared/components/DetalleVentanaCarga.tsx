@@ -120,7 +120,7 @@ export async function DetalleVentanaCarga({
 
   return (
     <ViewTransition>
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 pb-8">
+      <div id="inicio-detalle-ventana" className="mx-auto flex w-full max-w-7xl flex-col gap-7 pb-8">
         <header className="border-b border-[#cbd9e7] pb-6">
           <Link
             href={rutaVolver}

@@ -77,7 +77,7 @@ export function TarjetaSeguimientoVentana({ resumen, rutaBase }: TarjetaSeguimie
       </div>
 
       <Link
-        href={`${rutaBase}/${resumen.ventanaCargaId}?origen=inicio`}
+        href={`${rutaBase}/${resumen.ventanaCargaId}?origen=inicio#inicio-detalle-ventana`}
         className="inline-flex w-fit items-center rounded-md bg-[#e8f2fb] px-3 py-2 text-sm font-semibold text-gob-primary transition-colors hover:bg-[#d9ebf9] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
       >
         Revisar ventana <span aria-hidden="true" className="ml-1">→</span>

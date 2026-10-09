@@ -209,7 +209,7 @@ export async function InicioRevisor({ nombres }: InicioRevisorProps) {
                       </span>
                     </div>
                     <Link
-                      href={`/revisor/ventanas-carga/${resumen.ventanaCargaId}?origen=inicio`}
+                      href={`/revisor/ventanas-carga/${resumen.ventanaCargaId}?origen=inicio#inicio-detalle-ventana`}
                       className="inline-flex shrink-0 items-center rounded-md bg-[#e8f2fb] px-2.5 py-1.5 text-xs font-semibold text-gob-primary transition-colors hover:bg-[#d9ebf9] active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
                     >
                       Revisar <span aria-hidden="true" className="ml-1">→</span>
