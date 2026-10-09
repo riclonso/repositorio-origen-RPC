@@ -15,7 +15,10 @@ import { Boton } from "@/shared/components/Boton";
 import { IconoEliminar } from "@/shared/components/iconos";
 import { EditorColumnasReglaRut, type ModoReglaRut } from "@/shared/components/EditorColumnasReglaRut";
 
+import { EditorComparacionFechas } from "@/shared/components/EditorComparacionFechas";
+
 export type ReglaValidacionEditable = {
+  configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null;
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
@@ -119,7 +122,12 @@ export function EditorReglasValidacionFormatoExcel({
   error,
 }: EditorReglasValidacionFormatoExcelProps) {
   function actualizarRegla(indice: number, cambios: Partial<ReglaValidacionEditable>) {
-    onCambiar(reglas.map((regla, i) => (i === indice ? { ...regla, ...cambios } : regla)));
+    onCambiar(reglas.map((regla, i) => {
+      if (i !== indice) return regla;
+      const actualizada = { ...regla, ...cambios };
+      if (actualizada.tipo === "FECHA_POSTERIOR_O_IGUAL" && actualizada.configuracion) actualizada.columnas = [...new Set([actualizada.configuracion.origen, actualizada.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]).filter(Boolean))];
+      return actualizada;
+    }));
   }
 
   function agregarRegla() {
@@ -200,6 +208,7 @@ export function EditorReglasValidacionFormatoExcel({
                       tipo: evento.target.value as TipoReglaValidacion,
                       columnas: [],
                       modoRut: undefined,
+                      configuracion: evento.target.value === "FECHA_POSTERIOR_O_IGUAL" ? { origen: { modo: "COLUMNA", columna: "" }, referencia: { modo: "COLUMNA", columna: "" } } : null,
                     })
                   }
                 />
@@ -208,6 +217,8 @@ export function EditorReglasValidacionFormatoExcel({
                   // Sin selector de columnas: estas reglas guardan `columnas: []` ("todas"), y
                   // cambiar de tipo ya reinicia `columnas` a `[]`.
                   <p className="text-xs text-gob-gray-a">{AYUDA_REGLA_TODAS_LAS_COLUMNAS[regla.tipo]}</p>
+                ) : regla.tipo === "FECHA_POSTERIOR_O_IGUAL" ? (
+                  <EditorComparacionFechas idBase={`regla-${indice}`} columnas={columnasDisponibles} configuracion={regla.configuracion ?? { origen: { modo: "COLUMNA", columna: "" }, referencia: { modo: "COLUMNA", columna: "" } }} onCambiar={(configuracion) => actualizarRegla(indice, { configuracion })} />
                 ) : regla.tipo === "RUT_VALIDO" ? (
                   <EditorColumnasReglaRut
                     idBase={`regla-${indice}`}

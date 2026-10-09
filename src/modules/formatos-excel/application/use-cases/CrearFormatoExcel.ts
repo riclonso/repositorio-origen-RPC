@@ -1,3 +1,4 @@
+import { columnasComparacionFechas } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
 import type {
   FormatoExcel,
   SeparadorCsv,
@@ -28,6 +29,7 @@ export type DatosReglaValidacionCreacion = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
+  configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null;
 };
 
 export type DatosCreacionFormatoExcel = {
@@ -78,6 +80,7 @@ export async function crearFormatoExcel(
   // confía en un valor de orden enviado por el cliente.
   const reglasValidacionConOrden = datos.reglasValidacion.map((regla, indice) => ({
     ...regla,
+    columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion ? columnasComparacionFechas(regla.configuracion) : regla.columnas,
     orden: indice + 1,
   }));
 

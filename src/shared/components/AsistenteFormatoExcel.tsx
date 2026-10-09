@@ -195,9 +195,10 @@ export function AsistenteFormatoExcel({
       formData.append(
         "reglasValidacion",
         JSON.stringify(
-          reglasValidacion.map(({ tipo, columnas: columnasRegla, mensaje }) => ({
+          reglasValidacion.map(({ tipo, columnas: columnasRegla, mensaje, configuracion }) => ({
             tipo,
             columnas: columnasRegla,
+            configuracion,
             mensaje,
           })),
         ),

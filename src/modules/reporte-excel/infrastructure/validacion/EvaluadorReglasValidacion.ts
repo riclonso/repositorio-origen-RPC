@@ -1,3 +1,4 @@
+import { cumpleComparacionFechas } from "./ComparadorFechas";
 import { createHash, hash } from "node:crypto";
 import type { ReglaValidacionFormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
@@ -45,6 +46,8 @@ export function cumpleReglaValidacion(
   contexto: ContextoEvaluacionReglas,
 ): boolean {
   switch (regla.tipo) {
+    case "FECHA_POSTERIOR_O_IGUAL":
+      return cumpleComparacionFechas(regla.configuracion, fila);
     case "ALGUNA_COLUMNA_CON_VALOR":
       return regla.columnas.some((nombreColumna) => !celdaVacia(fila[nombreColumna] ?? null));
     // `columnas[0]` = principal, `columnas[1..]` = alternativas (convención documentada en

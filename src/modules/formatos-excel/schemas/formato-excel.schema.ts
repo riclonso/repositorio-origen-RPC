@@ -182,10 +182,17 @@ const columnasFormatoExcelSchema = z
 // (sin restricción de tipo de dato) cuya combinación de valores no puede repetirse entre filas del
 // mismo archivo (ampliación posterior). El evaluador que las ejecuta contra un archivo real vive
 // en `modules/reporte-excel/`; aquí solo se persiste y valida la configuración.
+export const fuenteFechaSchema = z.discriminatedUnion("modo", [
+ z.strictObject({ modo: z.literal("COLUMNA"), columna: z.string().trim().min(1) }),
+ z.strictObject({ modo: z.literal("COMPONENTES"), dia: z.string().trim().min(1), mes: z.string().trim().min(1), anio: z.string().trim().min(1) }),
+]);
+export const configuracionComparacionFechasSchema = z.strictObject({ origen: fuenteFechaSchema, referencia: fuenteFechaSchema });
+
 const reglaValidacionFormatoExcelSchema = z.object({
+  configuracion: configuracionComparacionFechasSchema.nullish(),
   tipo: tipoReglaValidacionSchema,
   columnas: z
-    .array(z.string().trim().min(1, "Selecciona todas las columnas de la regla"))
+    .array(z.string().trim().min(1, "Selecciona todas las columnas de la regla")).default([])
     // Sin mínimo genérico aquí (RF-32): `CONTENIDO_HTML` y `FILA_VACIA` exigen `[]`, así que la
     // cardinalidad depende del tipo y se valida en `validarReferenciasDeReglas`.
     .refine(
@@ -201,7 +208,13 @@ const reglaValidacionFormatoExcelSchema = z.object({
     .trim()
     .min(1, "Ingresa un mensaje de rechazo")
     .max(MENSAJE_REGLA_MAXIMO, `El mensaje no puede superar los ${MENSAJE_REGLA_MAXIMO} caracteres`),
-});
+}).superRefine((regla, contexto) => {
+  if ((regla.tipo === "FECHA_POSTERIOR_O_IGUAL") !== Boolean(regla.configuracion)) {
+    contexto.addIssue({ code: "custom", path: ["configuracion"], message: "Define las dos fechas únicamente para la regla de comparación de fechas" });
+  }
+}).transform((regla) => ({ ...regla, columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion
+  ? [...new Set([regla.configuracion.origen, regla.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]))]
+  : regla.columnas }));
 
 // El `orden` NO viaja en el esquema: siempre lo fija el servidor por la posición del elemento en
 // el arreglo, igual que con las columnas.
@@ -261,7 +274,7 @@ function etiquetaTipoRegla(tipo: string): string {
 function validarReferenciasDeReglas(
   datos: {
     columnas: { nombre: string; tipoDato: string }[];
-    reglasValidacion: { tipo: string; columnas: string[] }[];
+    reglasValidacion: { tipo: string; columnas: string[]; configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null }[];
   },
   contexto: z.RefinementCtx,
 ): void {
@@ -292,6 +305,21 @@ function validarReferenciasDeReglas(
       }
       tiposTodasLasColumnasVistos.add(regla.tipo);
       return;
+    }
+
+    if (regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion) {
+      for (const [lado, fuente] of Object.entries(regla.configuracion)) {
+        const nombres = fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio];
+        if (new Set(nombres.map((nombre) => nombre.toLowerCase())).size !== nombres.length) {
+          contexto.addIssue({ code: "custom", path: ["reglasValidacion", indiceRegla, "configuracion", lado], message: "Día, mes y año deben usar columnas distintas" });
+        }
+        for (const nombre of nombres) {
+          const columna = columnasPorNombre.get(nombre.toLowerCase());
+          if (!columna || columna.tipoDato !== (fuente.modo === "COLUMNA" ? "FECHA" : "ENTERO")) {
+            contexto.addIssue({ code: "custom", path: ["reglasValidacion", indiceRegla, "configuracion", lado], message: "Selecciona columnas existentes de tipo Fecha o componentes de tipo Entero" });
+          }
+        }
+      }
     }
 
     // Los demás tipos siguen exigiendo al menos una columna (antes vivía en
@@ -394,7 +422,19 @@ function validarReferenciasDelFormato(
   validarReferenciasDeTiposEnumerados(datos, contexto);
 }
 
-export const crearFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDelFormato);
+function normalizarFuentesFechas<T extends { columnas: { nombre: string }[]; reglasValidacion: { configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null; columnas: string[] }[] }>(datos: T): T {
+  const nombres = new Map(datos.columnas.map((columna) => [columna.nombre.toLowerCase(), columna.nombre]));
+  for (const regla of datos.reglasValidacion) {
+    if (!regla.configuracion) continue;
+    for (const fuente of [regla.configuracion.origen, regla.configuracion.referencia]) {
+      if (fuente.modo === "COLUMNA") fuente.columna = nombres.get(fuente.columna.toLowerCase()) ?? fuente.columna;
+      else for (const campo of ["dia", "mes", "anio"] as const) fuente[campo] = nombres.get(fuente[campo].toLowerCase()) ?? fuente[campo];
+    }
+    regla.columnas = [...new Set([regla.configuracion.origen, regla.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]))];
+  }
+  return datos;
+}
+export const crearFormatoExcelSchema = z.object(camposFormatoExcelSchema).superRefine(validarReferenciasDelFormato).transform(normalizarFuentesFechas);
 export type CrearFormatoExcelInput = z.infer<typeof crearFormatoExcelSchema>;
 
 // La edición comparte los campos de la creación (la plantilla no se reemplaza al editar) y agrega
@@ -403,7 +443,7 @@ export type CrearFormatoExcelInput = z.infer<typeof crearFormatoExcelSchema>;
 // `ActualizarFormatoExcel`, que es quien lo conoce.
 export const editarFormatoExcelSchema = z
   .object({ ...camposFormatoExcelSchema, separadorCsv: separadorCsvSchema.nullable().optional() })
-  .superRefine(validarReferenciasDelFormato);
+  .superRefine(validarReferenciasDelFormato).transform(normalizarFuentesFechas);
 export type EditarFormatoExcelInput = z.infer<typeof editarFormatoExcelSchema>;
 
 export const cambiarEstadoFormatoExcelSchema = z.object({ activo: z.boolean() });

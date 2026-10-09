@@ -260,6 +260,7 @@ model TipoEnumeradoFormatoExcel {
 // `columnas[]` documentada en `domain/entities/FormatoExcel.ts`) y la compara solo contra el AÑO
 // CALENDARIO de la ventana (`VentanaCarga.anio`), no contra su rango exacto de fechas.
 enum TipoReglaValidacionFormatoExcel {
+  FECHA_POSTERIOR_O_IGUAL
   ALGUNA_COLUMNA_CON_VALOR
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
   FILA_DUPLICADA
@@ -280,6 +281,7 @@ model ReglaValidacionFormatoExcel {
   // Posición fijada por el servidor a partir del arreglo recibido, igual que en
   // `ColumnaFormatoExcel.orden`.
   orden          Int
+  configuracion  Json?
   tipo           TipoReglaValidacionFormatoExcel
   columnas       String[]
   mensaje        String

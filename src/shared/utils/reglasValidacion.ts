@@ -5,6 +5,7 @@ import type { TipoReglaValidacion } from "@/modules/formatos-excel/domain/entiti
 // (`formato-excel.schema.ts`): un único lugar evita que el mensaje de error nombre la regla de
 // forma distinta a como la ve quien la configura. Mismo criterio que `ETIQUETAS_TIPO_ERROR`.
 export const ETIQUETAS_TIPO_REGLA_VALIDACION: Record<TipoReglaValidacion, string> = {
+  FECHA_POSTERIOR_O_IGUAL: "Fecha posterior o igual a otra fecha",
   ALGUNA_COLUMNA_CON_VALOR: "Al menos una columna con valor",
   FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA:
     "Fecha efectiva (principal o alternativa más antigua) dentro del año de la ventana",

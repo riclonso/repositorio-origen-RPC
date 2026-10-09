@@ -1,3 +1,4 @@
+import { configuracionComparacionFechasSchema } from "@/modules/formatos-excel/schemas/formato-excel.schema";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import { CODIGO_PERFIL_NOTIFICADOR } from "@/modules/perfiles/domain/entities/Perfil";
@@ -45,6 +46,7 @@ const SELECCION_REGLA = {
   tipo: true,
   columnas: true,
   mensaje: true,
+  configuracion: true,
 } as const;
 
 const SELECCION_DETALLE = {
@@ -76,7 +78,7 @@ type RegistroDetalle = {
   createdAt: Date;
   updatedAt: Date;
   columnas: ColumnaFormatoExcel[];
-  reglasValidacion: ReglaValidacionFormatoExcel[];
+  reglasValidacion: (Omit<ReglaValidacionFormatoExcel, "configuracion"> & { configuracion: Prisma.JsonValue })[];
   tiposEnumerados: TipoEnumeradoFormatoExcel[];
 };
 
@@ -93,7 +95,7 @@ function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
     createdAt: registro.createdAt,
     updatedAt: registro.updatedAt,
     columnas: registro.columnas,
-    reglasValidacion: registro.reglasValidacion,
+    reglasValidacion: registro.reglasValidacion.map((regla) => ({ ...regla, configuracion: regla.configuracion === null ? null : configuracionComparacionFechasSchema.parse(regla.configuracion) })),
     tiposEnumerados: registro.tiposEnumerados,
   };
 }
@@ -302,6 +304,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
               tipo: regla.tipo,
               columnas: regla.columnas,
               mensaje: regla.mensaje,
+              configuracion: regla.configuracion ?? Prisma.DbNull,
             })),
           },
         },
@@ -335,6 +338,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
               tipo: regla.tipo,
               columnas: regla.columnas,
               mensaje: regla.mensaje,
+              configuracion: regla.configuracion ?? Prisma.DbNull,
             })),
           },
         },

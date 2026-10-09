@@ -72,7 +72,11 @@ export type TipoEnumeradoFormatoExcel = {
 // un tipo nuevo es una decisión de producto que exige código nuevo (el evaluador que las ejecuta
 // contra un archivo real), así que vive en este arreglo fijo, mismo criterio que
 // `TIPOS_DATO_COLUMNA`.
+export type FuenteFecha = { modo: "COLUMNA"; columna: string } | { modo: "COMPONENTES"; dia: string; mes: string; anio: string };
+export type ConfiguracionComparacionFechas = { origen: FuenteFecha; referencia: FuenteFecha };
+
 export const TIPOS_REGLA_VALIDACION = [
+  "FECHA_POSTERIOR_O_IGUAL",
   "ALGUNA_COLUMNA_CON_VALOR",
   "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
   "FILA_DUPLICADA",
@@ -121,6 +125,7 @@ export type ReglaValidacionFormatoExcel = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
+  configuracion?: ConfiguracionComparacionFechas | null;
 };
 
 export type FormatoExcel = {
@@ -173,6 +178,7 @@ export type DatosReglaValidacionNueva = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
+  configuracion?: ConfiguracionComparacionFechas | null;
 };
 
 // Sin `id`: mismo criterio que `DatosColumnaNueva`.

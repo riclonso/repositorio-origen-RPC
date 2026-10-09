@@ -66,6 +66,7 @@ export function FormularioEdicionFormatoExcel({
       tipo: regla.tipo,
       columnas: regla.columnas,
       mensaje: regla.mensaje,
+      configuracion: regla.configuracion,
     })),
   );
   const [enviando, setEnviando] = useState(false);
@@ -94,9 +95,10 @@ export function FormularioEdicionFormatoExcel({
             tipoEnumeradoNombre,
           })),
           tiposEnumerados,
-          reglasValidacion: reglasValidacion.map(({ tipo, columnas: columnasRegla, mensaje }) => ({
+          reglasValidacion: reglasValidacion.map(({ tipo, columnas: columnasRegla, mensaje, configuracion }) => ({
             tipo,
             columnas: columnasRegla,
+            configuracion,
             mensaje,
           })),
         }),
