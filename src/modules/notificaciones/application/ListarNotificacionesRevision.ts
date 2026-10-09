@@ -1,11 +1,11 @@
 import type { NotificacionRevision, NotificacionRevisionRepository } from "../domain/NotificacionRevision";
 
 export const TAMANO_PAGINA_NOTIFICACIONES = 4;
-export function listarNotificacionesRevision(pagina: number, repositorio: NotificacionRevisionRepository) {
+export function listarNotificacionesRevision(pagina: number, usuarioId: string, repositorio: NotificacionRevisionRepository) {
   if (!Number.isSafeInteger(pagina) || pagina < 1 || pagina > 2500) {
     throw new Error("Página de notificaciones inválida");
   }
-  return repositorio.listar(pagina);
+  return repositorio.listar(pagina, usuarioId);
 }
 
 export function paginarNotificaciones(avisos: NotificacionRevision[], pagina: number) {

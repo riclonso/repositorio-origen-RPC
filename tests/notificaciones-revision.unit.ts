@@ -6,7 +6,7 @@ import type { NotificacionRevision } from "../src/modules/notificaciones/domain/
 const avisos: NotificacionRevision[] = Array.from({ length: 9 }, (_, indice) => ({
   id: `${indice % 2 ? "archivo" : "reemplazo"}-${indice}`,
   nombre: `Notificador ${indice}`, accion: indice % 2 ? "ARCHIVO_ENVIADO" : "REEMPLAZO_SOLICITADO",
-  ventanaCargaId: `ventana-${indice}`, fecha: new Date(Date.UTC(2026, 9, 9, indice)).toISOString(),
+  leido: false, ventanaCargaId: `ventana-${indice}`, fecha: new Date(Date.UTC(2026, 9, 9, indice)).toISOString(),
 }));
 test("mezcla archivos y reemplazos por fecha y entrega cuatro avisos por página sin perder los restantes", () => {
   const primera = paginarNotificaciones(avisos, 1);
@@ -24,8 +24,27 @@ test("mezcla archivos y reemplazos por fecha y entrega cuatro avisos por página
 test("empates mantienen orden estable y entradas de página inválidas no consultan el repositorio", () => {
   const iguales = avisos.map(a => ({ ...a, fecha: avisos[0].fecha }));
   assert.deepEqual(paginarNotificaciones(iguales, 1), paginarNotificaciones([...iguales].reverse(), 1));
-  const repositorio = { listar: async () => { throw new Error("No debe consultarse"); } };
+  const repositorio = { marcarLeida: async () => true, listar: async () => { throw new Error("No debe consultarse"); } };
   for (const pagina of [0, -1, NaN, 1.5, Infinity, 2501]) {
-    assert.throws(() => listarNotificacionesRevision(pagina, repositorio), /inválida/);
+    assert.throws(() => listarNotificacionesRevision(pagina, "revisor", repositorio), /inválida/);
   }
+});
+
+
+test("la lectura descuenta una vez y conserva los avisos leídos cuando el contador llega a cero", async () => {
+  const { registrarLecturaEnBandeja } = await import("../src/modules/notificaciones/application/RegistrarLecturaEnBandeja");
+  const bandeja = { notificaciones: [avisos[0]], total: 1, noLeidas: 1 };
+  const leida = registrarLecturaEnBandeja(bandeja, avisos[0]);
+  assert.equal(leida.noLeidas, 0);
+  assert.equal(leida.total, 1);
+  assert.equal(leida.notificaciones[0].leido, true);
+  assert.equal(bandeja.notificaciones[0].leido, false);
+  assert.equal(registrarLecturaEnBandeja(leida, avisos[0]), leida);
+});
+
+test("una confirmación antigua no marca como leído otro envío del mismo archivo", async () => {
+  const { registrarLecturaEnBandeja } = await import("../src/modules/notificaciones/application/RegistrarLecturaEnBandeja");
+  const nuevoEnvio = { ...avisos[0], fecha: avisos[1].fecha };
+  const bandeja = { notificaciones: [nuevoEnvio], total: 1, noLeidas: 1 };
+  assert.equal(registrarLecturaEnBandeja(bandeja, avisos[0]), bandeja);
 });

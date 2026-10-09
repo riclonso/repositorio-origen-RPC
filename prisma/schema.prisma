@@ -24,6 +24,7 @@ model Perfil {
 }
 
 model Usuario {
+  lecturasNotificacion LecturaNotificacion[]
   id             String   @id @default(uuid())
   nombres        String
   apellidos      String
@@ -1099,4 +1100,15 @@ model RegistroErrorSistema {
 
   @@index([createdAt])
   @@map("registro_error_sistema")
+}
+
+// Estado de lectura individual; no contiene datos del archivo ni altera su revisión.
+model LecturaNotificacion {
+  usuarioId String
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  avisoId String @db.VarChar(60)
+  eventoFecha DateTime @db.Timestamp(3)
+  leidoEn DateTime @default(now()) @db.Timestamp(3)
+  @@id([usuarioId, avisoId, eventoFecha])
+  @@map("lectura_notificacion")
 }

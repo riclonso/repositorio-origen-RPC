@@ -1,3 +1,5 @@
+import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { EncabezadoPanel } from "@/shared/components/EncabezadoPanel";
@@ -14,10 +16,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RevisorLayout({ children }: { children: ReactNode }) {
+  const sesion = await obtenerSesionActual();
+  if (!sesion) redirect("/login");
   const [identidad, solicitudesPendientes, bandejaNotificaciones] = await Promise.all([
     obtenerIdentidadPanel(),
     contarSolicitudesReemplazoPendientes({ repositorio: prismaSolicitudReemplazoCargaRepository }),
-    listarNotificacionesRevision(1, prismaNotificacionRevisionRepository),
+    listarNotificacionesRevision(1, sesion.sub, prismaNotificacionRevisionRepository),
   ]);
 
   const enlaces = ENLACES_REVISOR.map((enlace) =>

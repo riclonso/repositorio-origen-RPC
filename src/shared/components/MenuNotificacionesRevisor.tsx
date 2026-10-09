@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
-import type { BandejaRevision } from "@/modules/notificaciones/domain/NotificacionRevision";
+import type { BandejaRevision, NotificacionRevision } from "@/modules/notificaciones/domain/NotificacionRevision";
+import { registrarLecturaEnBandeja } from "@/modules/notificaciones/application/RegistrarLecturaEnBandeja";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 import { IconoNotificaciones } from "@/shared/components/iconos";
 
@@ -14,7 +16,7 @@ function useBandejaNotificaciones(bandeja: BandejaRevision) {
   const [ampliacion, setAmpliacion] = useState<{ base: BandejaRevision; datos: BandejaRevision; pagina: number } | null>(null);
   const datos = ampliacion?.base === bandeja ? ampliacion.datos : bandeja;
   const pagina = ampliacion?.base === bandeja ? ampliacion.pagina : 1;
-  const cantidad = datos.total;
+  const cantidad = datos.noLeidas;
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function mostrarMas() {
@@ -26,7 +28,7 @@ function useBandejaNotificaciones(bandeja: BandejaRevision) {
       if (!respuesta.ok) throw new Error("No se pudieron cargar las notificaciones. Intenta nuevamente.");
       const nuevas: BandejaRevision = await respuesta.json();
       const unicas = new Map([...datos.notificaciones, ...nuevas.notificaciones].map(aviso => [aviso.id, aviso]));
-      setAmpliacion({ base: bandeja, datos: { notificaciones: [...unicas.values()], total: nuevas.total }, pagina: pagina + 1 });
+      setAmpliacion({ base: bandeja, datos: { notificaciones: [...unicas.values()], total: nuevas.total, noLeidas: nuevas.noLeidas }, pagina: pagina + 1 });
     } catch {
       setError("No se pudieron cargar las notificaciones. Intenta nuevamente.");
     } finally {
@@ -34,7 +36,31 @@ function useBandejaNotificaciones(bandeja: BandejaRevision) {
     }
   }
 
-  return { datos, cantidad, cargando, error, mostrarMas };
+  async function marcarLeida(aviso: NotificacionRevision) {
+    if (aviso.leido) return true;
+    setError(null);
+    try {
+      const respuesta = await fetch("/api/revisor/notificaciones", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: aviso.id, fecha: aviso.fecha }),
+      });
+      if (!respuesta.ok) throw new Error("No se guardó la lectura");
+      setAmpliacion(anterior => {
+        const actuales = anterior?.base === bandeja ? anterior.datos : bandeja;
+        return {
+          base: bandeja,
+          pagina: anterior?.base === bandeja ? anterior.pagina : 1,
+          datos: registrarLecturaEnBandeja(actuales, aviso),
+        };
+      });
+      return true;
+    } catch {
+      setError("No se pudo guardar la lectura. Intenta nuevamente.");
+      return false;
+    }
+  }
+
+  return { datos, cantidad, cargando, error, mostrarMas, marcarLeida };
 }
 
 function useCerrarMenu(abierto: boolean, contenedor: RefObject<HTMLDivElement | null>, alEscape: () => void, alSalir: () => void) {
@@ -65,20 +91,21 @@ function useCerrarMenu(abierto: boolean, contenedor: RefObject<HTMLDivElement | 
 function ListaAvisos({ notificaciones, referenciaEnlace, alElegir }: {
   notificaciones: BandejaRevision["notificaciones"];
   referenciaEnlace: RefObject<HTMLAnchorElement | null>;
-  alElegir: () => void;
+  alElegir: (aviso: NotificacionRevision) => void;
 }) {
   return (
-            <ul className="mt-3 max-h-80 overflow-y-auto divide-y divide-gob-accent/60">
+            <ul className="mt-3 max-h-80 overflow-y-auto space-y-2">
               {notificaciones.map((aviso, indice) => (
                 <li key={aviso.id}>
                   <Link
                     ref={indice === 0 ? referenciaEnlace : undefined}
                     href={`/revisor/ventanas-carga/${aviso.ventanaCargaId}?origen=inicio#inicio-detalle-ventana`}
-                    onClick={alElegir}
-                    className="block rounded-md px-2 py-3 text-sm text-gob-gray-a hover:bg-gob-neutral focus-visible:outline-2 focus-visible:outline-gob-primary"
+                    onNavigate={evento => { evento.preventDefault(); alElegir(aviso); }}
+                    className={`block rounded-md border px-2 py-3 text-sm text-gob-gray-a focus-visible:outline-2 focus-visible:outline-gob-primary ${aviso.leido ? "border-[#d5e5da] bg-[#edf6ef] hover:bg-[#e2f0e6]" : "border-[#cbdff2] bg-[#eaf3ff] hover:bg-[#dfecfc]"}`}
                   >
                     <span className="font-semibold text-[#173b69]">{aviso.nombre}</span>{" "}
                     {aviso.accion === "ARCHIVO_ENVIADO" ? "subió un archivo para revisión." : "solicitó un reemplazo de archivo."}
+                    <span className="mt-1 block text-xs font-semibold text-[#45617d]">{aviso.leido ? "Leído" : "No leído"}</span>
                     <time dateTime={aviso.fecha} className="mt-1 block text-xs text-gob-gray-b">{formatearFechaHora(new Date(aviso.fecha))}</time>
                   </Link>
                 </li>
@@ -89,7 +116,8 @@ function ListaAvisos({ notificaciones, referenciaEnlace, alElegir }: {
 
 // Bandeja de archivos enviados y solicitudes de reemplazo pendientes de revisión.
 export function MenuNotificacionesRevisor({ bandeja }: MenuNotificacionesRevisorProps) {
-  const { datos, cantidad, cargando, error, mostrarMas } = useBandejaNotificaciones(bandeja);
+  const { datos, cantidad, cargando, error, mostrarMas, marcarLeida } = useBandejaNotificaciones(bandeja);
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const referenciaContenedor = useRef<HTMLDivElement>(null);
   const referenciaBoton = useRef<HTMLButtonElement>(null);
@@ -108,8 +136,8 @@ export function MenuNotificacionesRevisor({ bandeja }: MenuNotificacionesRevisor
   useCerrarMenu(abierto, referenciaContenedor, cerrarYDevolverFoco, () => setAbierto(false));
 
   useEffect(() => {
-    if (abierto && hayNotificaciones) referenciaEnlace.current?.focus();
-  }, [abierto, hayNotificaciones]);
+    if (abierto && datos.notificaciones.length > 0) referenciaEnlace.current?.focus();
+  }, [abierto, datos.notificaciones.length]);
 
   return (
     <div ref={referenciaContenedor} className="relative">
@@ -150,10 +178,10 @@ export function MenuNotificacionesRevisor({ bandeja }: MenuNotificacionesRevisor
             </div>
           </div>
 
-          {hayNotificaciones ? (
-            <ListaAvisos notificaciones={datos.notificaciones} referenciaEnlace={referenciaEnlace} alElegir={() => setAbierto(false)} />
+          {datos.total > 0 ? (
+            <ListaAvisos notificaciones={datos.notificaciones} referenciaEnlace={referenciaEnlace} alElegir={aviso => { void marcarLeida(aviso).then(ok => { if (ok) { setAbierto(false); router.push(`/revisor/ventanas-carga/${aviso.ventanaCargaId}?origen=inicio#inicio-detalle-ventana`); router.refresh(); } }); }} />
           ) : null}
-          {datos.notificaciones.length < cantidad ? (
+          {datos.notificaciones.length < datos.total ? (
             <button type="button" disabled={cargando} onClick={() => void mostrarMas()}
               className="mt-3 w-full rounded-lg bg-gob-primary px-3 py-2 text-sm font-semibold text-white hover:bg-[#0f5fa5] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary">
               {cargando ? "Cargando…" : "Mostrar más"}
