@@ -22,7 +22,7 @@ import {
 // (`ListadoCargasVentana.tsx`).
 export type FilaCargaVentanaVista = Pick<
   CargaArchivoResumen,
-  "id" | "usuarioId" | "usuarioNombre" | "usuarioRut" | "nombreArchivoOriginal" | "estado"
+  "id" | "usuarioId" | "usuarioNombre" | "usuarioRut" | "nombreArchivoOriginal" | "cantidadFilasDatos" | "estado"
 > & {
   fechaReporte: string;
   // `APROBADA` ya superada por un reemplazo (publicación desactivada): se muestra "Reemplazada" y
@@ -165,6 +165,7 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
               <th scope="col" className="px-3 py-3 font-semibold">Reportado por</th>
               <th scope="col" className="px-3 py-3 font-semibold">Fecha de reporte</th>
               <th scope="col" className="px-3 py-3 font-semibold">Archivo</th>
+              <th scope="col" className="px-3 py-3 text-right font-semibold" title="Filas de datos, sin contar el encabezado">Filas</th>
               <th scope="col" className="px-3 py-3 font-semibold">Estado</th>
               <th scope="col" className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                 Acciones
@@ -199,6 +200,9 @@ export function TablaCargasVentana({ filas, ventanaCargaId, tituloVentana, permi
                       </a>
                     </>
                   ) : null}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-gob-gray-a">
+                  {fila.cantidadFilasDatos.toLocaleString("es-CL")}
                 </td>
                 <td className="px-3 py-2">
                   <BadgeEstadoCarga estado={fila.estado} superada={fila.superada} enReemplazo={fila.enReemplazo} />

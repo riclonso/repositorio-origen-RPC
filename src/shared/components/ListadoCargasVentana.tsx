@@ -39,6 +39,7 @@ export async function ListadoCargasVentana({
     usuarioNombre: carga.usuarioNombre,
     usuarioRut: carga.usuarioRut,
     nombreArchivoOriginal: carga.nombreArchivoOriginal,
+    cantidadFilasDatos: carga.cantidadFilasDatos,
     estado: carga.estado,
     superada: carga.estado === "APROBADA" && carga.publicacionActiva === false,
     enReemplazo: carga.enReemplazo,
