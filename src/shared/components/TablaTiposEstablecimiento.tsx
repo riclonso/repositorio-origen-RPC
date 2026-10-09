@@ -8,7 +8,6 @@ import { IconoEditar, IconoEliminar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
 import { useAccionConfirmable } from "@/shared/hooks/useAccionConfirmable";
-import { RUTA_TIPOS } from "./ruta-tipos";
 
 export type FilaTipoVista = {
   id: string;
@@ -33,11 +32,12 @@ function motivoNoEliminable(cantidadEstablecimientos: number): string {
 
 type AccionesFilaProps = {
   fila: FilaTipoVista;
+  rutaBase: string;
   onCambiarEstado: () => void;
   onEliminar: () => void;
 };
 
-function AccionesFila({ fila, onCambiarEstado, onEliminar }: AccionesFilaProps) {
+function AccionesFila({ fila, rutaBase, onCambiarEstado, onEliminar }: AccionesFilaProps) {
   const enUso = fila.cantidadEstablecimientos > 0;
 
   return (
@@ -45,7 +45,7 @@ function AccionesFila({ fila, onCambiarEstado, onEliminar }: AccionesFilaProps) 
       <BotonIcono
         etiqueta={`Editar ${fila.nombre}`}
         Icono={IconoEditar}
-        href={`${RUTA_TIPOS}/${fila.id}/editar`}
+        href={`${rutaBase}/${fila.id}/editar`}
       />
       <BotonIcono
         etiqueta={`Eliminar ${fila.nombre}`}
@@ -93,9 +93,11 @@ function eliminarTipoEnApi(fila: FilaTipoVista): Promise<Response> {
 type TablaTiposProps = {
   filas: FilaTipoVista[];
   descripcion: string;
+  // "/dashboard/tipos-establecimiento" o "/revisor/tipos-establecimiento".
+  rutaBase: string;
 };
 
-export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
+export function TablaTipos({ filas, descripcion, rutaBase }: TablaTiposProps) {
   const router = useRouter();
   const refrescar = useCallback(() => router.refresh(), [router]);
   const eliminacion = useAccionConfirmable(eliminarTipoEnApi, refrescar);
@@ -148,7 +150,7 @@ export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
         anchoMinimo="min-w-2xl"
         acciones={(fila) => (
           <AccionesFila
-            fila={fila}
+            fila={fila} rutaBase={rutaBase}
             onCambiarEstado={() => setObjetivo(fila)}
             onEliminar={() => eliminacion.solicitar(fila)}
           />
@@ -159,7 +161,7 @@ export function TablaTipos({ filas, descripcion }: TablaTiposProps) {
             <p className="mt-1">Creado el {fila.creadoEl}</p>
             <div className="mt-3">
               <AccionesFila
-                fila={fila}
+                fila={fila} rutaBase={rutaBase}
                 onCambiarEstado={() => setObjetivo(fila)}
                 onEliminar={() => eliminacion.solicitar(fila)}
               />

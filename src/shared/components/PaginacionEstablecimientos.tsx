@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { FiltroListadoEstablecimientos } from "@/modules/establecimiento/domain/entities/Establecimiento";
 import type { PaginacionEstablecimientos } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientos";
-import { construirRutaEstablecimientos } from "./ruta-establecimientos";
+import { construirRutaEstablecimientos } from "@/shared/components/ruta-establecimientos";
 
 const PAGINAS_VISIBLES = 5;
 
@@ -26,12 +26,14 @@ type PaginacionEstablecimientosProps = {
   paginacion: PaginacionEstablecimientos;
   filtro: FiltroListadoEstablecimientos;
   cantidadEnPagina: number;
+  rutaBase: string;
 };
 
 export function PaginacionEstablecimientos({
   paginacion,
   filtro,
   cantidadEnPagina,
+  rutaBase,
 }: PaginacionEstablecimientosProps) {
   const desde = (paginacion.pagina - 1) * paginacion.tamano + 1;
   const hasta = desde + cantidadEnPagina - 1;
@@ -49,7 +51,7 @@ export function PaginacionEstablecimientos({
           <li>
             {hayAnterior ? (
               <Link
-                href={construirRutaEstablecimientos(filtro, paginacion.pagina - 1)}
+                href={construirRutaEstablecimientos(rutaBase, filtro, paginacion.pagina - 1)}
                 className={CLASES_ENLACE}
               >
                 Anterior
@@ -72,7 +74,7 @@ export function PaginacionEstablecimientos({
                 </span>
               ) : (
                 <Link
-                  href={construirRutaEstablecimientos(filtro, numero)}
+                  href={construirRutaEstablecimientos(rutaBase, filtro, numero)}
                   aria-label={`Ir a la página ${numero}`}
                   className={CLASES_ENLACE}
                 >
@@ -85,7 +87,7 @@ export function PaginacionEstablecimientos({
           <li>
             {haySiguiente ? (
               <Link
-                href={construirRutaEstablecimientos(filtro, paginacion.pagina + 1)}
+                href={construirRutaEstablecimientos(rutaBase, filtro, paginacion.pagina + 1)}
                 className={CLASES_ENLACE}
               >
                 Siguiente

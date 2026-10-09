@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node \"C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/quitar-formulario.js\")",
+      "Bash(git mv *)",
+      "Bash(node \"C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/bd-desechable.js\" eliminar)",
+      "Bash(npx react-doctor@latest --verbose --scope changed)",
+      "Bash(sed -n 240,275p src/shared/components/TablaMisCargasExitosas.tsx; cat \"C:/Users/Ricardo/AppData/Local/Temp/react-doctor-b459b4ce-116c-4fb1-9275-0b6f3309372d\"/* 2>/dev/null | head -40; ls \"C:/Users/Ricardo/AppData/Local/Temp/react-doctor-b459b4ce-116c-4fb1-9275-0b6f3309372d\")",
+      "Read(//c/Users/Ricardo/AppData/Local/Temp/react-doctor-b459b4ce-116c-4fb1-9275-0b6f3309372d/**)",
+      "Read(//c/Users/Ricardo/AppData/Local/Temp/react-doctor-3151e6db-2956-4be0-8eba-39b6db2af68f/**)",
+      "Bash(npx react-doctor@latest --help)",
+      "Bash(npx react-doctor@latest --verbose --scope changed --no-cache --json --json-compact)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);const s=JSON.stringify\\(j,\\(k,v\\)=>k==='diagnostics'&&Array.isArray\\(v\\)?v.map\\(x=>x.rule+' '+x.filePath+':'+x.line\\):v\\);console.log\\(s.slice\\(0,3000\\)\\)}\\)\")",
+      "Bash(npx react-doctor@latest src/app/notificador/panel-carga-archivo.tsx src/app/notificador/page.tsx src/app/notificador/cargas/page.tsx src/shared/components/TablaVentanasCarga.tsx src/shared/components/ListadoVentanasCarga.tsx src/shared/components/DetalleVentanaCarga.tsx src/shared/components/ListadoMisCargasExitosas.tsx src/shared/components/TablaMisCargasExitosas.tsx --verbose --no-cache)",
+      "Bash(npx react-doctor@latest src/app/notificador/panel-carga-archivo.tsx src/app/notificador/page.tsx src/app/notificador/cargas/page.tsx src/shared/components/TablaVentanasCarga.tsx src/shared/components/ListadoVentanasCarga.tsx src/shared/components/DetalleVentanaCarga.tsx src/shared/components/ListadoMisCargasExitosas.tsx src/shared/components/TablaMisCargasExitosas.tsx src/shared/components/FormularioSolicitudReemplazo.tsx --verbose --no-cache)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(npx react-doctor@latest --verbose --scope changed > \"/c/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/rd-antes.txt\" 2>&1; echo done)",
+      "Bash(NODE_PATH=C:/wamp64/www/repositorio-rem/node_modules npx tsx C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/exp/orden.ts C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/exp)",
+      "Bash(NODE_PATH=\"C:/wamp64/www/repositorio-rem/node_modules\" node \"C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/bd-desechable.cjs\")",
+      "Read(//c/Users/Ricardo/.claude/projects/c--wamp64-www-repositorio-rem//**)",
+      "Read(//c/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121//**)",
+      "Read(//c/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/830ff411-ca9b-48f1-8081-2f8e5dcf6121/scratchpad/**)",
+      "Bash(rm -f /c/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/ec6ad0b5-dea0-41e2-a7da-302a1d8e4bf0/scratchpad/url.txt)",
+      "PowerShell(node \"C:\\\\Users\\\\Ricardo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--wamp64-www-repositorio-rem\\\\ec6ad0b5-dea0-41e2-a7da-302a1d8e4bf0\\\\scratchpad\\\\extraer-diseno.js\")",
+      "Bash(NODE_PATH=C:/wamp64/www/repositorio-rem/node_modules npx tsx C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/ec6ad0b5-dea0-41e2-a7da-302a1d8e4bf0/scratchpad/exp/probar-referencia.ts C:/Users/Ricardo/AppData/Local/Temp/claude/c--wamp64-www-repositorio-rem/ec6ad0b5-dea0-41e2-a7da-302a1d8e4bf0/scratchpad/exp/corpus)",
+      "Bash(wmic process *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Ricardo\\AppData\\Local\\Temp\\claude\\c--wamp64-www-repositorio-rem\\830ff411-ca9b-48f1-8081-2f8e5dcf6121\\scratchpad"
+    ]
+  }
+}

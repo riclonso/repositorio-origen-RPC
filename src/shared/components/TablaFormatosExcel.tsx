@@ -166,7 +166,7 @@ export function TablaFormatosExcel({ filas, rutaBase }: TablaFormatosExcelProps)
                       href={`${rutaBase}/${fila.id}/editar`}
                     />
                     <BotonIcono
-                      etiqueta={`Asignar ${fila.nombre} a usuarios`}
+                      etiqueta={`Asignar ${fila.nombre} por establecimiento`}
                       Icono={IconoAsignarUsuarios}
                       onClick={() => setObjetivoAsignacion(prepararAsignacionFormato(fila.id, fila.nombre))}
                       deshabilitado={!fila.activo}

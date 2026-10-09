@@ -14,4 +14,12 @@ export const ENLACES_REVISOR: readonly EnlacePanel[] = [
       { href: "/revisor/bioestadistica/solicitudes", etiqueta: "Solicitudes" },
     ],
   },
+  // Mismos mantenedores que el ADMIN (pantallas compartidas en `shared/components/Pantallas*`).
+  {
+    etiqueta: "Administración",
+    subenlaces: [
+      { href: "/revisor/establecimientos", etiqueta: "Establecimientos" },
+      { href: "/revisor/tipos-establecimiento", etiqueta: "Tipos de establecimiento" },
+    ],
+  },
 ];

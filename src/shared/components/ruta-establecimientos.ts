@@ -1,11 +1,18 @@
 import type { FiltroListadoEstablecimientos } from "@/modules/establecimiento/domain/entities/Establecimiento";
 import { FILTRO_LISTADO_POR_DEFECTO } from "@/modules/establecimiento/schemas/listado-establecimientos.schema";
 
-export const RUTA_ESTABLECIMIENTOS = "/dashboard/establecimientos";
+// Bases de ruta de los mantenedores de establecimientos y tipos. Las pantallas se comparten entre
+// `/dashboard` (ADMIN) y `/revisor` (REVISOR_REPOSITORIO), así que ningún componente asume una de
+// las dos: cada área pasa su `rutaBase` (mismo criterio que `TablaFormatosExcel`).
+export const RUTA_ESTABLECIMIENTOS_DASHBOARD = "/dashboard/establecimientos";
+export const RUTA_ESTABLECIMIENTOS_REVISOR = "/revisor/establecimientos";
+export const RUTA_TIPOS_ESTABLECIMIENTO_DASHBOARD = "/dashboard/tipos-establecimiento";
+export const RUTA_TIPOS_ESTABLECIMIENTO_REVISOR = "/revisor/tipos-establecimiento";
 
 // Construye la URL del listado conservando el filtro vigente y reemplazando solo la página. Se
 // parte del filtro ya validado para no arrastrar parámetros inválidos escritos a mano.
 export function construirRutaEstablecimientos(
+  rutaBase: string,
   filtro: FiltroListadoEstablecimientos,
   pagina: number = filtro.pagina,
 ): string {
@@ -22,5 +29,5 @@ export function construirRutaEstablecimientos(
   }
 
   const consulta = parametros.toString();
-  return consulta ? `${RUTA_ESTABLECIMIENTOS}?${consulta}` : RUTA_ESTABLECIMIENTOS;
+  return consulta ? `${rutaBase}?${consulta}` : rutaBase;
 }

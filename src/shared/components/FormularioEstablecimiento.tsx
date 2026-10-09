@@ -8,7 +8,6 @@ import { establecimientoFormSchema } from "@/modules/establecimiento/schemas/est
 import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { RUTA_ESTABLECIMIENTOS } from "./ruta-establecimientos";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el establecimiento. Intenta nuevamente.";
 
@@ -47,6 +46,8 @@ type EstablecimientoFormProps = {
   // Vienen de la base a través de la página. En el alta incluyen una opción vacía que el esquema
   // rechaza; en la edición incluyen el tipo vigente aunque esté inactivo.
   opcionesTipo: OpcionSelect[];
+  // Listado al que se vuelve al guardar o cancelar ("/dashboard/..." o "/revisor/...").
+  rutaBase: string;
 };
 
 export function EstablecimientoForm({
@@ -55,6 +56,7 @@ export function EstablecimientoForm({
   metodo,
   valoresIniciales,
   opcionesTipo,
+  rutaBase,
 }: EstablecimientoFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
@@ -111,7 +113,7 @@ export function EstablecimientoForm({
       return { errores: {}, errorGeneral: MENSAJE_ERROR_GENERICO };
     }
 
-    router.push(esCreacion ? `${RUTA_ESTABLECIMIENTOS}?creado=1` : RUTA_ESTABLECIMIENTOS);
+    router.push(esCreacion ? `${rutaBase}?creado=1` : rutaBase);
     router.refresh();
     return ESTADO_INICIAL;
   }, ESTADO_INICIAL);
@@ -171,7 +173,7 @@ export function EstablecimientoForm({
         </Boton>
 
         <Link
-          href={RUTA_ESTABLECIMIENTOS}
+          href={rutaBase}
           className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar

@@ -17,6 +17,11 @@ const MENSAJE_ERROR_GUARDADO = "No se pudieron guardar los cambios. Intenta nuev
 const MENSAJE_ERROR_RECARGA =
   "Los cambios se guardaron, pero no se pudo recargar la lista. Cierra y vuelve a abrir para seguir editando.";
 
+// Clave del grupo de notificadores sin establecimiento (cuentas previas a RF-30). No colisiona con
+// un id real: los ids de establecimiento son UUID.
+const CLAVE_SIN_ESTABLECIMIENTO = "sin-establecimiento";
+const NOMBRE_SIN_ESTABLECIMIENTO = "Sin establecimiento";
+
 type RespuestaAsignacionMasiva = {
   cantidadAgregados: number;
   cantidadQuitados: number;
@@ -25,28 +30,92 @@ type RespuestaAsignacionMasiva = {
   excluidosUltimoFormatoIds: string[];
 };
 
-function idsAsignados(candidatos: CandidatoAsignacionFormato[]): Set<string> {
-  return new Set(candidatos.filter((candidato) => candidato.yaAsignado).map((candidato) => candidato.id));
+// Notificadores activos de un mismo establecimiento: la unidad de selección del modal.
+type GrupoEstablecimiento = {
+  clave: string;
+  nombre: string;
+  candidatos: CandidatoAsignacionFormato[];
+  cantidadAsignados: number;
+  // Precalculado una vez por grupo para que la búsqueda no normalice en cada tecla.
+  nombreNormalizado: string;
+};
+
+// Decisión del operador por establecimiento (clave del grupo): `true` asignar a todos, `false`
+// quitar a todos. Un grupo sin entrada no se toca.
+type DecisionesEstablecimiento = Map<string, boolean>;
+
+function agruparPorEstablecimiento(candidatos: CandidatoAsignacionFormato[]): GrupoEstablecimiento[] {
+  const grupos = new Map<string, GrupoEstablecimiento>();
+
+  for (const candidato of candidatos) {
+    const clave = candidato.establecimientoId ?? CLAVE_SIN_ESTABLECIMIENTO;
+    let grupo = grupos.get(clave);
+    if (!grupo) {
+      const nombre = candidato.establecimientoNombre ?? NOMBRE_SIN_ESTABLECIMIENTO;
+      grupo = { clave, nombre, candidatos: [], cantidadAsignados: 0, nombreNormalizado: normalizarTexto(nombre) };
+      grupos.set(clave, grupo);
+    }
+    grupo.candidatos.push(candidato);
+    if (candidato.yaAsignado) grupo.cantidadAsignados++;
+  }
+
+  // Orden alfabético; "Sin establecimiento" siempre al final.
+  return [...grupos.values()].sort((a, b) => {
+    if (a.clave === CLAVE_SIN_ESTABLECIMIENTO) return 1;
+    if (b.clave === CLAVE_SIN_ESTABLECIMIENTO) return -1;
+    return a.nombre.localeCompare(b.nombre, "es");
+  });
 }
 
-// Búsqueda sin distinguir mayúsculas ni acentos ("Muñoz" coincide con "munoz").
+// Búsqueda sin distinguir mayúsculas ni acentos ("Concepción" coincide con "concepcion").
 function normalizarTexto(texto: string): string {
   return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-// Para buscar por RUT con o sin puntos y guion.
-function quitarSeparadoresRut(texto: string): string {
-  return texto.replace(/[.\-\s]/g, "");
+function filtrarGrupos(grupos: GrupoEstablecimiento[], termino: string): GrupoEstablecimiento[] {
+  if (termino.length === 0) return grupos;
+  return grupos.filter((grupo) => grupo.nombreNormalizado.includes(termino));
 }
 
-function coincideBusqueda(candidato: CandidatoAsignacionFormato, termino: string): boolean {
-  if (termino.length === 0) return true;
+function grupoMarcado(grupo: GrupoEstablecimiento, decisiones: DecisionesEstablecimiento): boolean {
+  return decisiones.get(grupo.clave) ?? grupo.cantidadAsignados === grupo.candidatos.length;
+}
 
-  const nombreCompleto = normalizarTexto(`${candidato.nombres} ${candidato.apellidos}`);
-  if (nombreCompleto.includes(termino)) return true;
+function grupoIntermedio(grupo: GrupoEstablecimiento, decisiones: DecisionesEstablecimiento): boolean {
+  return (
+    !decisiones.has(grupo.clave) &&
+    grupo.cantidadAsignados > 0 &&
+    grupo.cantidadAsignados < grupo.candidatos.length
+  );
+}
 
-  const terminoRut = quitarSeparadoresRut(termino);
-  return terminoRut.length > 0 && quitarSeparadoresRut(candidato.rut.toLowerCase()).includes(terminoRut);
+// Traduce las decisiones por establecimiento a la diferencia por usuario que espera la API. Quitar
+// nunca incluye a quien tiene este formato como único (el servidor igual lo excluiría).
+function calcularCambios(
+  grupos: GrupoEstablecimiento[],
+  decisiones: DecisionesEstablecimiento,
+): { agregarIds: string[]; quitarIds: string[] } {
+  const agregarIds: string[] = [];
+  const quitarIds: string[] = [];
+
+  for (const grupo of grupos) {
+    const decision = decisiones.get(grupo.clave);
+    if (decision === undefined) continue;
+    for (const candidato of grupo.candidatos) {
+      if (decision && !candidato.yaAsignado) agregarIds.push(candidato.id);
+      if (!decision && candidato.yaAsignado && !candidato.esUnicoFormato) quitarIds.push(candidato.id);
+    }
+  }
+
+  return { agregarIds, quitarIds };
+}
+
+// Una decisión que coincide con el estado actual del grupo se descarta: así la casilla vuelve a su
+// estado original (p. ej. la intermedia) en vez de quedar "tocada" sin cambios reales.
+function decidir(siguiente: DecisionesEstablecimiento, grupo: GrupoEstablecimiento, marcado: boolean) {
+  const sinEfecto = marcado ? grupo.cantidadAsignados === grupo.candidatos.length : grupo.cantidadAsignados === 0;
+  if (sinEfecto) siguiente.delete(grupo.clave);
+  else siguiente.set(grupo.clave, marcado);
 }
 
 function plural(cantidad: number, singular: string, pluralTexto: string): string {
@@ -93,6 +162,12 @@ type EditorAsignacionProps = AccionesModal & {
   candidatosIniciales: CandidatoAsignacionFormato[];
 };
 
+// La selección es por ESTABLECIMIENTO, no por usuario. Cada casilla parte en el estado actual del
+// grupo (marcada si todos sus notificadores tienen el formato, intermedia si solo algunos). Lo que
+// el operador cambia queda en `decisiones`: marcar = asignar a TODOS los notificadores del
+// establecimiento; desmarcar = quitárselo a todos, salvo a quien lo tiene como único formato. Un
+// grupo no tocado no genera cambios. Al servidor viaja la misma diferencia por usuario de siempre
+// (`agregarIds`/`quitarIds`), que revalida todo en su transacción.
 function EditorAsignacion({
   formatoId,
   candidatosIniciales,
@@ -103,7 +178,7 @@ function EditorAsignacion({
 }: EditorAsignacionProps) {
   const idBase = useId();
   const [candidatos, setCandidatos] = useState(candidatosIniciales);
-  const [seleccionados, setSeleccionados] = useState(() => idsAsignados(candidatosIniciales));
+  const [decisiones, setDecisiones] = useState<DecisionesEstablecimiento>(() => new Map());
   const [busqueda, setBusqueda] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [resumen, setResumen] = useState<string[]>([]);
@@ -111,41 +186,32 @@ function EditorAsignacion({
   // un nuevo guardado hasta reabrir el modal.
   const [listaDesactualizada, setListaDesactualizada] = useState(false);
 
-  const agregarIds = candidatos
-    .filter((candidato) => !candidato.yaAsignado && seleccionados.has(candidato.id))
-    .map((candidato) => candidato.id);
-  const quitarIds = candidatos
-    .filter((candidato) => candidato.yaAsignado && !seleccionados.has(candidato.id))
-    .map((candidato) => candidato.id);
+  const grupos = agruparPorEstablecimiento(candidatos);
+  const { agregarIds, quitarIds } = calcularCambios(grupos, decisiones);
   const totalCambios = agregarIds.length + quitarIds.length;
   const excedeMaximo = totalCambios > MAXIMO_CAMBIOS_ASIGNACION_MASIVA;
 
   const termino = normalizarTexto(busqueda.trim());
-  const visibles = candidatos.filter((candidato) => coincideBusqueda(candidato, termino));
+  const visibles = filtrarGrupos(grupos, termino);
+  const estaMarcado = (grupo: GrupoEstablecimiento) => grupoMarcado(grupo, decisiones);
+  const estaIntermedio = (grupo: GrupoEstablecimiento) => grupoIntermedio(grupo, decisiones);
 
-  // "Seleccionar todos" actúa sobre los visibles (respeta la búsqueda). Al desmarcar nunca quita a
-  // quien tiene este formato como único: su casilla está bloqueada y el servidor lo excluiría igual.
-  const visiblesEditables = visibles.filter((candidato) => !candidato.esUnicoFormato);
-  const cantidadVisiblesMarcados = visibles.filter((candidato) => seleccionados.has(candidato.id)).length;
-  const todosMarcados = visibles.length > 0 && cantidadVisiblesMarcados === visibles.length;
-  const algunoMarcado = cantidadVisiblesMarcados > 0 && !todosMarcados;
+  const todosMarcados = visibles.length > 0 && visibles.every(estaMarcado);
+  const algunoMarcado = !todosMarcados && visibles.some((grupo) => estaMarcado(grupo) || estaIntermedio(grupo));
 
-  function alternarTodos(marcado: boolean) {
-    setSeleccionados((actual) => {
-      const siguiente = new Set(actual);
-      for (const candidato of visiblesEditables) {
-        if (marcado) siguiente.add(candidato.id);
-        else siguiente.delete(candidato.id);
-      }
+  function alternar(grupo: GrupoEstablecimiento, marcado: boolean) {
+    setDecisiones((actual) => {
+      const siguiente = new Map(actual);
+      decidir(siguiente, grupo, marcado);
       return siguiente;
     });
   }
 
-  function alternar(id: string, marcado: boolean) {
-    setSeleccionados((actual) => {
-      const siguiente = new Set(actual);
-      if (marcado) siguiente.add(id);
-      else siguiente.delete(id);
+  // "Seleccionar todos" actúa sobre los establecimientos visibles (respeta la búsqueda).
+  function alternarTodos(marcado: boolean) {
+    setDecisiones((actual) => {
+      const siguiente = new Map(actual);
+      for (const grupo of visibles) decidir(siguiente, grupo, marcado);
       return siguiente;
     });
   }
@@ -196,7 +262,7 @@ function EditorAsignacion({
       const recarga = await obtenerCandidatosAsignacion(formatoId);
       if (recarga.ok) {
         setCandidatos(recarga.candidatos);
-        setSeleccionados(idsAsignados(recarga.candidatos));
+        setDecisiones(new Map());
       } else {
         setListaDesactualizada(true);
         setError(MENSAJE_ERROR_RECARGA);
@@ -213,7 +279,7 @@ function EditorAsignacion({
       <div className="mt-4 flex flex-col gap-3">
         <CampoTexto
           id={`${idBase}-busqueda`}
-          etiqueta="Buscar por nombre, apellido o RUT"
+          etiqueta="Buscar establecimiento"
           type="search"
           value={busqueda}
           onChange={(evento) => setBusqueda(evento.target.value)}
@@ -222,10 +288,10 @@ function EditorAsignacion({
 
         <fieldset className="flex flex-col gap-2">
           <legend className="text-sm font-medium text-gob-black">
-            Notificadores activos ({candidatos.length})
+            Establecimientos con notificadores activos ({grupos.length})
           </legend>
 
-          {visiblesEditables.length > 0 ? (
+          {visibles.length > 0 ? (
             <label
               htmlFor={`${idBase}-todos`}
               className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm font-medium text-gob-black hover:bg-gob-neutral"
@@ -250,42 +316,43 @@ function EditorAsignacion({
           <div className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-md border border-gob-accent bg-white p-2">
             {visibles.length === 0 ? (
               <p className="px-2 py-1 text-sm text-gob-gray-a">
-                {candidatos.length === 0
+                {grupos.length === 0
                   ? "No hay notificadores activos."
-                  : "Ningún notificador coincide con la búsqueda."}
+                  : "Ningún establecimiento coincide con la búsqueda."}
               </p>
             ) : (
-              visibles.map((candidato) => {
-                const idOpcion = `${idBase}-usuario-${candidato.id}`;
-                const idLeyenda = `${idOpcion}-leyenda`;
+              visibles.map((grupo) => {
+                const idOpcion = `${idBase}-establecimiento-${grupo.clave}`;
+                const idDetalle = `${idOpcion}-detalle`;
+                const cantidadUnico = grupo.candidatos.filter((candidato) => candidato.esUnicoFormato).length;
 
                 return (
                   <label
-                    key={candidato.id}
+                    key={grupo.clave}
                     htmlFor={idOpcion}
-                    className={`flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gob-black ${
-                      candidato.esUnicoFormato ? "cursor-not-allowed" : "cursor-pointer hover:bg-gob-neutral"
-                    }`}
+                    className="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-sm text-gob-black hover:bg-gob-neutral"
                   >
                     <input
                       id={idOpcion}
                       type="checkbox"
-                      checked={seleccionados.has(candidato.id)}
-                      disabled={procesando || candidato.esUnicoFormato}
-                      aria-describedby={candidato.esUnicoFormato ? idLeyenda : undefined}
-                      onChange={(evento) => alternar(candidato.id, evento.target.checked)}
-                      className="h-4 w-4 rounded border-gob-accent text-gob-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+                      checked={estaMarcado(grupo)}
+                      ref={(elemento) => {
+                        if (elemento) elemento.indeterminate = estaIntermedio(grupo);
+                      }}
+                      disabled={procesando}
+                      aria-describedby={idDetalle}
+                      onChange={(evento) => alternar(grupo, evento.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-gob-accent text-gob-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
                     />
                     <span className="flex flex-col">
-                      <span>
-                        {candidato.nombres} {candidato.apellidos}
+                      <span>{grupo.nombre}</span>
+                      <span id={idDetalle} className="text-xs text-gob-gray-a">
+                        {grupo.cantidadAsignados} de {plural(grupo.candidatos.length, "notificador", "notificadores")} con
+                        este formato
+                        {cantidadUnico > 0
+                          ? ` · ${plural(cantidadUnico, "lo tiene", "lo tienen")} como único formato (no se le quita)`
+                          : ""}
                       </span>
-                      <span className="text-xs text-gob-gray-a">{candidato.rut}</span>
-                      {candidato.esUnicoFormato ? (
-                        <span id={idLeyenda} className="text-xs text-gob-gray-a">
-                          Único formato asignado
-                        </span>
-                      ) : null}
                     </span>
                   </label>
                 );
@@ -295,12 +362,14 @@ function EditorAsignacion({
         </fieldset>
 
         <p className="text-sm text-gob-gray-a">
-          {agregarIds.length} por agregar · {quitarIds.length} por quitar
+          {plural(agregarIds.length, "usuario", "usuarios")} por agregar ·{" "}
+          {plural(quitarIds.length, "usuario", "usuarios")} por quitar
         </p>
 
         {excedeMaximo ? (
           <p className="text-sm font-medium text-gob-danger">
-            Puedes guardar como máximo {MAXIMO_CAMBIOS_ASIGNACION_MASIVA} cambios a la vez. Guarda en partes.
+            Puedes guardar como máximo {MAXIMO_CAMBIOS_ASIGNACION_MASIVA} cambios de usuarios a la vez. Selecciona
+            menos establecimientos y guarda en partes.
           </p>
         ) : null}
       </div>
@@ -364,9 +433,10 @@ type ModalAsignarFormatoUsuariosProps = {
   onCerrar: (huboCambios: boolean) => void;
 };
 
-// Asignación masiva de un formato a notificadores activos. Envía solo la diferencia respecto del
-// estado cargado; el servidor revalida todo (elegibilidad y "único formato") y procesa parcialmente.
-// Abrir con `prepararAsignacionFormato(id, nombre)` (`asignacion-formato.ts`).
+// Asignación masiva de un formato POR ESTABLECIMIENTO: se eligen establecimientos y el formato se
+// asigna (o quita) a todos sus notificadores activos. Envía solo la diferencia por usuario respecto
+// del estado cargado; el servidor revalida todo (elegibilidad y "único formato") y procesa
+// parcialmente. Abrir con `prepararAsignacionFormato(id, nombre)` (`asignacion-formato.ts`).
 export function ModalAsignarFormatoUsuarios({ formato, onCerrar }: ModalAsignarFormatoUsuariosProps) {
   const referenciaDialogo = useRef<HTMLDialogElement>(null);
   const idBase = useId();
@@ -405,19 +475,19 @@ export function ModalAsignarFormatoUsuarios({ formato, onCerrar }: ModalAsignarF
       className="m-auto w-[min(40rem,calc(100vw-2rem))] rounded-lg border border-gob-accent bg-white p-6 text-gob-black shadow-lg backdrop:bg-gob-tertiary/50"
     >
       <h2 id={idTitulo} className="text-base font-semibold text-gob-black">
-        {formato ? `Asignar “${formato.nombre}” a usuarios` : "Asignar formato a usuarios"}
+        {formato ? `Asignar “${formato.nombre}” por establecimiento` : "Asignar formato por establecimiento"}
       </h2>
 
       {formato ? (
         <>
           <p className="mt-2 text-sm text-gob-gray-a">
-            Marca a los notificadores que deben tener este formato y desmarca a quienes ya no. Solo se
-            muestran notificadores activos.
+            Marca los establecimientos cuyos notificadores deben tener este formato y desmarca los que ya
+            no. El cambio se aplica a todos los notificadores activos del establecimiento.
           </p>
           <Suspense
             fallback={
               <p role="status" className="mt-4 text-sm text-gob-gray-a">
-                Cargando notificadores...
+                Cargando establecimientos...
               </p>
             }
           >

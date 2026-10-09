@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { RUTA_ESTABLECIMIENTOS, construirRutaEstablecimientos } from "./ruta-establecimientos";
+import { construirRutaEstablecimientos } from "@/shared/components/ruta-establecimientos";
 
 // Los tipos son datos del catálogo, no una lista fija en el código: llegan por props desde la
 // página, que los lee de la base.
@@ -23,6 +23,7 @@ type FiltrosEstablecimientosProps = {
   activoInicial: string;
   tamano: number;
   opcionesTipo: OpcionSelect[];
+  rutaBase: string;
 };
 
 // El filtro vive en la URL, no en un store ni en estado derivado: los campos son no controlados y
@@ -33,6 +34,7 @@ export function FiltrosEstablecimientos({
   activoInicial,
   tamano,
   opcionesTipo,
+  rutaBase,
 }: FiltrosEstablecimientosProps) {
   const router = useRouter();
   const [buscando, iniciarBusqueda] = useTransition();
@@ -47,6 +49,7 @@ export function FiltrosEstablecimientos({
     const activo = String(datos.get("activo") ?? "");
 
     const ruta = construirRutaEstablecimientos(
+      rutaBase,
       {
         termino: termino === "" ? undefined : termino,
         tipo: tipo === "" ? undefined : tipo,
@@ -61,7 +64,7 @@ export function FiltrosEstablecimientos({
   }
 
   function limpiarFiltros() {
-    iniciarBusqueda(() => router.push(RUTA_ESTABLECIMIENTOS));
+    iniciarBusqueda(() => router.push(rutaBase));
   }
 
   return (

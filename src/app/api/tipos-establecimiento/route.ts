@@ -7,14 +7,14 @@ import { tipoEstablecimientoSchema } from "@/modules/tipoEstablecimiento/schemas
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaError,
   respuestaSinAcceso,
 } from "@/app/api/_lib/http";
 import { aTipoEstablecimientoDTO, respuestaDuplicado } from "./_lib/http";
 
 export async function GET() {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);
@@ -37,7 +37,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const acceso = await exigirAdmin();
+  const acceso = await exigirAdminORevisor();
 
   if (!acceso.ok) {
     return respuestaSinAcceso(acceso.estado);

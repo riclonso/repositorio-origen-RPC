@@ -441,6 +441,9 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
         nombres: true,
         apellidos: true,
         rut: true,
+        // El modal agrupa por establecimiento: viaja en la misma lectura (relación a uno).
+        establecimientoId: true,
+        establecimiento: { select: { nombre: true } },
         formatosAsignados: { where: { formatoExcelId: id }, select: { id: true } },
         _count: { select: { formatosAsignados: true } },
       },
@@ -454,6 +457,8 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
         nombres: usuario.nombres,
         apellidos: usuario.apellidos,
         rut: usuario.rut,
+        establecimientoId: usuario.establecimientoId,
+        establecimientoNombre: usuario.establecimiento?.nombre ?? null,
         yaAsignado,
         esUnicoFormato: yaAsignado && usuario._count.formatosAsignados === 1,
       };

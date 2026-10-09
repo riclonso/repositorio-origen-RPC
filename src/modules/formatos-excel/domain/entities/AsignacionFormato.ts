@@ -7,12 +7,16 @@ export const MAXIMO_CAMBIOS_ASIGNACION_MASIVA = 200;
 
 // Fila del modal de asignación masiva. Solo NOTIFICADOR_RPC activos, y nunca email ni hash.
 // `esUnicoFormato`: tiene este formato y ninguna otra asignación (quitárselo lo dejaría sin
-// formatos, así que el modal no permite desmarcarlo; el servidor igual lo revalida).
+// formatos, así que el modal nunca lo incluye al quitar; el servidor igual lo revalida).
+// `establecimiento*`: el modal agrupa a los candidatos por establecimiento y la selección se hace
+// por establecimiento, no por usuario. `null` en cuentas sin establecimiento (previas a RF-30).
 export type CandidatoAsignacionFormato = {
   id: string;
   nombres: string;
   apellidos: string;
   rut: string;
+  establecimientoId: string | null;
+  establecimientoNombre: string | null;
   yaAsignado: boolean;
   esUnicoFormato: boolean;
 };

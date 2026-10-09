@@ -6,7 +6,7 @@ import { cambiarEstadoTipoSchema } from "@/modules/tipoEstablecimiento/schemas/t
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaError,
   respuestaSinAcceso,
 } from "@/app/api/_lib/http";
@@ -15,7 +15,7 @@ import { MENSAJE_NO_ENCONTRADO, aTipoEstablecimientoDTO, idTipoSchema } from "..
 export async function PATCH(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 

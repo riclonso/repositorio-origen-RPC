@@ -7,7 +7,6 @@ import type { ZodError } from "zod";
 import { tipoEstablecimientoFormSchema } from "@/modules/tipoEstablecimiento/schemas/tipoEstablecimiento.schema";
 import { Boton } from "@/shared/components/Boton";
 import { CampoTexto } from "@/shared/components/CampoTexto";
-import { RUTA_TIPOS } from "./ruta-tipos";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el tipo. Intenta nuevamente.";
 
@@ -36,9 +35,11 @@ type TipoFormProps = {
   endpoint: string;
   metodo: "POST" | "PUT";
   nombreInicial: string;
+  // Listado al que se vuelve al guardar o cancelar ("/dashboard/..." o "/revisor/...").
+  rutaBase: string;
 };
 
-export function TipoForm({ modo, endpoint, metodo, nombreInicial }: TipoFormProps) {
+export function TipoForm({ modo, endpoint, metodo, nombreInicial, rutaBase }: TipoFormProps) {
   const router = useRouter();
   const esCreacion = modo === "crear";
 
@@ -75,7 +76,7 @@ export function TipoForm({ modo, endpoint, metodo, nombreInicial }: TipoFormProp
         return { errores: {}, errorGeneral: MENSAJE_ERROR_GENERICO };
       }
 
-      router.push(esCreacion ? `${RUTA_TIPOS}?creado=1` : RUTA_TIPOS);
+      router.push(esCreacion ? `${rutaBase}?creado=1` : rutaBase);
       router.refresh();
       return ESTADO_INICIAL;
     },
@@ -107,7 +108,7 @@ export function TipoForm({ modo, endpoint, metodo, nombreInicial }: TipoFormProp
         </Boton>
 
         <Link
-          href={RUTA_TIPOS}
+          href={rutaBase}
           className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
         >
           Cancelar

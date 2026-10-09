@@ -5,12 +5,12 @@ import type {
 } from "@/modules/establecimiento/domain/entities/Establecimiento";
 import { listarEstablecimientos } from "@/modules/establecimiento/application/use-cases/ListarEstablecimientos";
 import { prismaEstablecimientoRepository } from "@/modules/establecimiento/infrastructure/repositories/PrismaEstablecimientoRepository";
-import { RUTA_ESTABLECIMIENTOS, construirRutaEstablecimientos } from "./ruta-establecimientos";
-import { PaginacionEstablecimientos } from "./paginacion-establecimientos";
+import { construirRutaEstablecimientos } from "@/shared/components/ruta-establecimientos";
+import { PaginacionEstablecimientos } from "@/shared/components/PaginacionEstablecimientos";
 import {
   TablaEstablecimientos,
   type FilaEstablecimientoVista,
-} from "./tabla-establecimientos";
+} from "@/shared/components/TablaEstablecimientos";
 
 // La fecha se formatea en el servidor y con zona horaria fija: si la formateara el navegador, la
 // hidratación mostraría un valor distinto según la zona del equipo del funcionario.
@@ -56,9 +56,10 @@ function EstadoVacio({
 
 type ListadoEstablecimientosProps = {
   filtro: FiltroListadoEstablecimientos;
+  rutaBase: string;
 };
 
-export async function ListadoEstablecimientos({ filtro }: ListadoEstablecimientosProps) {
+export async function ListadoEstablecimientos({ filtro, rutaBase }: ListadoEstablecimientosProps) {
   const resultado = await listarEstablecimientos(filtro, {
     repositorio: prismaEstablecimientoRepository,
   });
@@ -84,11 +85,16 @@ export async function ListadoEstablecimientos({ filtro }: ListadoEstablecimiento
 
       {filas.length > 0 ? (
         <>
-          <TablaEstablecimientos filas={filas.map(aFilaVista)} descripcion={descripcionTabla} />
+          <TablaEstablecimientos
+            filas={filas.map(aFilaVista)}
+            descripcion={descripcionTabla}
+            rutaBase={rutaBase}
+          />
           <PaginacionEstablecimientos
             paginacion={paginacion}
             filtro={filtro}
             cantidadEnPagina={filas.length}
+            rutaBase={rutaBase}
           />
         </>
       ) : null}
@@ -98,7 +104,7 @@ export async function ListadoEstablecimientos({ filtro }: ListadoEstablecimiento
           titulo="Aún no hay establecimientos registrados"
           detalle="Registra el primer establecimiento para comenzar."
           accion={
-            <Link href={`${RUTA_ESTABLECIMIENTOS}/nuevo`} className={CLASES_ENLACE_VACIO}>
+            <Link href={`${rutaBase}/nuevo`} className={CLASES_ENLACE_VACIO}>
               Nuevo establecimiento
             </Link>
           }
@@ -114,7 +120,7 @@ export async function ListadoEstablecimientos({ filtro }: ListadoEstablecimiento
           }
           detalle="Revisa el texto buscado o quita los filtros para ver el listado completo."
           accion={
-            <Link href={RUTA_ESTABLECIMIENTOS} className={CLASES_ENLACE_VACIO}>
+            <Link href={rutaBase} className={CLASES_ENLACE_VACIO}>
               Limpiar filtros
             </Link>
           }
@@ -126,7 +132,7 @@ export async function ListadoEstablecimientos({ filtro }: ListadoEstablecimiento
           titulo="Esta página no tiene resultados"
           detalle={`La búsqueda tiene ${paginacion.total} resultados repartidos en ${paginacion.totalPaginas} páginas.`}
           accion={
-            <Link href={construirRutaEstablecimientos(filtro, 1)} className={CLASES_ENLACE_VACIO}>
+            <Link href={construirRutaEstablecimientos(rutaBase, filtro, 1)} className={CLASES_ENLACE_VACIO}>
               Ir a la página 1
             </Link>
           }

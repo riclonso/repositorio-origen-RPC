@@ -7,7 +7,7 @@ import { editarEstablecimientoSchema } from "@/modules/establecimiento/schemas/e
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaError,
   respuestaSinAcceso,
 } from "@/app/api/_lib/http";
@@ -22,7 +22,7 @@ import {
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 

@@ -8,7 +8,7 @@ import { tipoEstablecimientoSchema } from "@/modules/tipoEstablecimiento/schemas
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
-  exigirAdmin,
+  exigirAdminORevisor,
   respuestaError,
   respuestaSinAcceso,
 } from "@/app/api/_lib/http";
@@ -36,7 +36,7 @@ function respuestaNoEncontrado(): NextResponse {
 export async function PUT(request: Request, contexto: { params: Promise<{ id: string }> }) {
   const [{ id }, acceso, cuerpo] = await Promise.all([
     contexto.params,
-    exigirAdmin(),
+    exigirAdminORevisor(),
     request.json().catch(() => null),
   ]);
 
@@ -81,7 +81,7 @@ export async function PUT(request: Request, contexto: { params: Promise<{ id: st
 // RF-29: eliminación FÍSICA de un tipo sin uso. No hay pre-chequeo de conteo: la FK Restrict de
 // `establecimiento.tipoId` decide, y un tipo en uso responde 409 (solo puede desactivarse).
 export async function DELETE(request: Request, contexto: ContextoRuta) {
-  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdmin()]);
+  const [{ id }, acceso] = await Promise.all([contexto.params, exigirAdminORevisor()]);
 
   if (!acceso.ok) {
     if (acceso.estado === 403) {

@@ -7,7 +7,6 @@ import { Interruptor } from "@/shared/components/Interruptor";
 import { IconoEditar } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { TablaPanel, type ColumnaTabla } from "@/shared/components/TablaPanel";
-import { RUTA_ESTABLECIMIENTOS } from "./ruta-establecimientos";
 
 export type FilaEstablecimientoVista = {
   id: string;
@@ -24,16 +23,17 @@ const MENSAJE_ERROR_GENERICO =
 
 type AccionesFilaProps = {
   fila: FilaEstablecimientoVista;
+  rutaBase: string;
   onCambiarEstado: () => void;
 };
 
-function AccionesFila({ fila, onCambiarEstado }: AccionesFilaProps) {
+function AccionesFila({ fila, rutaBase, onCambiarEstado }: AccionesFilaProps) {
   return (
     <div className="flex items-center justify-end gap-2">
       <BotonIcono
         etiqueta={`Editar ${fila.nombre}`}
         Icono={IconoEditar}
-        href={`${RUTA_ESTABLECIMIENTOS}/${fila.id}/editar`}
+        href={`${rutaBase}/${fila.id}/editar`}
       />
 
       <span className="flex items-center gap-2">
@@ -82,9 +82,11 @@ const COLUMNAS: ColumnaTabla<FilaEstablecimientoVista>[] = [
 type TablaEstablecimientosProps = {
   filas: FilaEstablecimientoVista[];
   descripcion: string;
+  // "/dashboard/establecimientos" o "/revisor/establecimientos": tabla compartida entre paneles.
+  rutaBase: string;
 };
 
-export function TablaEstablecimientos({ filas, descripcion }: TablaEstablecimientosProps) {
+export function TablaEstablecimientos({ filas, descripcion, rutaBase }: TablaEstablecimientosProps) {
   const router = useRouter();
   const [objetivo, setObjetivo] = useState<FilaEstablecimientoVista | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -134,7 +136,7 @@ export function TablaEstablecimientos({ filas, descripcion }: TablaEstablecimien
         claveFila={(fila) => fila.id}
         anchoMinimo="min-w-3xl"
         acciones={(fila) => (
-          <AccionesFila fila={fila} onCambiarEstado={() => setObjetivo(fila)} />
+          <AccionesFila fila={fila} rutaBase={rutaBase} onCambiarEstado={() => setObjetivo(fila)} />
         )}
         tarjeta={(fila) => (
           <>
@@ -145,7 +147,7 @@ export function TablaEstablecimientos({ filas, descripcion }: TablaEstablecimien
               {fila.tipoNombre}, creado el {fila.creadoEl}
             </p>
             <div className="mt-3">
-              <AccionesFila fila={fila} onCambiarEstado={() => setObjetivo(fila)} />
+              <AccionesFila fila={fila} rutaBase={rutaBase} onCambiarEstado={() => setObjetivo(fila)} />
             </div>
           </>
         )}
