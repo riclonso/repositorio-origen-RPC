@@ -19,8 +19,10 @@ import {
   $getSelection,
   $insertNodes,
   $isRangeSelection,
+  $setSelection,
   FORMAT_TEXT_COMMAND,
   HISTORY_MERGE_TAG,
+  SKIP_DOM_SELECTION_TAG,
   type LexicalEditor,
 } from "lexical";
 import { BotonIcono } from "@/shared/components/BotonIcono";
@@ -132,8 +134,10 @@ function CargarHtmlInicialPlugin({ html }: { html: string }) {
         $getRoot().clear();
         $getRoot().select();
         $insertNodes(nodos);
+        // Cargar contenido no debe enfocar el editor ni desplazar la página.
+        $setSelection(null);
       },
-      { tag: HISTORY_MERGE_TAG },
+      { tag: [HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG] },
     );
     // Deliberadamente sin `html` en las dependencias más allá del montaje inicial: este plugin
     // solo debe poblar el editor una vez, al montar. Si `valorInicialHtml` cambia de verdad (p. ej.
