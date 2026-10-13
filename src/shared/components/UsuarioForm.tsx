@@ -11,6 +11,7 @@ import {
 import { esPerfilNotificador, perfilExigeEstablecimiento } from "@/modules/perfiles/domain/entities/Perfil";
 import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
+import { CampoSelectConBusqueda } from "@/shared/components/CampoSelectConBusqueda";
 import { CampoSeleccionMultiple, type OpcionSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { WarningCircle } from "@phosphor-icons/react";
@@ -318,14 +319,13 @@ export function UsuarioForm({
               el resto de los perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a
               `null`. Los formatos de archivo (abajo) siguen siendo exclusivos del notificador. */}
           {perfilExigeEstablecimiento(valores.perfilCodigo) ? (
-            <CampoSelect
+            <CampoSelectConBusqueda
               id="establecimientoId"
               name="establecimientoId"
               etiqueta="Establecimiento"
               opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
               value={valores.establecimientoId}
               onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
-              aria-required
               error={estado.errores.establecimientoId}
               className="sm:col-span-2"
             />
