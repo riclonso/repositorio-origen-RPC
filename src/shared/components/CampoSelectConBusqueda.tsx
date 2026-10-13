@@ -169,6 +169,7 @@ export function CampoSelectConBusqueda({
         {/* Select oculto para manejar el valor del formulario */}
         <select
           {...atributos}
+          name={id}
           value={value ?? ""}
           onChange={onChange}
           className="hidden"
