@@ -2549,7 +2549,15 @@ se quería agregar, la fecha y hora de notificación, es el mismo para todas las
 así que vive una sola vez en la cabecera (`finalizadaEn`, o `vistoBuenoEn` en cargas anteriores a
 RF-14b; función pura `fechaHoraNotificacion()` en `CargaArchivo.ts`) y la columna se agrega **al
 generar la descarga**, en streaming, desde el original. Si el archivo ya trae una columna con ese
-nombre, la agregada se llama "… (sistema)". El archivo generado contiene los datos validados (primera
+nombre, la agregada se llama "… (sistema)". En la descarga de ADMIN/REVISOR se antepone además
+"NOMBRE LABORATORIO" (establecimiento actual del notificador, `nombreLaboratorio` en
+`CargaArchivoParaDescarga`; el caso de uso solo lo pasa al generador cuando `usuarioId === null`),
+salvo que el archivo ya la traiga. En CSV el encabezado se retiene hasta su fin de registro para
+decidir; en el camino rápido de libros grandes (`AnexarFechaXlsxGrande.ts`) anteponer obliga a correr
+el `r` de cada celda, `spans`, `<cols>`, panel/selección y los `ref`/`sqref` posteriores a
+`<sheetData>` (combinadas, filtro, formatos condicionales, validaciones, hipervínculos), y a quitar
+las fórmulas (queda su valor), como ya hace la reconstrucción con ExcelJS; los libros con tablas,
+dibujos, gráficos, tablas dinámicas o nombres definidos van por la reconstrucción. El archivo generado contiene los datos validados (primera
 hoja, columnas declaradas, valores) y pierde formatos, otras hojas y fórmulas; por eso ADMIN y
 REVISOR tienen también "Descargar original" (`/archivo/original`), byte a byte y sin limitador.
 

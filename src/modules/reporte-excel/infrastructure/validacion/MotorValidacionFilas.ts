@@ -20,6 +20,7 @@ import {
   columnasConContenidoHtml,
   crearRastreadorFilasDuplicadas,
   cumpleReglaValidacion,
+  diaCalendarioSantiago,
   evaluarFilaDuplicada,
   type ContextoEvaluacionReglas,
 } from "@/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
@@ -149,6 +150,8 @@ type ErrorSinFila = Omit<DatosNuevoErrorCargaArchivo, "numeroFila">;
 
 export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): MotorValidacionFilas {
   const { formato, ventana } = opciones;
+  // Un solo "hoy" para todo el archivo: el momento en que se valida la subida.
+  const contextoReglas: ContextoEvaluacionReglas = { ventana, diaCalendarioHoy: diaCalendarioSantiago(new Date()) };
   const topeFilasDatos = opciones.topeFilasDatos ?? TOPE_FILAS_DATOS;
   const ultimaFilaPermitida = topeFilasDatos + 1;
 
@@ -192,7 +195,7 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
     }
 
     for (const regla of formato.reglasValidacion) {
-      if (!cumpleReglaValidacion(regla, fila, { ventana })) {
+      if (!cumpleReglaValidacion(regla, fila, contextoReglas)) {
         errores.agregar({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
       }
     }
@@ -253,7 +256,7 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
       }
     }
     for (const regla of formato.reglasValidacion) {
-      if (!cumpleReglaValidacion(regla, filaNula, { ventana })) {
+      if (!cumpleReglaValidacion(regla, filaNula, contextoReglas)) {
         resultado.push({ columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
       }
     }

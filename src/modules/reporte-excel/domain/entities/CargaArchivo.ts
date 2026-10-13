@@ -339,6 +339,9 @@ export type CargaArchivoParaDescarga = {
   finalizadaEn: Date | null;
   vistoBuenoEn: Date | null;
   fuente: FuenteArchivoCarga;
+  // Nombre del establecimiento (laboratorio) al que pertenece hoy el notificador que la subió; `null`
+  // si no tiene uno asignado. Lo usa la columna "NOMBRE LABORATORIO" de la descarga de ADMIN/REVISOR.
+  nombreLaboratorio: string | null;
 };
 
 // "Mis cargas" (histórico de exitosas del notificador): no existe un concepto de "reemplazo"

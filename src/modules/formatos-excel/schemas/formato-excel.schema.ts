@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { columnasComparacionFechas, columnasFuenteFecha, diaCalendarioFechaFija } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
 import {
+  OPERADORES_COMPARACION_FECHAS,
   SEPARADORES_CSV,
   TIPOS_ARCHIVO,
   TIPOS_DATO_COLUMNA,
@@ -186,7 +188,11 @@ export const fuenteFechaSchema = z.discriminatedUnion("modo", [
  z.strictObject({ modo: z.literal("COLUMNA"), columna: z.string().trim().min(1) }),
  z.strictObject({ modo: z.literal("COMPONENTES"), dia: z.string().trim().min(1), mes: z.string().trim().min(1), anio: z.string().trim().min(1) }),
 ]);
-export const configuracionComparacionFechasSchema = z.strictObject({ origen: fuenteFechaSchema, referencia: fuenteFechaSchema });
+const fuenteFechaReferenciaSchema = z.union([
+ fuenteFechaSchema,
+ z.strictObject({ modo: z.literal("FIJA"), fecha: z.string().trim().refine((valor) => diaCalendarioFechaFija(valor) !== null, "Ingresa una fecha válida") }),
+]);
+export const configuracionComparacionFechasSchema = z.strictObject({ origen: fuenteFechaSchema, operador: z.enum(OPERADORES_COMPARACION_FECHAS).optional(), referencia: fuenteFechaReferenciaSchema });
 
 const reglaValidacionFormatoExcelSchema = z.object({
   configuracion: configuracionComparacionFechasSchema.nullish(),
@@ -213,7 +219,7 @@ const reglaValidacionFormatoExcelSchema = z.object({
     contexto.addIssue({ code: "custom", path: ["configuracion"], message: "Define las dos fechas únicamente para la regla de comparación de fechas" });
   }
 }).transform((regla) => ({ ...regla, columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion
-  ? [...new Set([regla.configuracion.origen, regla.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]))]
+  ? columnasComparacionFechas(regla.configuracion)
   : regla.columnas }));
 
 // El `orden` NO viaja en el esquema: siempre lo fija el servidor por la posición del elemento en
@@ -308,8 +314,9 @@ function validarReferenciasDeReglas(
     }
 
     if (regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion) {
-      for (const [lado, fuente] of Object.entries(regla.configuracion)) {
-        const nombres = fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio];
+      for (const [lado, fuente] of [["origen", regla.configuracion.origen], ["referencia", regla.configuracion.referencia]] as const) {
+        if (fuente.modo === "FIJA") continue;
+        const nombres = columnasFuenteFecha(fuente);
         if (new Set(nombres.map((nombre) => nombre.toLowerCase())).size !== nombres.length) {
           contexto.addIssue({ code: "custom", path: ["reglasValidacion", indiceRegla, "configuracion", lado], message: "Día, mes y año deben usar columnas distintas" });
         }
@@ -364,6 +371,18 @@ function validarReferenciasDeReglas(
         path: ["reglasValidacion", indiceRegla, "columnas"],
         message: `La regla ${indiceRegla + 1} debe tener una columna con el RUT completo, o dos columnas: número y dígito verificador`,
       });
+    }
+
+    // `FECHA_NO_FUTURA`: exactamente una columna, de tipo Fecha.
+    if (regla.tipo === "FECHA_NO_FUTURA") {
+      const columna = regla.columnas.length === 1 ? columnasPorNombre.get(regla.columnas[0].trim().toLowerCase()) : undefined;
+      if (regla.columnas.length !== 1 || (columna && !TIPOS_DATO_FECHA.includes(columna.tipoDato))) {
+        contexto.addIssue({
+          code: "custom",
+          path: ["reglasValidacion", indiceRegla, "columnas"],
+          message: `La regla ${indiceRegla + 1} debe tener exactamente una columna de tipo Fecha`,
+        });
+      }
     }
 
     if (regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA") {
@@ -427,10 +446,11 @@ function normalizarFuentesFechas<T extends { columnas: { nombre: string }[]; reg
   for (const regla of datos.reglasValidacion) {
     if (!regla.configuracion) continue;
     for (const fuente of [regla.configuracion.origen, regla.configuracion.referencia]) {
+      if (fuente.modo === "FIJA") continue;
       if (fuente.modo === "COLUMNA") fuente.columna = nombres.get(fuente.columna.toLowerCase()) ?? fuente.columna;
       else for (const campo of ["dia", "mes", "anio"] as const) fuente[campo] = nombres.get(fuente[campo].toLowerCase()) ?? fuente[campo];
     }
-    regla.columnas = [...new Set([regla.configuracion.origen, regla.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]))];
+    regla.columnas = columnasComparacionFechas(regla.configuracion);
   }
   return datos;
 }

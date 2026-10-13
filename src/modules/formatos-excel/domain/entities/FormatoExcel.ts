@@ -73,7 +73,12 @@ export type TipoEnumeradoFormatoExcel = {
 // contra un archivo real), así que vive en este arreglo fijo, mismo criterio que
 // `TIPOS_DATO_COLUMNA`.
 export type FuenteFecha = { modo: "COLUMNA"; columna: string } | { modo: "COMPONENTES"; dia: string; mes: string; anio: string };
-export type ConfiguracionComparacionFechas = { origen: FuenteFecha; referencia: FuenteFecha };
+// La fecha 2 (referencia) además puede ser una fecha fija escrita al configurar ("YYYY-MM-DD").
+export type FuenteFechaReferencia = FuenteFecha | { modo: "FIJA"; fecha: string };
+export const OPERADORES_COMPARACION_FECHAS = ["MAYOR", "MAYOR_IGUAL", "IGUAL", "MENOR", "MENOR_IGUAL"] as const;
+export type OperadorComparacionFechas = (typeof OPERADORES_COMPARACION_FECHAS)[number];
+// `operador` es opcional: las reglas guardadas antes de existir se interpretan como `MAYOR_IGUAL`.
+export type ConfiguracionComparacionFechas = { origen: FuenteFecha; operador?: OperadorComparacionFechas; referencia: FuenteFechaReferencia };
 
 export const TIPOS_REGLA_VALIDACION = [
   "FECHA_POSTERIOR_O_IGUAL",
@@ -83,6 +88,8 @@ export const TIPOS_REGLA_VALIDACION = [
   "RUT_VALIDO",
   "CONTENIDO_HTML",
   "FILA_VACIA",
+  // Una columna de fecha no puede ser posterior al día (America/Santiago) en que se valida la subida.
+  "FECHA_NO_FUTURA",
 ] as const;
 
 // RF-32: tipos que se aplican siempre a TODAS las columnas del formato presentes en el archivo

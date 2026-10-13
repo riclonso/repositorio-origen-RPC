@@ -267,6 +267,7 @@ enum TipoReglaValidacionFormatoExcel {
   RUT_VALIDO
   CONTENIDO_HTML
   FILA_VACIA
+  FECHA_NO_FUTURA
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de

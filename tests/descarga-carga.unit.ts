@@ -134,6 +134,37 @@ async function main(): Promise<void> {
     assert.ok(salida.toString("utf8").startsWith("a,Fecha y hora de notificación,Fecha y hora de notificación (sistema)\n"));
   });
 
+  async function anexarCsvConLaboratorio(entrada: Buffer, codificacion: "utf-8" | "windows-1252", trozo = 3): Promise<string> {
+    const partes: Buffer[] = [];
+    for (let indice = 0; indice < entrada.length; indice += trozo) partes.push(entrada.subarray(indice, indice + trozo));
+    const salida = Readable.from(partes).pipe(
+      crearTransformAnexarColumnaCsv({
+        codificacion,
+        nombreColumna: nombreColumnaNotificacion,
+        valor: "15-01-2025 13:04:05",
+        columnaInicial: { nombre: "NOMBRE LABORATORIO", valor: "Lab, Sur", agregar: (encabezados) => generacion.agregaColumnaLaboratorio(encabezados, "Lab, Sur") },
+      }),
+    );
+    const resultado: Buffer[] = [];
+    for await (const parte of salida) resultado.push(parte as Buffer);
+    return Buffer.concat(resultado).toString(codificacion === "utf-8" ? "utf8" : "latin1");
+  }
+
+  await prueba("CSV: NOMBRE LABORATORIO al inicio (BOM, comillas, CRLF, líneas en blanco, sin salto final)", async () => {
+    for (const trozo of [1, 3, 1000]) {
+      const salida = await anexarCsvConLaboratorio(Buffer.from('﻿a,b\r\n"x\r\ny",2\r\n\r\n3,4', "utf8"), "utf-8", trozo);
+      assert.equal(
+        salida,
+        '﻿NOMBRE LABORATORIO,a,b,Fecha y hora de notificación\r\n"Lab, Sur","x\r\ny",2,15-01-2025 13:04:05\r\n\r\n"Lab, Sur",3,4,15-01-2025 13:04:05',
+      );
+    }
+  });
+
+  await prueba("CSV: si ya trae NOMBRE LABORATORIO no se agrega", async () => {
+    const salida = await anexarCsvConLaboratorio(Buffer.from(" nombre laboratorio ,b\n1,2\n", "utf8"), "utf-8");
+    assert.equal(salida, " nombre laboratorio ,b,Fecha y hora de notificación\n1,2,15-01-2025 13:04:05\n");
+  });
+
   console.log("xlsx");
 
   const libro = new ExcelJS.Workbook();
@@ -188,6 +219,27 @@ async function main(): Promise<void> {
     });
     const leida = await leerXlsx(generado.flujo);
     assert.equal(leida.getCell("B1").value, NOMBRE_COLUMNA_NOTIFICACION_SISTEMA);
+  });
+
+  await prueba("xlsx: NOMBRE LABORATORIO al inicio solo si se pide y no existe", async () => {
+    const tipo = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const con = await leerXlsx((await generador.generar({ fuente: { contenido }, tipoContenido: tipo, fechaNotificacion: VERANO, nombreLaboratorio: "Lab Norte" })).flujo);
+    assert.equal(con.getCell("A1").value, "NOMBRE LABORATORIO");
+    assert.equal(con.getCell("B1").value, "Texto");
+    assert.equal(con.getCell("G1").value, NOMBRE_COLUMNA_NOTIFICACION);
+    assert.equal(con.getCell("A2").value, "Lab Norte");
+    assert.equal(con.getCell("B2").value, "=SUMA(A1)");
+    assert.equal(con.getCell("A3").value, null, "fila vacía sin laboratorio");
+
+    const sin = await leerXlsx((await generador.generar({ fuente: { contenido }, tipoContenido: tipo, fechaNotificacion: VERANO })).flujo);
+    assert.equal(sin.getCell("A1").value, "Texto", "descarga del notificador: sin la columna");
+
+    const otro = new ExcelJS.Workbook();
+    otro.addWorksheet("D").addRows([["a", "Nombre Laboratorio"], ["1", "Propio"]]);
+    const existente = await leerXlsx((await generador.generar({ fuente: { contenido: Buffer.from(await otro.xlsx.writeBuffer()) }, tipoContenido: tipo, fechaNotificacion: VERANO, nombreLaboratorio: "Lab Norte" })).flujo);
+    assert.equal(existente.getCell("A1").value, "a");
+    assert.equal(existente.getCell("B2").value, "Propio", "se conserva la del archivo");
+    assert.equal(existente.getCell("C1").value, NOMBRE_COLUMNA_NOTIFICACION);
   });
 
   await prueba("xlsx: el cliente cancela a mitad de la descarga sin excepciones fuera de promesa", async () => {

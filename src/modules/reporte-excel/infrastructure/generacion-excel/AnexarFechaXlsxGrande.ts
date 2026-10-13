@@ -44,6 +44,35 @@ function columna(indice: number): string {
   return nombre;
 }
 
+function indiceDeColumna(letras: string): number {
+  return [...letras].reduce((indice, letra) => indice * 26 + letra.charCodeAt(0) - 64, 0);
+}
+
+// Corre una columna a la derecha cada referencia A1 de un valor ("B2", "$C$4", "A1:D9 F3").
+function desplazarReferencias(valor: string): string {
+  return valor.replace(/(\$?)([A-Z]{1,3})(\$?)(\d+)/g, (_, fijaColumna: string, letras: string, fijaFila: string, fila: string) =>
+    `${fijaColumna}${columna(indiceDeColumna(letras) + 1)}${fijaFila}${fila}`);
+}
+
+// Fuera de `<sheetData>`: anchos de columna (`<col min max>`), panel, selección, combinadas, filtro,
+// formatos condicionales, validaciones e hipervínculos. `<dimension>` no: ya la ajusta quien inserta.
+function desplazarFueraDeDatos(xml: string): string {
+  return xml
+    .replace(/<col(?=[\s/>])[^>]*>/g, (etiqueta) =>
+      etiqueta.replace(/(\s(?:min|max)\s*=\s*["'])(\d+)(["'])/g, (_, a: string, n: string, b: string) => `${a}${Number(n) + 1}${b}`))
+    .replace(/<(?!dimension[\s/>])[A-Za-z][^>]*>/g, (etiqueta) =>
+      etiqueta.replace(/(\s(?:ref|sqref|topLeftCell|activeCell)\s*=\s*)(["'])([^"']*)\2/g, (_, a: string, comilla: string, valor: string) => `${a}${comilla}${desplazarReferencias(valor)}${comilla}`));
+}
+
+// Dentro de una fila: corre el `r` de cada celda y quita las fórmulas (quedaría su valor calculado),
+// porque sus referencias ya no apuntarían a las mismas celdas; es lo mismo que hace la reconstrucción
+// con ExcelJS.
+function desplazarCeldas(celdas: string): string {
+  return celdas
+    .replace(/<f\b[^>]*\/>|<f\b[^>]*>[\s\S]*?<\/f\s*>/g, "")
+    .replace(/<c(?=[\s/>])[^>]*>/g, (etiqueta) => etiqueta.replace(/(\sr\s*=\s*["'])([A-Z]+)(\d+)(["'])/, (_, a: string, letras: string, fila: string, b: string) => `${a}${columna(indiceDeColumna(letras) + 1)}${fila}${b}`));
+}
+
 function escapar(texto: string): string {
   return texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -68,18 +97,27 @@ export async function* anexarColumnaXml(
   fecha: string,
   signal?: AbortSignal,
   formatoFecha?: { indice: number; numero: number },
+  // Columna antepuesta en A ("NOMBRE LABORATORIO"): corre una columna todas las celdas de la hoja.
+  // `nuevaColumna` ya debe contarla.
+  columnaInicial?: { encabezado: string; valor: string },
 ): AsyncGenerator<string> {
   let buffer = "";
   let cursor = 0;
   let enFila = false;
+  let largoEtiquetaFila = 0;
   let numeroFila = 0;
   let antesDatos = true;
+  // Tras `</sheetData>` (solo con columna inicial): se retiene para desplazar sus referencias.
+  let enCola = false;
   let bytes = 0;
   const marcas = /<row(?=[\s/>])|<\/row\s*>|<!--|<!\[CDATA\[|<\?/g;
-  const indiceColumna = [...nuevaColumna].reduce((indice, letra) => indice * 26 + letra.charCodeAt(0) - 64, 0);
+  const indiceColumna = indiceDeColumna(nuevaColumna);
   const celda = (fila: number) => fila !== 1 && formatoFecha
     ? `<c r="${nuevaColumna}${fila}" s="${formatoFecha.indice}"><v>${formatoFecha.numero}</v></c>`
     : `<c r="${nuevaColumna}${fila}" t="inlineStr"><is><t>${escapar(fila === 1 ? encabezado : fecha)}</t></is></c>`;
+  const celdaInicial = (fila: number) => columnaInicial
+    ? `<c r="A${fila}" t="inlineStr"><is><t>${escapar(fila === 1 ? columnaInicial.encabezado : columnaInicial.valor)}</t></is></c>`
+    : "";
 
   for await (const trozo of origen) {
     signal?.throwIfAborted();
@@ -90,7 +128,13 @@ export async function* anexarColumnaXml(
       marcas.lastIndex = cursor;
       const marca = marcas.exec(buffer);
       if (!marca) {
-        if (!enFila && !antesDatos) {
+        const cola = columnaInicial && !enFila && !antesDatos && !enCola ? buffer.indexOf("</sheetData") : -1;
+        if (cola !== -1) {
+          yield buffer.slice(0, cola);
+          buffer = buffer.slice(cola);
+          cursor = 0;
+          enCola = true;
+        } else if (!enFila && !antesDatos && !enCola) {
           const hasta = Math.max(cursor, buffer.length - 16);
           yield buffer.slice(0, hasta);
           buffer = buffer.slice(hasta);
@@ -109,7 +153,9 @@ export async function* anexarColumnaXml(
       if (marca[0].startsWith("</row")) {
         if (!enFila) throw new Error("Fila XML inválida");
         const fin = inicio + marca[0].length;
-        yield buffer.slice(0, inicio) + celda(numeroFila) + buffer.slice(inicio, fin);
+        yield columnaInicial
+          ? buffer.slice(0, largoEtiquetaFila) + celdaInicial(numeroFila) + desplazarCeldas(buffer.slice(largoEtiquetaFila, inicio)) + celda(numeroFila) + buffer.slice(inicio, fin)
+          : buffer.slice(0, inicio) + celda(numeroFila) + buffer.slice(inicio, fin);
         buffer = buffer.slice(fin);
         cursor = 0;
         enFila = false;
@@ -118,7 +164,9 @@ export async function* anexarColumnaXml(
       const fin = finEtiqueta(buffer, inicio);
       if (fin === -1) { cursor = inicio; break; }
       if (enFila) throw new Error("Fila XML anidada");
-      const etiqueta = buffer.slice(inicio, fin).replace(/(\sspans=["'])(\d+):(\d+)(["'])/, (_, prefijo: string, desde: string, hasta: string, comilla: string) => `${prefijo}${Math.min(Number(desde), indiceColumna)}:${Math.max(Number(hasta), indiceColumna)}${comilla}`);
+      const etiqueta = buffer.slice(inicio, fin).replace(/(\sspans=["'])(\d+):(\d+)(["'])/, (_, prefijo: string, desde: string, hasta: string, comilla: string) => columnaInicial
+        ? `${prefijo}1:${Math.max(Number(hasta) + 1, indiceColumna)}${comilla}`
+        : `${prefijo}${Math.min(Number(desde), indiceColumna)}:${Math.max(Number(hasta), indiceColumna)}${comilla}`);
       const r = /\sr\s*=\s*(["'])(\d+)\1/.exec(etiqueta);
       const siguiente = r ? Number(r[2]) : numeroFila + 1;
       if (!Number.isSafeInteger(siguiente) || siguiente <= numeroFila || siguiente > 1_048_576) throw new Error("Número de fila inválido");
@@ -126,13 +174,15 @@ export async function* anexarColumnaXml(
       let prefijo = buffer.slice(0, inicio);
       if (antesDatos) {
         prefijo = prefijo.replace(/(<dimension\b[^>]*\bref\s*=\s*["'])([A-Z]+\d+):[A-Z]+(\d+)(["'])/, `$1$2:${nuevaColumna}$3$4`);
+        if (columnaInicial) prefijo = desplazarFueraDeDatos(prefijo);
         antesDatos = false;
       }
       yield prefijo;
       buffer = etiqueta + buffer.slice(fin);
       cursor = etiqueta.length;
+      largoEtiquetaFila = etiqueta.length;
       if (/\/\s*>$/.test(etiqueta)) {
-        yield etiqueta.replace(/\/\s*>$/, ">") + celda(numeroFila) + "</row>";
+        yield etiqueta.replace(/\/\s*>$/, ">") + celdaInicial(numeroFila) + celda(numeroFila) + "</row>";
         buffer = buffer.slice(cursor);
         cursor = 0;
       } else enFila = true;
@@ -141,7 +191,8 @@ export async function* anexarColumnaXml(
   }
   signal?.throwIfAborted();
   if (enFila || antesDatos) throw new Error("Hoja XML incompleta");
-  yield buffer;
+  const cola = columnaInicial ? buffer.indexOf("</sheetData") : -1;
+  yield cola === -1 ? buffer : buffer.slice(0, cola) + desplazarFueraDeDatos(buffer.slice(cola));
 }
 
 // Camino rápido para libros grandes con texto inline, como RBB 2017. Conserva
@@ -153,6 +204,7 @@ export async function generarXlsxGrande(
   nombreEncabezado: (encabezados: string[]) => string,
   signal?: AbortSignal,
   umbralBytes = UMBRAL_XLSX_GRANDE,
+  laboratorio?: { nombreColumna: string; valor: string; agregar: (encabezados: string[]) => boolean },
 ): Promise<ReadableStream<Uint8Array> | null> {
   const rastreada = crearFuenteRastreada(fuente, signal);
   const lecturas: Readable[] = [];
@@ -179,10 +231,12 @@ export async function generarXlsxGrande(
     if (!libro || !relaciones || libro.uncompressedSize > 1024 * 1024 || relaciones.uncompressedSize > 1024 * 1024) return null;
     let idHoja = "";
     let date1904 = false;
+    let conNombresDefinidos = false;
     for await (const eventos of parseSax(abrir(libro).setEncoding("utf8"))) {
       for (const evento of eventos) {
         if (evento.eventType === "opentag" && evento.value.name === "sheet" && !idHoja) idHoja = evento.value.attributes["r:id"];
         if (evento.eventType === "opentag" && evento.value.name === "workbookPr") date1904 = ["1", "true"].includes(evento.value.attributes.date1904);
+        if (evento.eventType === "opentag" && evento.value.name === "definedName") conNombresDefinidos = true;
       }
     }
     let rutaHoja = "";
@@ -218,6 +272,11 @@ export async function generarXlsxGrande(
       }
     } finally { await filas.return(undefined); }
     if (!encabezados.length || encabezados.length > 500 || columna(encabezados.length) !== dimension[2]) return null;
+    // Anteponer una columna corre todas las celdas. Las partes que apuntan a celdas desde fuera de la
+    // hoja (tablas, dibujos, gráficos, tablas dinámicas, nombres definidos) quedarían desalineadas:
+    // esos libros van por la reconstrucción con ExcelJS.
+    const columnaInicial = laboratorio?.agregar(encabezados) ? { encabezado: laboratorio.nombreColumna, valor: laboratorio.valor } : undefined;
+    if (columnaInicial && (conNombresDefinidos || directorio.files.some((parte) => /^xl\/(tables|drawings|charts|pivotTables|pivotCache)\//.test(parte.path)))) return null;
     const parteEstilos = directorio.files.find(parte => parte.path === "xl/styles.xml");
     if (!parteEstilos || parteEstilos.uncompressedSize > 1024 * 1024) return null;
     let estilosXml = "";
@@ -250,7 +309,7 @@ export async function generarXlsxGrande(
       if (parte.type !== "File") continue;
       const lectura = parte === parteEstilos ? Readable.from([estiloFecha.xml]) : abrir(parte);
       const entrada = parte === hoja
-        ? Readable.from(anexarColumnaXml(lectura.setEncoding("utf8") as AsyncIterable<string>, columna(encabezados.length + 1), nombreEncabezado(encabezados), formatearFechaHoraSegundosChile(fecha), signal, { indice: estiloFecha.indice, numero: numeroFecha }))
+        ? Readable.from(anexarColumnaXml(lectura.setEncoding("utf8") as AsyncIterable<string>, columna(encabezados.length + (columnaInicial ? 2 : 1)), nombreEncabezado(encabezados), formatearFechaHoraSegundosChile(fecha), signal, { indice: estiloFecha.indice, numero: numeroFecha }, columnaInicial))
         : lectura;
       entrada.on("error", fallar);
       lecturas.push(entrada);

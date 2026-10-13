@@ -21,9 +21,19 @@ function aTextoRut(valor: ValorCeldaArchivo): string {
 
 // Contexto adicional que necesita `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: el año no se deriva
 // de la fila, sino de la ventana de carga elegida para la subida completa (`VentanaCarga.anio`).
+// `diaCalendarioHoy` (para `FECHA_NO_FUTURA`): el día calendario en America/Santiago del momento de
+// la validación, como `Date.UTC(año, mes, día)`; se calcula una vez por archivo, no por fila.
 export type ContextoEvaluacionReglas = {
   ventana: { fechaApertura: Date; fechaVencimiento: Date; anio: number };
+  diaCalendarioHoy?: number;
 };
+
+const FORMATEADOR_DIA_SANTIAGO = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" });
+
+export function diaCalendarioSantiago(instante: Date): number {
+  const partes = Object.fromEntries(FORMATEADOR_DIA_SANTIAGO.formatToParts(instante).map((parte) => [parte.type, parte.value]));
+  return Date.UTC(Number(partes.year), Number(partes.month) - 1, Number(partes.day));
+}
 
 // Tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
@@ -48,6 +58,16 @@ export function cumpleReglaValidacion(
   switch (regla.tipo) {
     case "FECHA_POSTERIOR_O_IGUAL":
       return cumpleComparacionFechas(regla.configuracion, fila);
+    // Vacía → no falla (la obligatoriedad la decide `requerida`); valor no parseable → ya
+    // reportado como TIPO_DATO_INVALIDO. Se compara el día calendario: hoy está permitido.
+    case "FECHA_NO_FUTURA": {
+      const valor = fila[regla.columnas[0] ?? ""] ?? null;
+      if (celdaVacia(valor)) return true;
+      const fecha = parsearFecha(valor);
+      if (!fecha) return true;
+      const hoy = contexto.diaCalendarioHoy ?? diaCalendarioSantiago(new Date());
+      return Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()) <= hoy;
+    }
     case "ALGUNA_COLUMNA_CON_VALOR":
       return regla.columnas.some((nombreColumna) => !celdaVacia(fila[nombreColumna] ?? null));
     // `columnas[0]` = principal, `columnas[1..]` = alternativas (convención documentada en

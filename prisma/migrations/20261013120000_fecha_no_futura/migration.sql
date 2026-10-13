@@ -1,0 +1,1 @@
+ALTER TYPE "TipoReglaValidacionFormatoExcel" ADD VALUE IF NOT EXISTS 'FECHA_NO_FUTURA';

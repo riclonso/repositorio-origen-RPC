@@ -66,6 +66,42 @@ test("conserva valores, fórmulas y estilos y agrega la misma fecha a todas las 
   assert.deepEqual(hoja.getCell("C3").value, hoja.getCell("C2").value);
 });
 
+const laboratorio = { nombreColumna: "NOMBRE LABORATORIO", valor: "Lab Central & Cía", agregar: (encabezados: string[]) => !encabezados.some((e) => e.trim().toLowerCase() === "nombre laboratorio") };
+
+test("NOMBRE LABORATORIO al inicio: corre celdas, quita fórmulas y desplaza referencias externas a la fila", async () => {
+  const zip = await JSZip.loadAsync(await libro());
+  const rutaHoja = Object.keys(zip.files).find((ruta) => /^xl\/worksheets\/[^/]+\.xml$/.test(ruta))!;
+  const hojaXml = await zip.file(rutaHoja)!.async("string");
+  zip.file(rutaHoja, hojaXml.replace("</sheetData>", '</sheetData><mergeCells count="1"><mergeCell ref="A4:B4"/></mergeCells>'));
+  const flujo = await generarXlsxGrande({ buffer: await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }) }, fecha, () => titulo, undefined, 0, laboratorio);
+  assert.ok(flujo);
+  const contenido = Buffer.from(await new Response(flujo).arrayBuffer());
+  const xml = await (await JSZip.loadAsync(contenido)).file(rutaHoja)!.async("string");
+  assert.ok(xml.includes('ref="A1:D3"'), "dimensión con las dos columnas nuevas");
+  assert.ok(xml.includes('<mergeCell ref="B4:C4"/>'), "combinada desplazada");
+  const salida = new ExcelJS.Workbook();
+  await salida.xlsx.load(contenido as unknown as ExcelJS.Buffer);
+  const hoja = salida.getWorksheet("Original")!;
+  assert.equal(hoja.getCell("A1").value, "NOMBRE LABORATORIO");
+  assert.equal(hoja.getCell("A2").value, "Lab Central & Cía");
+  assert.equal(hoja.getCell("A3").value, "Lab Central & Cía");
+  assert.equal(hoja.getCell("B1").value, "nombre");
+  assert.equal(hoja.getCell("B2").value, "Ana & José");
+  assert.equal(hoja.getCell("C2").numFmt, '"$"#,##0.00', "el estilo viaja con su celda");
+  assert.equal(hoja.getCell("C3").value, 14, "fórmula → su valor");
+  assert.equal(hoja.getCell("D1").value, titulo);
+  assert.equal((hoja.getCell("D2").value as Date).toISOString(), "2026-10-08T16:20:00.000Z");
+});
+
+test("NOMBRE LABORATORIO ya presente: no se agrega", async () => {
+  const flujo = await generarXlsxGrande({ buffer: await libro() }, fecha, () => titulo, undefined, 0, { ...laboratorio, agregar: () => false });
+  assert.ok(flujo);
+  const salida = new ExcelJS.Workbook();
+  await salida.xlsx.load(Buffer.from(await new Response(flujo).arrayBuffer()) as unknown as ExcelJS.Buffer);
+  assert.equal(salida.worksheets[0].getCell("A1").value, "nombre");
+  assert.equal(salida.worksheets[0].getCell("C1").value, titulo);
+});
+
 test("libros pequeños o con textos compartidos usan el camino existente", async () => {
   assert.equal(await generarXlsxGrande({ buffer: await libro() }, fecha, () => titulo), null);
   const dos = new ExcelJS.Workbook();

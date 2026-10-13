@@ -51,6 +51,16 @@ export function nombreColumnaNotificacion(encabezados: readonly string[]): strin
     : NOMBRE_COLUMNA_NOTIFICACION;
 }
 
+export const NOMBRE_COLUMNA_LABORATORIO = "NOMBRE LABORATORIO";
+
+// La columna del laboratorio se agrega al inicio solo si se pidió y el archivo no trae ya una con ese
+// nombre (mismo criterio de comparación que la de notificación); si la trae, se conserva tal cual.
+export function agregaColumnaLaboratorio(encabezados: readonly string[], nombreLaboratorio: string | undefined): boolean {
+  if (nombreLaboratorio === undefined) return false;
+  const objetivo = normalizarEncabezado(NOMBRE_COLUMNA_LABORATORIO);
+  return !encabezados.some((encabezado) => normalizarEncabezado(encabezado) === objetivo);
+}
+
 function celdaDato(valor: FilaHojaStreaming["valores"][number] | undefined): CeldaEscritura {
   if (valor === undefined || valor === null) return { valor: null };
   if (valor instanceof Date) {
@@ -71,11 +81,17 @@ function encabezadosDesdeFila(fila: FilaHojaStreaming): string[] {
   return encabezados;
 }
 
-async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date, signal?: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+async function generarXlsx(
+  fuente: FuenteXlsx,
+  fechaNotificacion: Date,
+  nombreLaboratorio: string | undefined,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
   signal?.throwIfAborted();
   const iterador = recorrerFilasPrimeraHojaXlsx(fuente, { ...OPCIONES_LECTURA_CARGA, signal })[Symbol.asyncIterator]();
   let encabezados: string[] = [];
   let cantidadColumnas = 0;
+  let conLaboratorio = false;
 
   // El writer emite los primeros bytes del ZIP sin esperar la primera pasada de la hoja.
   // Así la petición ya responde mientras se prepara un Excel grande.
@@ -92,6 +108,7 @@ async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date, signal?:
     }
     // Las filas sin ningún valor (residuos, huecos) no se escriben ni llevan fecha.
     if (!conValor) return;
+    if (conLaboratorio) celdas.unshift({ valor: nombreLaboratorio ?? "" });
     celdas.push(fechaCelda);
     await escritor.escribirFila(fila.numeroFila, celdas);
   }
@@ -106,7 +123,9 @@ async function generarXlsx(fuente: FuenteXlsx, fechaNotificacion: Date, signal?:
       }
       signal?.throwIfAborted();
       cantidadColumnas = encabezados.length;
+      conLaboratorio = agregaColumnaLaboratorio(encabezados, nombreLaboratorio);
       await escritor.escribirFila(1, [
+        ...(conLaboratorio ? [{ valor: NOMBRE_COLUMNA_LABORATORIO }] : []),
         ...encabezados.map((texto) => ({ valor: texto })),
         { valor: nombreColumnaNotificacion(encabezados) },
       ]);
@@ -140,6 +159,7 @@ function abrirBytes(fuente: FuenteDescarga, rutaAbsoluta: (referencia: string) =
 async function generarCsv(
   fuente: FuenteDescarga,
   fechaNotificacion: Date,
+  nombreLaboratorio: string | undefined,
   rutaAbsoluta: (referencia: string) => string,
   signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
@@ -156,6 +176,14 @@ async function generarCsv(
     codificacion,
     nombreColumna: nombreColumnaNotificacion,
     valor: formatearFechaHoraSegundosChile(fechaNotificacion),
+    columnaInicial:
+      nombreLaboratorio === undefined
+        ? undefined
+        : {
+            nombre: NOMBRE_COLUMNA_LABORATORIO,
+            valor: nombreLaboratorio,
+            agregar: (encabezados) => agregaColumnaLaboratorio(encabezados, nombreLaboratorio),
+          },
   });
   origen.on("error", (error) => transformacion.destroy(error));
   return flujoWebDesdeNode(origen.pipe(transformacion));
@@ -169,11 +197,11 @@ async function generarCsv(
 // En libros grandes compatibles, la inserción directa en el XML conserva estas propiedades.
 export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(referencia: string): string; fuenteXlsx?(referencia: string): Promise<import("unzipper").FuenteZip> }): GeneradorDescargaCarga {
   return {
-    async generar({ fuente, tipoContenido, fechaNotificacion, signal }) {
+    async generar({ fuente, tipoContenido, fechaNotificacion, nombreLaboratorio, signal }) {
       signal?.throwIfAborted();
       if (tipoContenido === TIPO_CONTENIDO_CSV) {
         return {
-          flujo: await generarCsv(fuente, fechaNotificacion, (referencia) => almacen.rutaAbsoluta(referencia), signal),
+          flujo: await generarCsv(fuente, fechaNotificacion, nombreLaboratorio, (referencia) => almacen.rutaAbsoluta(referencia), signal),
           // Sin `charset`: el archivo conserva su codificación original (UTF-8 o Windows-1252).
           tipoContenido: TIPO_CONTENIDO_CSV,
         };
@@ -181,9 +209,13 @@ export function crearGeneradorDescargaCargaExcelJs(almacen: { rutaAbsoluta(refer
 
       const fuenteXlsx: FuenteXlsx =
         "contenido" in fuente ? { buffer: fuente.contenido } : almacen.fuenteXlsx ? { fuenteZip: await almacen.fuenteXlsx(fuente.referencia) } : { ruta: almacen.rutaAbsoluta(fuente.referencia) };
-      const flujoGrande = await generarXlsxGrande(fuenteXlsx, fechaNotificacion, nombreColumnaNotificacion, signal);
+      const laboratorio =
+        nombreLaboratorio === undefined
+          ? undefined
+          : { nombreColumna: NOMBRE_COLUMNA_LABORATORIO, valor: nombreLaboratorio, agregar: (encabezados: string[]) => agregaColumnaLaboratorio(encabezados, nombreLaboratorio) };
+      const flujoGrande = await generarXlsxGrande(fuenteXlsx, fechaNotificacion, nombreColumnaNotificacion, signal, undefined, laboratorio);
       if (flujoGrande) return { flujo: flujoGrande, tipoContenido: TIPO_CONTENIDO_XLSX };
-      return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion, signal), tipoContenido: TIPO_CONTENIDO_XLSX };
+      return { flujo: await generarXlsx(fuenteXlsx, fechaNotificacion, nombreLaboratorio, signal), tipoContenido: TIPO_CONTENIDO_XLSX };
     },
   };
 }

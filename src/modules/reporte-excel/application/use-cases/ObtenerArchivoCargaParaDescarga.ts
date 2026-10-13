@@ -102,6 +102,8 @@ export async function obtenerArchivoCargaParaDescarga(
     fuente: carga.fuente.tipo === "disco" ? { referencia: carga.fuente.referencia } : { contenido: carga.fuente.contenido },
     tipoContenido: carga.tipoContenidoArchivo,
     fechaNotificacion: fecha,
+    // ADMIN/REVISOR_REPOSITORIO: "NOMBRE LABORATORIO" al inicio, junto con la fecha.
+    nombreLaboratorio: entrada.usuarioId === null ? (carga.nombreLaboratorio ?? "") : undefined,
     solicitanteId: entrada.solicitanteId,
     signal: entrada.signal,
   });

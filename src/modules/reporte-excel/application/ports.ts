@@ -83,6 +83,10 @@ export interface GeneradorDescargaCarga {
     fuente: FuenteDescarga;
     tipoContenido: string;
     fechaNotificacion: Date;
+    // Si viene (aunque sea vacío), se agrega al INICIO la columna "NOMBRE LABORATORIO" con este valor
+    // en cada fila, salvo que el archivo ya traiga una columna con ese nombre. Solo la pide la
+    // descarga de ADMIN/REVISOR_REPOSITORIO; la del propio notificador no la lleva.
+    nombreLaboratorio?: string;
     // Quién la pide (id de usuario): la implementación admite una sola generación a la vez por
     // solicitante y lanza si ya tiene otra en curso o si no hay capacidad dentro de la espera máxima.
     solicitanteId?: string;

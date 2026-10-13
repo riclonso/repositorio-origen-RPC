@@ -13,8 +13,20 @@ const payload = { nombre: "Fechas", columnas, reglasValidacion: [regla] };
 test("compara el día UTC, permite igualdad y funciona con fuentes mixtas", () => {
   for (const fecha of ["29-02-2024", new Date("2024-02-29T23:59:00Z")]) assert.equal(cumpleComparacionFechas(configuracion, { INGRESO: fecha, D: "29", M: 2, A: 2024 }), true);
   assert.equal(cumpleComparacionFechas(configuracion, { INGRESO: "28-02-2024", D: 29, M: 2, A: 2024 }), false);
-  const invertida = { origen: configuracion.referencia, referencia: configuracion.origen };
+  const invertida: ConfiguracionComparacionFechas = { origen: { modo: "COMPONENTES", dia: "D", mes: "M", anio: "A" }, referencia: configuracion.origen };
   assert.equal(cumpleComparacionFechas(invertida, { INGRESO: "28-02-2024", D: 29, M: 2, A: 2024 }), true);
+});
+test("aplica cada operador y acepta una fecha 2 ingresada manualmente", () => {
+  const conFija = (operador: ConfiguracionComparacionFechas["operador"]): ConfiguracionComparacionFechas => ({ origen: { modo: "COLUMNA", columna: "INGRESO" }, operador, referencia: { modo: "FIJA", fecha: "2024-03-01" } });
+  const esperado = { MAYOR: [false, false, true], MAYOR_IGUAL: [false, true, true], IGUAL: [false, true, false], MENOR: [true, false, false], MENOR_IGUAL: [true, true, false] } as const;
+  for (const [operador, resultados] of Object.entries(esperado)) {
+    ["29-02-2024", "01-03-2024", "02-03-2024"].forEach((fecha, indice) => assert.equal(cumpleComparacionFechas(conFija(operador as keyof typeof esperado), { INGRESO: fecha }), resultados[indice], `${operador} ${fecha}`));
+  }
+  assert.equal(cumpleComparacionFechas({ ...conFija("IGUAL"), referencia: { modo: "FIJA", fecha: "2024-02-30" } }, { INGRESO: "01-03-2024" }), false);
+  const resultado = crearFormatoExcelSchema.parse({ ...payload, reglasValidacion: [{ ...regla, configuracion: conFija("MENOR") }] });
+  assert.deepEqual(resultado.reglasValidacion[0].columnas, ["INGRESO"]);
+  assert.equal(crearFormatoExcelSchema.safeParse({ ...payload, reglasValidacion: [{ ...regla, configuracion: { ...conFija("MENOR"), referencia: { modo: "FIJA", fecha: "2023-02-29" } } }] }).success, false);
+  assert.equal(crearFormatoExcelSchema.safeParse({ ...payload, reglasValidacion: [{ ...regla, configuracion: { ...conFija("MENOR"), operador: "DISTINTO" } }] }).success, false);
 });
 test("fuentes completas y componentes funcionan también en ambos lados", () => {
   const completas: ConfiguracionComparacionFechas = { origen: { modo: "COLUMNA", columna: "ATENCION" }, referencia: { modo: "COLUMNA", columna: "INGRESO" } };

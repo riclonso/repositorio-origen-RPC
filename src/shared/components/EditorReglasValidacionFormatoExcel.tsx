@@ -14,8 +14,8 @@ import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Boton } from "@/shared/components/Boton";
 import { IconoEliminar } from "@/shared/components/iconos";
 import { EditorColumnasReglaRut, type ModoReglaRut } from "@/shared/components/EditorColumnasReglaRut";
-
 import { EditorComparacionFechas } from "@/shared/components/EditorComparacionFechas";
+import { columnasComparacionFechas } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
 
 export type ReglaValidacionEditable = {
   configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null;
@@ -125,7 +125,7 @@ export function EditorReglasValidacionFormatoExcel({
     onCambiar(reglas.map((regla, i) => {
       if (i !== indice) return regla;
       const actualizada = { ...regla, ...cambios };
-      if (actualizada.tipo === "FECHA_POSTERIOR_O_IGUAL" && actualizada.configuracion) actualizada.columnas = [...new Set([actualizada.configuracion.origen, actualizada.configuracion.referencia].flatMap((fuente) => fuente.modo === "COLUMNA" ? [fuente.columna] : [fuente.dia, fuente.mes, fuente.anio]).filter(Boolean))];
+      if (actualizada.tipo === "FECHA_POSTERIOR_O_IGUAL" && actualizada.configuracion) actualizada.columnas = columnasComparacionFechas(actualizada.configuracion).filter(Boolean);
       return actualizada;
     }));
   }
@@ -208,7 +208,7 @@ export function EditorReglasValidacionFormatoExcel({
                       tipo: evento.target.value as TipoReglaValidacion,
                       columnas: [],
                       modoRut: undefined,
-                      configuracion: evento.target.value === "FECHA_POSTERIOR_O_IGUAL" ? { origen: { modo: "COLUMNA", columna: "" }, referencia: { modo: "COLUMNA", columna: "" } } : null,
+                      configuracion: evento.target.value === "FECHA_POSTERIOR_O_IGUAL" ? { origen: { modo: "COLUMNA", columna: "" }, operador: "MAYOR_IGUAL", referencia: { modo: "COLUMNA", columna: "" } } : null,
                     })
                   }
                 />
@@ -218,7 +218,7 @@ export function EditorReglasValidacionFormatoExcel({
                   // cambiar de tipo ya reinicia `columnas` a `[]`.
                   <p className="text-xs text-gob-gray-a">{AYUDA_REGLA_TODAS_LAS_COLUMNAS[regla.tipo]}</p>
                 ) : regla.tipo === "FECHA_POSTERIOR_O_IGUAL" ? (
-                  <EditorComparacionFechas idBase={`regla-${indice}`} columnas={columnasDisponibles} configuracion={regla.configuracion ?? { origen: { modo: "COLUMNA", columna: "" }, referencia: { modo: "COLUMNA", columna: "" } }} onCambiar={(configuracion) => actualizarRegla(indice, { configuracion })} />
+                  <EditorComparacionFechas idBase={`regla-${indice}`} columnas={columnasDisponibles} configuracion={regla.configuracion ?? { origen: { modo: "COLUMNA", columna: "" }, operador: "MAYOR_IGUAL", referencia: { modo: "COLUMNA", columna: "" } }} onCambiar={(configuracion) => actualizarRegla(indice, { configuracion })} />
                 ) : regla.tipo === "RUT_VALIDO" ? (
                   <EditorColumnasReglaRut
                     idBase={`regla-${indice}`}
@@ -276,6 +276,22 @@ export function EditorReglasValidacionFormatoExcel({
                       }
                     />
                   </>
+                ) : regla.tipo === "FECHA_NO_FUTURA" ? (
+                  <CampoSelect
+                    id={`regla-${indice}-columna-no-futura`}
+                    etiqueta="Columna de fecha"
+                    opciones={[{ valor: "", etiqueta: "Selecciona una columna" }, ...opcionesColumnasFecha]}
+                    value={regla.columnas[0] ?? ""}
+                    onChange={(evento) => actualizarRegla(indice, { columnas: evento.target.value ? [evento.target.value] : [] })}
+                    ayuda="Se rechaza la fila si la fecha es posterior al día en que se sube el archivo (hora de Chile). Hoy y fechas pasadas se aceptan; las celdas vacías se omiten."
+                    error={
+                      opcionesColumnasFecha.length === 0
+                        ? "Este formato no tiene ninguna columna de tipo Fecha"
+                        : columnasFaltantes.length > 0
+                          ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes.map((nombre) => `"${nombre}"`).join(", ")}`
+                          : null
+                    }
+                  />
                 ) : regla.tipo === "FILA_DUPLICADA" ? (
                   <>
                     <CampoSeleccionMultiple

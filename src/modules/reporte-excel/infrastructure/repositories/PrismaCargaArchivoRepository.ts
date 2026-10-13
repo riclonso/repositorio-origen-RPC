@@ -350,6 +350,7 @@ const SELECCION_DESCARGA = {
   vistoBuenoEn: true,
   rutaArchivo: true,
   tamanoBytes: true,
+  usuario: { select: { establecimiento: { select: { nombre: true } } } },
 } as const;
 
 type RegistroDescarga = Prisma.CargaArchivoGetPayload<{ select: typeof SELECCION_DESCARGA }>;
@@ -363,6 +364,7 @@ async function aCargaParaDescarga(registro: RegistroDescarga | null): Promise<Ca
     tipoContenidoArchivo: registro.tipoContenidoArchivo,
     finalizadaEn: registro.finalizadaEn,
     vistoBuenoEn: registro.vistoBuenoEn,
+    nombreLaboratorio: registro.usuario.establecimiento?.nombre ?? null,
   };
 
   if (registro.rutaArchivo !== null && registro.tamanoBytes !== null) {

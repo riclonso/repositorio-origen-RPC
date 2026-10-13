@@ -1,9 +1,14 @@
-import type { ConfiguracionComparacionFechas, FuenteFecha } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import { diaCalendarioFechaFija } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
+import type { ConfiguracionComparacionFechas, FuenteFechaReferencia } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { celdaVacia, parsearFecha } from "./ValidadoresTipoDato";
 
 type FechaResuelta = { estado: "VACIA" } | { estado: "INVALIDA" } | { estado: "VALIDA"; diaCalendario: number };
-function resolverFecha(fuente: FuenteFecha, fila: Record<string, ValorCeldaArchivo>): FechaResuelta {
+function resolverFecha(fuente: FuenteFechaReferencia, fila: Record<string, ValorCeldaArchivo>): FechaResuelta {
+  if (fuente.modo === "FIJA") {
+    const diaCalendario = diaCalendarioFechaFija(fuente.fecha);
+    return diaCalendario === null ? { estado: "INVALIDA" } : { estado: "VALIDA", diaCalendario };
+  }
   if (fuente.modo === "COLUMNA") {
     const valor = fila[fuente.columna] ?? null;
     if (celdaVacia(valor)) return { estado: "VACIA" };
@@ -26,5 +31,12 @@ export function cumpleComparacionFechas(configuracion: ConfiguracionComparacionF
   const referencia = resolverFecha(configuracion.referencia, fila);
   if (origen.estado === "INVALIDA" || referencia.estado === "INVALIDA") return false;
   if (origen.estado === "VACIA" || referencia.estado === "VACIA") return true;
-  return origen.diaCalendario >= referencia.diaCalendario;
+  const diferencia = origen.diaCalendario - referencia.diaCalendario;
+  switch (configuracion.operador ?? "MAYOR_IGUAL") {
+    case "MAYOR": return diferencia > 0;
+    case "MAYOR_IGUAL": return diferencia >= 0;
+    case "IGUAL": return diferencia === 0;
+    case "MENOR": return diferencia < 0;
+    case "MENOR_IGUAL": return diferencia <= 0;
+  }
 }

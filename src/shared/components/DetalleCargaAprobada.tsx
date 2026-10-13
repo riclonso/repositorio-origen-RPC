@@ -61,7 +61,7 @@ export function DetalleCargaAprobada({ carga }: DetalleCargaAprobadaProps) {
           </a>
         </div>
         <p className="text-xs text-gob-gray-a">
-          La descarga incluye la columna «Fecha y hora de notificación». El original es el archivo tal como lo subió
+          La descarga incluye las columnas «NOMBRE LABORATORIO» (al inicio) y «Fecha y hora de notificación». El original es el archivo tal como lo subió
           el notificador.
         </p>
       </div>

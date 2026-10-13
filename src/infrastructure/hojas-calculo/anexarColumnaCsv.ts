@@ -8,11 +8,16 @@ import type { CodificacionCsv } from "@/shared/utils/texto-csv";
 // registro fuera de comillas, y al final si el último registro no termina en salto. Los registros
 // vacíos (líneas en blanco) se dejan como están. Solo lo usan las cargas antiguas en CSV (RF-23 dejó
 // de aceptar CSV del notificador).
+// Opcionalmente antepone además una columna al INICIO (`columnaInicial`, "NOMBRE LABORATORIO"): el
+// encabezado se retiene hasta su fin de registro para decidir si se agrega, y en cada registro de
+// datos con contenido se inserta `<valor>,` antes de su primer byte.
 
 const COMILLA = 0x22;
 const SALTO = 0x0a;
 const RETORNO = 0x0d;
 const BOM_UTF8 = [0xef, 0xbb, 0xbf];
+// El encabezado retenido no puede crecer sin límite (un archivo sin saltos de línea).
+const MAXIMO_BYTES_ENCABEZADO = 1024 * 1024;
 
 export type OpcionesAnexarColumnaCsv = {
   codificacion: CodificacionCsv;
@@ -20,6 +25,8 @@ export type OpcionesAnexarColumnaCsv = {
   nombreColumna: (encabezados: string[]) => string;
   // Valor de la columna en cada fila de datos (ASCII, sin comas ni comillas).
   valor: string;
+  // Columna antepuesta; `agregar` recibe los encabezados originales y decide si se agrega.
+  columnaInicial?: { nombre: string; valor: string; agregar: (encabezados: string[]) => boolean };
 };
 
 function codificar(texto: string, codificacion: CodificacionCsv): Buffer {
@@ -60,20 +67,30 @@ export function camposEncabezadoCsv(bytes: Buffer, codificacion: CodificacionCsv
 
 export function crearTransformAnexarColumnaCsv(opciones: OpcionesAnexarColumnaCsv): Transform {
   const valorDatos = codificar(`,${opciones.valor}`, opciones.codificacion);
+  const inicial = opciones.columnaInicial;
+  const prefijoDatos = inicial ? codificar(`${campoCsv(inicial.valor)},`, opciones.codificacion) : Buffer.alloc(0);
   let enComillas = false;
   let retornoPendiente = false;
   let registroConContenido = false;
   let enEncabezado = true;
+  // El encabezado se retiene completo hasta su fin de registro: solo entonces se conocen sus campos.
   const encabezado: Buffer[] = [];
-  let insercionEncabezado: Buffer | null = null;
+  let bytesEncabezado = 0;
+  let agregarInicial = false;
 
-  function insercion(): Buffer {
-    if (!enEncabezado) return valorDatos;
-    if (!insercionEncabezado) {
-      const nombre = opciones.nombreColumna(camposEncabezadoCsv(Buffer.concat(encabezado), opciones.codificacion));
-      insercionEncabezado = codificar(`,${campoCsv(nombre)}`, opciones.codificacion);
-    }
-    return insercionEncabezado;
+  function componerEncabezado(): Buffer {
+    const bytes = Buffer.concat(encabezado);
+    encabezado.length = 0;
+    if (!registroConContenido) return bytes;
+    const campos = camposEncabezadoCsv(bytes, opciones.codificacion);
+    agregarInicial = inicial !== undefined && inicial.agregar(campos);
+    const conBom = bytes.subarray(0, 3).equals(Buffer.from(BOM_UTF8));
+    return Buffer.concat([
+      conBom ? bytes.subarray(0, 3) : Buffer.alloc(0),
+      agregarInicial && inicial ? codificar(`${campoCsv(inicial.nombre)},`, opciones.codificacion) : Buffer.alloc(0),
+      conBom ? bytes.subarray(3) : bytes,
+      codificar(`,${campoCsv(opciones.nombreColumna(campos))}`, opciones.codificacion),
+    ]);
   }
 
   // Procesa un trozo y devuelve los bytes de salida.
@@ -84,17 +101,32 @@ export function crearTransformAnexarColumnaCsv(opciones: OpcionesAnexarColumnaCs
     const emitirHasta = (hasta: number) => {
       if (hasta > desde) {
         const parte = trozo.subarray(desde, hasta);
-        partes.push(parte);
-        if (enEncabezado) encabezado.push(parte);
+        if (enEncabezado) {
+          bytesEncabezado += parte.length;
+          if (bytesEncabezado > MAXIMO_BYTES_ENCABEZADO) throw new Error("Encabezado CSV demasiado grande");
+          encabezado.push(parte);
+        } else {
+          partes.push(parte);
+        }
       }
       desde = hasta;
     };
 
     const cerrarRegistro = (terminador: Buffer) => {
-      if (registroConContenido) partes.push(insercion());
+      if (enEncabezado) partes.push(componerEncabezado());
+      else if (registroConContenido) partes.push(valorDatos);
       partes.push(terminador);
       registroConContenido = false;
       enEncabezado = false;
+    };
+
+    // Antes del primer byte con contenido de cada registro de datos va el valor de la columna inicial.
+    const marcarContenido = (indice: number) => {
+      if (!registroConContenido && !enEncabezado && agregarInicial) {
+        emitirHasta(indice);
+        partes.push(prefijoDatos);
+      }
+      registroConContenido = true;
     };
 
     for (let indice = 0; indice < trozo.length; indice += 1) {
@@ -114,8 +146,8 @@ export function crearTransformAnexarColumnaCsv(opciones: OpcionesAnexarColumnaCs
       }
 
       if (byte === COMILLA) {
+        marcarContenido(indice);
         enComillas = !enComillas;
-        registroConContenido = true;
         continue;
       }
       if (enComillas) continue;
@@ -134,7 +166,7 @@ export function crearTransformAnexarColumnaCsv(opciones: OpcionesAnexarColumnaCs
       }
       // El BOM al inicio no es contenido.
       if (enEncabezado && encabezado.length === 0 && indice < 3 && desde === 0 && byte === BOM_UTF8[indice]) continue;
-      registroConContenido = true;
+      marcarContenido(indice);
     }
 
     emitirHasta(trozo.length);
@@ -143,17 +175,18 @@ export function crearTransformAnexarColumnaCsv(opciones: OpcionesAnexarColumnaCs
 
   return new Transform({
     transform(trozo: Buffer, _codificacion: BufferEncoding, listo: TransformCallback) {
-      listo(null, procesar(trozo));
+      try {
+        listo(null, procesar(trozo));
+      } catch (error) {
+        listo(error instanceof Error ? error : new Error("CSV inválido"));
+      }
     },
     flush(listo: TransformCallback) {
       const partes: Buffer[] = [];
-      if (retornoPendiente) {
-        if (registroConContenido) partes.push(insercion());
-        partes.push(Buffer.from([RETORNO]));
-      } else if (registroConContenido) {
-        // Último registro sin salto final.
-        partes.push(insercion());
-      }
+      // Archivo de un solo registro (sin salto final): el encabezado retenido sale aquí.
+      if (enEncabezado) partes.push(componerEncabezado());
+      else if (registroConContenido) partes.push(valorDatos);
+      if (retornoPendiente) partes.push(Buffer.from([RETORNO]));
       listo(null, Buffer.concat(partes));
     },
   });
