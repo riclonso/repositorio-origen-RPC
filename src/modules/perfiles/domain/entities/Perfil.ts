@@ -48,11 +48,11 @@ export function esPerfilBioestadistica(codigo: string): boolean {
   return codigo === CODIGO_PERFIL_BIOESTADISTICA;
 }
 
-// RF-30 / RF-37: perfiles que DEBEN pertenecer a un establecimiento (el notificador y, desde RF-37,
-// Bioestadística, cuyas cargas guardan una copia del establecimiento). Para el resto es opcional.
-// Fuente única para el esquema Zod, el caso de uso y el formulario.
+// RF-30 / RF-37: perfiles que DEBEN pertenecer a un establecimiento (el notificador, Bioestadística,
+// cuyas cargas guardan una copia del establecimiento, y el revisor del repositorio que revisa sus cargas).
+// Para el resto es opcional. Fuente única para el esquema Zod, el caso de uso y el formulario.
 export function perfilExigeEstablecimiento(codigo: string): boolean {
-  return esPerfilNotificador(codigo) || esPerfilBioestadistica(codigo);
+  return esPerfilNotificador(codigo) || esPerfilBioestadistica(codigo) || esPerfilRevisorRepositorio(codigo);
 }
 
 // Perfiles cuyas cuentas puede ver y administrar un REVISOR_REPOSITORIO desde su mantenedor de
