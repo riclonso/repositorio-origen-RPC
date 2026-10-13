@@ -169,13 +169,18 @@ export function CampoSelectConBusqueda({
         {/* Select oculto para manejar el valor del formulario */}
         <select
           {...atributos}
-          name={id}
           value={value ?? ""}
           onChange={onChange}
           className="hidden"
           aria-hidden="true"
           tabIndex={-1}
-        />
+        >
+          {opciones.map((opcion) => (
+            <option key={opcion.valor} value={opcion.valor}>
+              {opcion.etiqueta}
+            </option>
+          ))}
+        </select>
       </div>
 
       {ayuda ? (
