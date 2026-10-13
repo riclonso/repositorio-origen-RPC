@@ -13,6 +13,7 @@ import { Boton } from "@/shared/components/Boton";
 import { CampoSelect, type OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoSeleccionMultiple, type OpcionSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
 import { CampoTexto } from "@/shared/components/CampoTexto";
+import { WarningCircle } from "@phosphor-icons/react";
 
 const MENSAJE_ERROR_GENERICO = "No se pudo guardar el usuario. Intenta nuevamente.";
 
@@ -202,126 +203,165 @@ export function UsuarioForm({
           enviarFormulario(formData);
         });
       }}
-      className="mt-6 flex flex-col gap-5"
+      className="w-full"
     >
-      <div className="grid gap-5 md:grid-cols-2">
-        <CampoTexto
-          id="nombres"
-          name="nombres"
-          etiqueta="Nombres"
-          autoComplete="given-name"
-          value={valores.nombres}
-          onChange={(evento) => actualizarCampo("nombres", evento.target.value)}
-          error={estado.errores.nombres}
-        />
-
-        <CampoTexto
-          id="apellidos"
-          name="apellidos"
-          etiqueta="Apellidos"
-          autoComplete="family-name"
-          value={valores.apellidos}
-          onChange={(evento) => actualizarCampo("apellidos", evento.target.value)}
-          error={estado.errores.apellidos}
-        />
-
-        {esCreacion ? (
-          <CampoTexto
-            id="rut"
-            name="rut"
-            etiqueta="RUT"
-            ayuda="Con guion y dígito verificador. Será el usuario de ingreso."
-            placeholder="12345678-9"
-            value={valores.rut}
-            onChange={(evento) => actualizarCampo("rut", evento.target.value)}
-            error={estado.errores.rut}
-          />
-        ) : null}
-
-        <CampoTexto
-          id="email"
-          name="email"
-          etiqueta="Email"
-          type="email"
-          autoComplete="email"
-          value={valores.email}
-          onChange={(evento) => actualizarCampo("email", evento.target.value)}
-          error={estado.errores.email}
-        />
-
-        <CampoSelect
-          id="perfilCodigo"
-          name="perfilCodigo"
-          etiqueta="Perfil"
-          opciones={opcionesPerfil}
-          value={valores.perfilCodigo}
-          onChange={(evento) => {
-            const perfilCodigo = evento.target.value;
-
-            setValores((previos) => ({
-              ...previos,
-              perfilCodigo,
-              // Cambiar a un perfil que no sea Notificador RPC limpia la selección: conservarla
-              // en silencio dejaría formatos asignados a un perfil que el esquema los rechaza.
-              formatosExcelIds: esPerfilNotificador(perfilCodigo) ? previos.formatosExcelIds : [],
-              // RF-30/RF-37: mismo criterio para el establecimiento, que solo se pide a los perfiles
-              // que lo exigen (notificador y Bioestadística).
-              establecimientoId: perfilExigeEstablecimiento(perfilCodigo) ? previos.establecimientoId : "",
-            }));
-          }}
-          error={estado.errores.perfilCodigo}
-        />
-
-        {/* RF-30/RF-37: solo el notificador y Bioestadística pertenecen a un establecimiento. Para
-            el resto de los perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a
-            `null`. Los formatos de archivo (abajo) siguen siendo exclusivos del notificador. */}
-        {perfilExigeEstablecimiento(valores.perfilCodigo) ? (
-          <CampoSelect
-            id="establecimientoId"
-            name="establecimientoId"
-            etiqueta="Establecimiento"
-            opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
-            value={valores.establecimientoId}
-            onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
-            aria-required
-            error={estado.errores.establecimientoId}
-          />
-        ) : null}
+      {/* Encabezado del formulario */}
+      <div className="mb-8 border-b border-gob-gray-a/20 pb-6">
+        <h2 className="text-2xl font-semibold text-gob-gray-a">
+          {esCreacion ? "Crear usuario" : "Editar usuario"}
+        </h2>
+        <p className="mt-2 text-sm text-gob-gray-a/70">
+          {esCreacion
+            ? "Ingresa los datos del nuevo usuario. Se enviará un enlace por correo para que establezca su contraseña."
+            : "Actualiza los datos del usuario."}
+        </p>
       </div>
 
-      {esPerfilNotificador(valores.perfilCodigo) ? (
-        <CampoSeleccionMultiple
-          id="formatosExcelIds"
-          etiqueta="Formatos de archivo asignados"
-          opciones={opcionesFormatoExcel}
-          valoresSeleccionados={valores.formatosExcelIds}
-          onCambiar={(formatosExcelIds) =>
-            setValores((previos) => ({ ...previos, formatosExcelIds }))
-          }
-          ayuda="Un notificador debe tener al menos un formato asignado."
-          error={estado.errores.formatosExcelIds}
-        />
-      ) : null}
-
+      {/* Alerta de error general */}
       {estado.errorGeneral ? (
-        <p role="alert" className="text-sm font-medium text-gob-danger">
-          {estado.errorGeneral}
-        </p>
+        <div
+          role="alert"
+          className="mb-6 flex gap-3 rounded-lg border border-gob-danger/30 bg-gob-danger/5 px-4 py-3 text-sm text-gob-danger"
+        >
+          <WarningCircle
+            size={20}
+            weight="fill"
+            className="mt-0.5 shrink-0"
+            aria-hidden
+          />
+          <span>{estado.errorGeneral}</span>
+        </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-3">
+      {/* Sección de identidad */}
+      <fieldset className="mb-8">
+        <legend className="mb-5 block text-sm font-semibold uppercase tracking-wide text-gob-gray-a/60">
+          Identidad
+        </legend>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <CampoTexto
+            id="nombres"
+            name="nombres"
+            etiqueta="Nombres"
+            autoComplete="given-name"
+            value={valores.nombres}
+            onChange={(evento) => actualizarCampo("nombres", evento.target.value)}
+            error={estado.errores.nombres}
+          />
+
+          <CampoTexto
+            id="apellidos"
+            name="apellidos"
+            etiqueta="Apellidos"
+            autoComplete="family-name"
+            value={valores.apellidos}
+            onChange={(evento) => actualizarCampo("apellidos", evento.target.value)}
+            error={estado.errores.apellidos}
+          />
+
+          {esCreacion ? (
+            <CampoTexto
+              id="rut"
+              name="rut"
+              etiqueta="RUT"
+              ayuda="Con guion y dígito verificador. Será el usuario de ingreso."
+              placeholder="12345678-9"
+              value={valores.rut}
+              onChange={(evento) => actualizarCampo("rut", evento.target.value)}
+              error={estado.errores.rut}
+            />
+          ) : null}
+
+          <CampoTexto
+            id="email"
+            name="email"
+            etiqueta="Email"
+            type="email"
+            autoComplete="email"
+            value={valores.email}
+            onChange={(evento) => actualizarCampo("email", evento.target.value)}
+            error={estado.errores.email}
+          />
+        </div>
+      </fieldset>
+
+      {/* Sección de asignación */}
+      <fieldset className="mb-8">
+        <legend className="mb-5 block text-sm font-semibold uppercase tracking-wide text-gob-gray-a/60">
+          Asignación
+        </legend>
+        <div className="grid gap-5">
+          <CampoSelect
+            id="perfilCodigo"
+            name="perfilCodigo"
+            etiqueta="Perfil"
+            opciones={opcionesPerfil}
+            value={valores.perfilCodigo}
+            onChange={(evento) => {
+              const perfilCodigo = evento.target.value;
+
+              setValores((previos) => ({
+                ...previos,
+                perfilCodigo,
+                // Cambiar a un perfil que no sea Notificador RPC limpia la selección: conservarla
+                // en silencio dejaría formatos asignados a un perfil que el esquema los rechaza.
+                formatosExcelIds: esPerfilNotificador(perfilCodigo) ? previos.formatosExcelIds : [],
+                // RF-30/RF-37: mismo criterio para el establecimiento, que solo se pide a los perfiles
+                // que lo exigen (notificador y Bioestadística).
+                establecimientoId: perfilExigeEstablecimiento(perfilCodigo) ? previos.establecimientoId : "",
+              }));
+            }}
+            error={estado.errores.perfilCodigo}
+          />
+
+          {/* RF-30/RF-37: solo el notificador y Bioestadística pertenecen a un establecimiento. Para
+              el resto de los perfiles el campo no se muestra ni se envía, y el esquema lo normaliza a
+              `null`. Los formatos de archivo (abajo) siguen siendo exclusivos del notificador. */}
+          {perfilExigeEstablecimiento(valores.perfilCodigo) ? (
+            <CampoSelect
+              id="establecimientoId"
+              name="establecimientoId"
+              etiqueta="Establecimiento"
+              opciones={[OPCION_SIN_ESTABLECIMIENTO, ...opcionesEstablecimiento]}
+              value={valores.establecimientoId}
+              onChange={(evento) => actualizarCampo("establecimientoId", evento.target.value)}
+              aria-required
+              error={estado.errores.establecimientoId}
+              className="sm:col-span-2"
+            />
+          ) : null}
+
+          {esPerfilNotificador(valores.perfilCodigo) ? (
+            <CampoSeleccionMultiple
+              id="formatosExcelIds"
+              etiqueta="Formatos de archivo asignados"
+              opciones={opcionesFormatoExcel}
+              valoresSeleccionados={valores.formatosExcelIds}
+              onCambiar={(formatosExcelIds) =>
+                setValores((previos) => ({ ...previos, formatosExcelIds }))
+              }
+              ayuda="Un notificador debe tener al menos un formato asignado."
+              error={estado.errores.formatosExcelIds}
+            />
+          ) : null}
+        </div>
+      </fieldset>
+
+      {/* Acciones */}
+      <div className="flex flex-wrap gap-3 border-t border-gob-gray-a/20 pt-6">
         <Boton
           type="submit"
           variante="primario"
           cargando={enviando}
-          textoCargando="Guardando..."
+          textoCargando={esCreacion ? "Creando..." : "Guardando..."}
+          disabled={enviando}
         >
           {esCreacion ? "Crear usuario" : "Guardar cambios"}
         </Boton>
 
         <Link
           href={rutaBase}
-          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancelar
         </Link>
