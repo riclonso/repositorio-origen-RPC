@@ -32,6 +32,8 @@ export async function ListadoSolicitudesBioestadistica({ filtro, construirHref }
     nombreReporte: ETIQUETAS_TIPO_ARCHIVO_BIOESTADISTICA[solicitud.tipoArchivo],
     anio: solicitud.anio,
     nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
+    // La descarga administrativa acepta la carga vigente o ya reemplazada.
+    hrefArchivo: `/api/dashboard/bioestadistica/cargas/${solicitud.cargaBioestadisticaId}/archivo`,
     solicitadoPorNombre: solicitud.solicitadoPorNombre,
     solicitadoPorRut: solicitud.solicitadoPorRut,
     motivo: solicitud.motivo,

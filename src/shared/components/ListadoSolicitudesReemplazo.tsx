@@ -41,6 +41,10 @@ export async function ListadoSolicitudesReemplazo({ filtro, construirHref }: Lis
     nombreReporte: solicitud.formatoExcelNombre,
     anio: solicitud.anio,
     nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
+    // Mientras está pendiente, la carga sigue aprobada o pendiente de visto bueno (descargable);
+    // resuelta, puede haber sido reemplazada y la descarga daría 404.
+    hrefArchivo:
+      solicitud.estado === "PENDIENTE" ? `/api/dashboard/cargas/${solicitud.cargaArchivoId}/archivo/original` : null,
     solicitadoPorNombre: solicitud.solicitadoPorNombre,
     solicitadoPorRut: solicitud.solicitadoPorRut,
     motivo: solicitud.motivo,

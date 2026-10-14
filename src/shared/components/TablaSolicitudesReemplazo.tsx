@@ -17,6 +17,8 @@ export type FilaSolicitudReemplazoVista = {
   nombreReporte: string;
   anio: number;
   nombreArchivoOriginal: string;
+  // Descarga del archivo a reemplazar; null si no aplica (p. ej. la carga ya fue reemplazada).
+  hrefArchivo: string | null;
   solicitadoPorNombre: string;
   solicitadoPorRut: string;
   motivo: string;
@@ -88,6 +90,19 @@ function AccionesFila({ fila, onAprobar, onRechazar }: AccionesFilaProps) {
   );
 }
 
+function NombreArchivo({ fila, className }: { fila: FilaSolicitudReemplazoVista; className: string }) {
+  if (!fila.hrefArchivo) return <span className={className}>{fila.nombreArchivoOriginal}</span>;
+  return (
+    <a
+      href={fila.hrefArchivo}
+      className={`${className} text-gob-primary underline hover:text-gob-tertiary`}
+      aria-label={`Descargar archivo a reemplazar: ${fila.nombreArchivoOriginal}`}
+    >
+      {fila.nombreArchivoOriginal}
+    </a>
+  );
+}
+
 function columnaReporte(encabezado: string): ColumnaTabla<FilaSolicitudReemplazoVista> {
   return {
     encabezado,
@@ -96,7 +111,7 @@ function columnaReporte(encabezado: string): ColumnaTabla<FilaSolicitudReemplazo
     contenido: (fila) => (
       <>
         {fila.nombreReporte} · {fila.anio}
-        <span className="block break-all text-xs font-normal text-gob-gray-a">{fila.nombreArchivoOriginal}</span>
+        <NombreArchivo fila={fila} className="block break-all text-xs font-normal text-gob-gray-a" />
         {fila.etiquetaOrigen ? (
           <span className="block text-xs font-normal text-gob-gray-b">{fila.etiquetaOrigen}</span>
         ) : null}
@@ -213,7 +228,9 @@ export function TablaSolicitudesReemplazo({
             <p className="font-semibold text-gob-black">
               {fila.nombreReporte} · {fila.anio}
             </p>
-            <p className="break-all">{fila.nombreArchivoOriginal}</p>
+            <p>
+              <NombreArchivo fila={fila} className="break-all" />
+            </p>
             {fila.etiquetaOrigen ? <p className="mt-1 text-xs text-gob-gray-b">{fila.etiquetaOrigen}</p> : null}
             <p className="mt-1">
               {fila.solicitadoPorNombre} <span className="tabular-nums">({fila.solicitadoPorRut})</span>
