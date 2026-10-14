@@ -138,11 +138,12 @@ export function cumpleReglaValidacion(
     case "FILA_DUPLICADA":
       return true;
     // Convención de `columnas[]` en `domain/entities/FormatoExcel.ts`: 1 columna = RUT completo;
-    // 2 columnas = número + dígito verificador. Todas vacías → no falla (el dato es opcional,
-    // su obligatoriedad la decide `requerida`); solo una de dos vacía → falla (RUT incompleto).
+    // 2 columnas = número + dígito verificador. Si la primera columna (el RUT o su número) está
+    // vacía, la regla no aplica aunque el dígito verificador traiga valor; si tiene valor y
+    // falta alguna otra columna, falla (RUT incompleto).
     case "RUT_VALIDO": {
       const valores = regla.columnas.map((nombreColumna) => fila[nombreColumna] ?? null);
-      if (valores.length === 0 || valores.every((valor) => celdaVacia(valor))) return true;
+      if (valores.length === 0 || celdaVacia(valores[0] ?? null)) return true;
       if (valores.some((valor) => celdaVacia(valor))) return false;
 
       const rut = valores.map(aTextoRut).join("-");
