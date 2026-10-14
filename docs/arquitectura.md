@@ -805,8 +805,8 @@ estructura (inesperadas y faltantes). `cantidadFilasDatos` sigue reflejando las 
 `infrastructure/validacion/ValidadoresTipoDato.ts` es la primera vez que el proyecto valida un
 *valor* real contra `TipoDatoColumna` (RF-13 solo validaba la etiqueta del tipo, nunca un dato).
 Convención fijada por decisión explícita del usuario, sin antecedente previo que seguir: decimal con
-coma o punto; fecha en texto `DD-MM-AAAA` o `DD/MM/AAAA`; fecha y hora en texto
-`DD-MM-AAAA HH:mm[:ss]` (con `/` o `T` como separadores alternativos de fecha/hora); booleano acepta
+coma o punto; fecha en texto solo `DD-MM-AAAA` (`DD/MM/AAAA` se dejó de aceptar el 2026-10-14);
+fecha y hora en texto `DD-MM-AAAA HH:mm[:ss]` (con `T` como separador alternativo de hora); booleano acepta
 `SI/NO`, `VERDADERO/FALSO`, `1/0` (case-insensitive). EMAIL usa `z.email()` de Zod. El RUT dejó de
 ser un tipo de dato en RF-23: es la regla `RUT_VALIDO` (ver abajo).
 
@@ -848,8 +848,7 @@ distinguir "solo fecha" de "fecha y hora", así que `FECHA` y `FECHA_HORA` acept
 La distinción real de formato solo existe en `.csv`, donde el texto sí declara si trae hora.
 **Actualización (2026-10-05):** el tipo `FECHA_HORA` se eliminó del enum `TipoDatoColumna`
 (migración `20261005120000_quitar_tipo_dato_fecha_hora`, que convierte a `FECHA` cualquier columna
-que lo tuviera). Las columnas de fecha solo validan la fecha; en `.csv` exigen `DD-MM-AAAA` o
-`DD/MM/AAAA` sin hora. Las menciones a `FECHA_HORA` más abajo son históricas.
+que lo tuviera). Las columnas de fecha solo validan la fecha; en texto exigen `DD-MM-AAAA` sin hora. Las menciones a `FECHA_HORA` más abajo son históricas.
 En la misma fecha se eliminó la regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` (migración
 `20261005130000_quitar_regla_fecha_dentro_ventana`, que borra las reglas que la usaran): se
 solapaba con `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, que queda como única regla de fecha. Las

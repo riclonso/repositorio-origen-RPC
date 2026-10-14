@@ -12,7 +12,7 @@ import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/
 import { aTextoCelda, celdaVacia } from "@/modules/reporte-excel/domain/reglas/filasArchivo";
 
 // Convención chilena de formato de dato por celda (primera vez que se define en el proyecto):
-// decimal acepta coma o punto, fecha en texto acepta DD-MM-AAAA o DD/MM/AAAA, booleano acepta
+// decimal acepta coma o punto, fecha en texto acepta solo DD-MM-AAAA, booleano acepta
 // SI/NO, VERDADERO/FALSO y 1/0 case-insensitive.
 
 const ESQUEMA_EMAIL = z.string().trim().toLowerCase().pipe(z.email());
@@ -23,8 +23,8 @@ export { celdaVacia };
 
 const PATRON_ENTERO = /^-?\d+$/;
 const PATRON_DECIMAL = /^-?\d+([.,]\d+)?$/;
-const PATRON_FECHA_TEXTO = /^(\d{2})[-/](\d{2})[-/](\d{4})$/;
-const PATRON_FECHA_HORA_TEXTO = /^(\d{2})[-/](\d{2})[-/](\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
+const PATRON_FECHA_TEXTO = /^(\d{2})-(\d{2})-(\d{4})$/;
+const PATRON_FECHA_HORA_TEXTO = /^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/;
 
 const VALORES_BOOLEANOS_VERDADEROS = new Set(["si", "sí", "verdadero", "1"]);
 const VALORES_BOOLEANOS_FALSOS = new Set(["no", "falso", "0"]);
@@ -41,7 +41,7 @@ function esFechaValida(valor: ValorCeldaArchivo): boolean {
     return !Number.isNaN(valor.getTime());
   }
 
-  // `.csv`: la fecha llega como texto, en alguno de los dos formatos chilenos aceptados.
+  // `.csv` o celda de texto: la fecha solo se acepta como DD-MM-AAAA.
   const coincidencia = PATRON_FECHA_TEXTO.exec(aTextoCelda(valor));
   if (!coincidencia) return false;
 
