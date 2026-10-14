@@ -1,5 +1,5 @@
 import { diaCalendarioFechaFija } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
-import type { ConfiguracionComparacionFechas, FuenteFechaReferencia } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import type { ConfiguracionComparacionFechas, FuenteFechaReferencia, OperadorComparacionFechas } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { celdaVacia, parsearFecha } from "./ValidadoresTipoDato";
 
@@ -31,8 +31,13 @@ export function cumpleComparacionFechas(configuracion: ConfiguracionComparacionF
   const referencia = resolverFecha(configuracion.referencia, fila);
   if (origen.estado === "INVALIDA" || referencia.estado === "INVALIDA") return false;
   if (origen.estado === "VACIA" || referencia.estado === "VACIA") return true;
-  const diferencia = origen.diaCalendario - referencia.diaCalendario;
-  switch (configuracion.operador ?? "MAYOR_IGUAL") {
+  return cumpleOperador(origen.diaCalendario - referencia.diaCalendario, configuracion.operador ?? "MAYOR_IGUAL");
+}
+
+// `diferencia` = lado izquierdo − lado derecho de la comparación. Compartida entre la comparación de
+// dos fechas (días calendario) y `COMPARACION_ANIO_VENTANA` (años).
+export function cumpleOperador(diferencia: number, operador: OperadorComparacionFechas): boolean {
+  switch (operador) {
     case "MAYOR": return diferencia > 0;
     case "MAYOR_IGUAL": return diferencia >= 0;
     case "IGUAL": return diferencia === 0;

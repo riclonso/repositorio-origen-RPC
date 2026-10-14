@@ -1,12 +1,18 @@
 import { z } from "zod";
 import { columnasComparacionFechas, columnasFuenteFecha, diaCalendarioFechaFija } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
 import {
+  ANIOS_RANGO_MAXIMO,
+  ANIOS_RANGO_MINIMO,
+  esConfiguracionComparacionFechas,
+  DESPLAZAMIENTO_ANIOS_MAXIMO,
+  DESPLAZAMIENTO_ANIOS_MINIMO,
   OPERADORES_COMPARACION_FECHAS,
   SEPARADORES_CSV,
   TIPOS_ARCHIVO,
   TIPOS_DATO_COLUMNA,
   TIPOS_REGLA_TODAS_LAS_COLUMNAS,
   TIPOS_REGLA_VALIDACION,
+  type ConfiguracionReglaValidacion,
   type TipoReglaValidacion,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import { ETIQUETAS_TIPO_REGLA_VALIDACION } from "@/shared/utils/reglasValidacion";
@@ -178,9 +184,7 @@ const columnasFormatoExcelSchema = z
 
 // Tipos de regla (ver `TIPOS_REGLA_VALIDACION` en `domain/entities/FormatoExcel.ts`):
 // `ALGUNA_COLUMNA_CON_VALOR` exige un conjunto de columnas del que al menos una debe traer valor;
-// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` exige una columna principal + al menos una alternativa
-// (todas `FECHA`) cuya "fecha efectiva" resultante debe caer dentro del AÑO
-// calendario de esa ventana (ampliación posterior); `FILA_DUPLICADA` exige al menos una columna
+// `FILA_DUPLICADA` exige al menos una columna
 // (sin restricción de tipo de dato) cuya combinación de valores no puede repetirse entre filas del
 // mismo archivo (ampliación posterior). El evaluador que las ejecuta contra un archivo real vive
 // en `modules/reporte-excel/`; aquí solo se persiste y valida la configuración.
@@ -193,9 +197,67 @@ const fuenteFechaReferenciaSchema = z.union([
  z.strictObject({ modo: z.literal("FIJA"), fecha: z.string().trim().refine((valor) => diaCalendarioFechaFija(valor) !== null, "Ingresa una fecha válida") }),
 ]);
 export const configuracionComparacionFechasSchema = z.strictObject({ origen: fuenteFechaSchema, operador: z.enum(OPERADORES_COMPARACION_FECHAS).optional(), referencia: fuenteFechaReferenciaSchema });
+// `COMPARACION_ANIO_VENTANA`: operador obligatorio y ajuste en años opcional. `strictObject` impide
+// que una configuración con forma de comparación entre dos fechas pase por esta rama de la unión
+// (y viceversa: `origen`/`referencia` son obligatorios allá). Un ajuste 0 se descarta para que una
+// regla sin ajuste siga guardándose como `{ operador }`.
+export const configuracionComparacionAnioVentanaSchema = z
+  .strictObject({
+    operador: z.enum(OPERADORES_COMPARACION_FECHAS),
+    desplazamientoAnios: z
+      .number({ error: "El ajuste en años debe ser un número entero" })
+      .int("El ajuste en años debe ser un número entero")
+      .min(DESPLAZAMIENTO_ANIOS_MINIMO, `El ajuste en años no puede ser menor que ${DESPLAZAMIENTO_ANIOS_MINIMO}`)
+      .max(DESPLAZAMIENTO_ANIOS_MAXIMO, `El ajuste en años no puede ser mayor que ${DESPLAZAMIENTO_ANIOS_MAXIMO}`)
+      .optional(),
+  })
+  .transform(({ operador, desplazamientoAnios }) => (desplazamientoAnios ? { operador, desplazamientoAnios } : { operador }));
+function aniosRangoSchema(sujeto: string) {
+  return z
+    .number({ error: `${sujeto} deben ser un número entero` })
+    .int(`${sujeto} deben ser un número entero`)
+    .min(ANIOS_RANGO_MINIMO, `${sujeto} no pueden ser menores que ${ANIOS_RANGO_MINIMO}`)
+    .max(ANIOS_RANGO_MAXIMO, `${sujeto} no pueden ser mayores que ${ANIOS_RANGO_MAXIMO}`);
+}
+// `ANIO_DENTRO_DE_RANGO_VENTANA`: ambos campos obligatorios y siempre persistidos (también en 0).
+export const configuracionAnioDentroDeRangoSchema = z.strictObject({
+  aniosAntes: aniosRangoSchema("Los años antes"),
+  aniosDespues: aniosRangoSchema("Los años después"),
+});
+// Qué forma corresponde a cada tipo de regla lo decide el tipo (aquí abajo y en el mapper del
+// repositorio al leer). No se usa una `z.union` de las dos formas: cuando ninguna rama calza, Zod
+// devuelve un "Invalid input" genérico en inglés y se pierde el mensaje del campo que falló (p. ej.
+// el rango del ajuste en años).
+type EsquemaConfiguracion =
+  | typeof configuracionComparacionFechasSchema
+  | typeof configuracionComparacionAnioVentanaSchema
+  | typeof configuracionAnioDentroDeRangoSchema;
+
+// Esquema de configuración del tipo, solo si la configuración recibida tiene la forma de ese tipo
+// (`origen` distingue la comparación entre dos fechas). Si no, el tipo da su propio mensaje.
+function esquemaConfiguracionPorTipo(tipo: TipoReglaValidacion, configuracion: unknown): EsquemaConfiguracion | null {
+  if (typeof configuracion !== "object" || configuracion === null) return null;
+  const tieneOrigen = "origen" in configuracion;
+  if (tipo === "FECHA_POSTERIOR_O_IGUAL" && tieneOrigen) return configuracionComparacionFechasSchema;
+  if (tipo === "COMPARACION_ANIO_VENTANA" && !tieneOrigen && "operador" in configuracion) return configuracionComparacionAnioVentanaSchema;
+  // Basta con que traiga uno de los dos campos: el `strictObject` reporta el que falte y cualquier
+  // clave ajena (p. ej. `operador`) con su ruta.
+  if (tipo === "ANIO_DENTRO_DE_RANGO_VENTANA" && !tieneOrigen && !("operador" in configuracion) && ("aniosAntes" in configuracion || "aniosDespues" in configuracion)) {
+    return configuracionAnioDentroDeRangoSchema;
+  }
+  return null;
+}
+
+const MENSAJE_FORMA_CONFIGURACION: Partial<Record<TipoReglaValidacion, string>> = {
+  FECHA_POSTERIOR_O_IGUAL: "Define las dos fechas de la regla de comparación de fechas",
+  COMPARACION_ANIO_VENTANA: "Selecciona cómo se compara el año de la fecha con el año de la ventana",
+  ANIO_DENTRO_DE_RANGO_VENTANA: "Indica cuántos años antes y después del año de la ventana se aceptan",
+};
 
 const reglaValidacionFormatoExcelSchema = z.object({
-  configuracion: configuracionComparacionFechasSchema.nullish(),
+  // Se valida contra el esquema de su tipo en el `superRefine` y se reemplaza por el resultado
+  // validado en el `transform` de la regla.
+  configuracion: z.unknown().nullish(),
   tipo: tipoReglaValidacionSchema,
   columnas: z
     .array(z.string().trim().min(1, "Selecciona todas las columnas de la regla")).default([])
@@ -215,12 +277,36 @@ const reglaValidacionFormatoExcelSchema = z.object({
     .min(1, "Ingresa un mensaje de rechazo")
     .max(MENSAJE_REGLA_MAXIMO, `El mensaje no puede superar los ${MENSAJE_REGLA_MAXIMO} caracteres`),
 }).superRefine((regla, contexto) => {
-  if ((regla.tipo === "FECHA_POSTERIOR_O_IGUAL") !== Boolean(regla.configuracion)) {
-    contexto.addIssue({ code: "custom", path: ["configuracion"], message: "Define las dos fechas únicamente para la regla de comparación de fechas" });
+  // Cada tipo con configuración exige SU forma (con los mensajes de cada campo); los demás tipos no
+  // admiten ninguna.
+  const mensajeForma = MENSAJE_FORMA_CONFIGURACION[regla.tipo];
+  if (mensajeForma === undefined) {
+    if (regla.configuracion) {
+      contexto.addIssue({ code: "custom", path: ["configuracion"], message: "Este tipo de regla no admite configuración adicional" });
+    }
+    return;
   }
-}).transform((regla) => ({ ...regla, columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion
-  ? columnasComparacionFechas(regla.configuracion)
-  : regla.columnas }));
+  const esquema = esquemaConfiguracionPorTipo(regla.tipo, regla.configuracion);
+  if (!esquema) {
+    contexto.addIssue({ code: "custom", path: ["configuracion"], message: mensajeForma });
+    return;
+  }
+  const resultado = esquema.safeParse(regla.configuracion);
+  for (const problema of resultado.error?.issues ?? []) {
+    contexto.addIssue({ code: "custom", path: ["configuracion", ...problema.path], message: problema.message });
+  }
+}).transform((regla) => {
+  // Solo corre sin problemas, así que el esquema del tipo ya aceptó la configuración.
+  const esquema = esquemaConfiguracionPorTipo(regla.tipo, regla.configuracion);
+  const configuracion: ConfiguracionReglaValidacion | null = esquema ? esquema.parse(regla.configuracion) : null;
+  return {
+    ...regla,
+    configuracion,
+    columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && esConfiguracionComparacionFechas(configuracion)
+      ? columnasComparacionFechas(configuracion)
+      : regla.columnas,
+  };
+});
 
 // El `orden` NO viaja en el esquema: siempre lo fija el servidor por la posición del elemento en
 // el arreglo, igual que con las columnas.
@@ -250,13 +336,9 @@ const camposFormatoExcelSchema = {
   tiposEnumerados: tiposEnumeradosSchema,
 };
 
-// Tipos de columna admitidos por `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: compara la celda como
-// fecha, así que la columna referenciada debe ser una que el sistema sabe parsear como tal.
+// Tipos de columna admitidos por `FECHA_NO_FUTURA` y `COMPARACION_ANIO_VENTANA`: comparan la celda
+// como fecha, así que la columna referenciada debe ser una que el sistema sabe parsear como tal.
 const TIPOS_DATO_FECHA: readonly string[] = ["FECHA"];
-
-// Principal + al menos una alternativa (ver convención de `columnas[]` en
-// `domain/entities/FormatoExcel.ts`), sin tope fijo de alternativas.
-const MINIMO_COLUMNAS_FECHA_EFECTIVA = 2;
 
 // RUT completo en una columna, o número + dígito verificador en dos (convención de `columnas[]`
 // en `domain/entities/FormatoExcel.ts`).
@@ -280,7 +362,7 @@ function etiquetaTipoRegla(tipo: string): string {
 function validarReferenciasDeReglas(
   datos: {
     columnas: { nombre: string; tipoDato: string }[];
-    reglasValidacion: { tipo: string; columnas: string[]; configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null }[];
+    reglasValidacion: { tipo: string; columnas: string[]; configuracion?: ConfiguracionReglaValidacion | null }[];
   },
   contexto: z.RefinementCtx,
 ): void {
@@ -313,7 +395,7 @@ function validarReferenciasDeReglas(
       return;
     }
 
-    if (regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion) {
+    if (regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && esConfiguracionComparacionFechas(regla.configuracion)) {
       for (const [lado, fuente] of [["origen", regla.configuracion.origen], ["referencia", regla.configuracion.referencia]] as const) {
         if (fuente.modo === "FIJA") continue;
         const nombres = columnasFuenteFecha(fuente);
@@ -373,8 +455,9 @@ function validarReferenciasDeReglas(
       });
     }
 
-    // `FECHA_NO_FUTURA`: exactamente una columna, de tipo Fecha.
-    if (regla.tipo === "FECHA_NO_FUTURA") {
+    // `FECHA_NO_FUTURA` y `COMPARACION_ANIO_VENTANA`: exactamente una columna, de tipo Fecha (que
+    // exista ya lo comprueba el recorrido genérico de arriba).
+    if (regla.tipo === "FECHA_NO_FUTURA" || regla.tipo === "COMPARACION_ANIO_VENTANA") {
       const columna = regla.columnas.length === 1 ? columnasPorNombre.get(regla.columnas[0].trim().toLowerCase()) : undefined;
       if (regla.columnas.length !== 1 || (columna && !TIPOS_DATO_FECHA.includes(columna.tipoDato))) {
         contexto.addIssue({
@@ -385,24 +468,16 @@ function validarReferenciasDeReglas(
       }
     }
 
-    if (regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA") {
-      if (regla.columnas.length < MINIMO_COLUMNAS_FECHA_EFECTIVA) {
-        contexto.addIssue({
-          code: "custom",
-          path: ["reglasValidacion", indiceRegla, "columnas"],
-          message: `La regla ${indiceRegla + 1} debe tener una columna principal y al menos una columna alternativa`,
-        });
-      }
-
-      // Todas las columnas referenciadas (principal Y alternativas) deben ser de tipo fecha.
+    // `ANIO_DENTRO_DE_RANGO_VENTANA`: una o más columnas (el mínimo genérico de arriba), todas de
+    // tipo Fecha. Las inexistentes ya las reporta el recorrido genérico.
+    if (regla.tipo === "ANIO_DENTRO_DE_RANGO_VENTANA") {
       regla.columnas.forEach((nombreColumna, indiceColumna) => {
         const columna = columnasPorNombre.get(nombreColumna.trim().toLowerCase());
-
         if (columna && !TIPOS_DATO_FECHA.includes(columna.tipoDato)) {
           contexto.addIssue({
             code: "custom",
             path: ["reglasValidacion", indiceRegla, "columnas", indiceColumna],
-            message: `La regla ${indiceRegla + 1} exige que todas sus columnas sean de tipo Fecha`,
+            message: `La regla ${indiceRegla + 1} solo admite columnas de tipo Fecha: "${nombreColumna}"`,
           });
         }
       });
@@ -441,10 +516,11 @@ function validarReferenciasDelFormato(
   validarReferenciasDeTiposEnumerados(datos, contexto);
 }
 
-function normalizarFuentesFechas<T extends { columnas: { nombre: string }[]; reglasValidacion: { configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null; columnas: string[] }[] }>(datos: T): T {
+function normalizarFuentesFechas<T extends { columnas: { nombre: string }[]; reglasValidacion: { tipo: string; configuracion?: ConfiguracionReglaValidacion | null; columnas: string[] }[] }>(datos: T): T {
   const nombres = new Map(datos.columnas.map((columna) => [columna.nombre.toLowerCase(), columna.nombre]));
   for (const regla of datos.reglasValidacion) {
-    if (!regla.configuracion) continue;
+    // Solo la comparación entre dos fechas tiene fuentes de fecha que normalizar.
+    if (regla.tipo !== "FECHA_POSTERIOR_O_IGUAL" || !esConfiguracionComparacionFechas(regla.configuracion)) continue;
     for (const fuente of [regla.configuracion.origen, regla.configuracion.referencia]) {
       if (fuente.modo === "FIJA") continue;
       if (fuente.modo === "COLUMNA") fuente.columna = nombres.get(fuente.columna.toLowerCase()) ?? fuente.columna;

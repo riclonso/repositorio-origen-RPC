@@ -1,4 +1,4 @@
-import { configuracionComparacionFechasSchema } from "@/modules/formatos-excel/schemas/formato-excel.schema";
+import { aConfiguracionRegla } from "@/modules/formatos-excel/infrastructure/repositories/mapearConfiguracionRegla";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/database/prisma";
 import { CODIGO_PERFIL_NOTIFICADOR } from "@/modules/perfiles/domain/entities/Perfil";
@@ -82,6 +82,8 @@ type RegistroDetalle = {
   tiposEnumerados: TipoEnumeradoFormatoExcel[];
 };
 
+// El JSON persistido se valida con el esquema que corresponde al TIPO de la regla
+// (`aConfiguracionRegla`, módulo puro): una forma ajena se trata como dato corrupto (lanza).
 function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
   return {
     id: registro.id,
@@ -95,7 +97,7 @@ function aFormatoExcel(registro: RegistroDetalle): FormatoExcel {
     createdAt: registro.createdAt,
     updatedAt: registro.updatedAt,
     columnas: registro.columnas,
-    reglasValidacion: registro.reglasValidacion.map((regla) => ({ ...regla, configuracion: regla.configuracion === null ? null : configuracionComparacionFechasSchema.parse(regla.configuracion) })),
+    reglasValidacion: registro.reglasValidacion.map((regla) => ({ ...regla, configuracion: aConfiguracionRegla(regla.tipo, regla.configuracion) })),
     tiposEnumerados: registro.tiposEnumerados,
   };
 }

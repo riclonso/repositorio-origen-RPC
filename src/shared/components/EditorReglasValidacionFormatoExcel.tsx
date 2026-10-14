@@ -1,30 +1,45 @@
 "use client";
 
 import {
+  ANIOS_RANGO_MAXIMO,
+  ANIOS_RANGO_MINIMO,
+  DESPLAZAMIENTO_ANIOS_MAXIMO,
+  DESPLAZAMIENTO_ANIOS_MINIMO,
+  esConfiguracionComparacionFechas,
+  MARCADOR_ANIO_DESDE,
+  MARCADOR_ANIO_HASTA,
+  MARCADOR_ANIO_VENTANA,
   TIPOS_REGLA_TODAS_LAS_COLUMNAS,
   TIPOS_REGLA_VALIDACION,
+  type OperadorComparacionFechas,
   type TipoReglaValidacion,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
-import { ETIQUETAS_TIPO_REGLA_VALIDACION } from "@/shared/utils/reglasValidacion";
+import { ETIQUETAS_TIPO_REGLA_VALIDACION, OPCIONES_OPERADOR_COMPARACION } from "@/shared/utils/reglasValidacion";
+import {
+  aplicarCamposDerivados,
+  CONFIGURACION_COMPARACION_FECHAS_INICIAL,
+  configuracionAnioRangoEditable,
+  configuracionAnioVentanaEditable,
+  configuracionInicial,
+  conDesplazamientoAnios,
+  errorAniosRango,
+  errorDesplazamientoAnios,
+  MENSAJE_REGLA_MAXIMO,
+  type ReglaValidacionEditable,
+} from "@/shared/utils/edicionReglasValidacion";
 import type { OpcionSelect } from "@/shared/components/CampoSelect";
 import { CampoSelect } from "@/shared/components/CampoSelect";
 import { CampoSeleccionMultiple } from "@/shared/components/CampoSeleccionMultiple";
+import { CampoEntero } from "@/shared/components/CampoEntero";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { BotonIcono } from "@/shared/components/BotonIcono";
 import { Boton } from "@/shared/components/Boton";
 import { IconoEliminar } from "@/shared/components/iconos";
 import { EditorColumnasReglaRut, type ModoReglaRut } from "@/shared/components/EditorColumnasReglaRut";
 import { EditorComparacionFechas } from "@/shared/components/EditorComparacionFechas";
-import { columnasComparacionFechas } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
 
-export type ReglaValidacionEditable = {
-  configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null;
-  tipo: TipoReglaValidacion;
-  columnas: string[];
-  mensaje: string;
-  // Solo de UI, para `RUT_VALIDO`: no viaja al servidor (la forma real la da `columnas[]`).
-  modoRut?: ModoReglaRut;
-};
+// Se reexporta: el asistente y el formulario de edición lo importan desde este componente.
+export type { ReglaValidacionEditable };
 
 // Sin modo explícito (p. ej. una regla ya guardada que se abre para editar), se deduce de la
 // cantidad de columnas: la convención de `columnas[]` de `RUT_VALIDO` es 1 = RUT completo,
@@ -37,7 +52,7 @@ function modoReglaRut(regla: ReglaValidacionEditable): ModoReglaRut {
 // filtrar por tipo de dato (RF-15).
 export type ColumnaDisponible = { nombre: string; tipoDato: string };
 
-// Tipos de dato que `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` puede evaluar: compara la celda como
+// Tipos de dato que `COMPARACION_ANIO_VENTANA` puede evaluar: compara la celda como
 // fecha, así que solo tiene sentido ofrecer columnas que el sistema sabe parsear como tal.
 const TIPOS_DATO_FECHA = new Set(["FECHA"]);
 
@@ -85,9 +100,6 @@ const REGLA_POR_DEFECTO: ReglaValidacionEditable = {
 // Tope de seguridad, igual que `REGLAS_MAXIMO` en `schemas/formato-excel.schema.ts`: deshabilita
 // "Agregar regla" antes de que el envío llegue a rechazarse en el servidor.
 const REGLAS_MAXIMO = 100;
-// Igual que `MENSAJE_REGLA_MAXIMO` en `schemas/formato-excel.schema.ts`: evita el viaje redondo
-// al servidor solo para enterarse de que el mensaje es demasiado largo.
-const MENSAJE_REGLA_MAXIMO = 300;
 
 function columnaExiste(nombreColumna: string, nombresDisponibles: string[]): boolean {
   const buscado = nombreColumna.trim().toLowerCase();
@@ -103,9 +115,6 @@ type EditorReglasValidacionFormatoExcelProps = {
 
 // Un formato puede tener varias reglas. `ALGUNA_COLUMNA_CON_VALOR`: de un subconjunto de
 // columnas, al menos una debe traer valor; si todas vienen vacías, se rechaza.
-// `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (ampliación posterior): una columna principal + al
-// menos una alternativa, todas de fecha; se usa la principal si trae valor, o la más antigua de
-// las alternativas si está vacía, y el año resultante debe coincidir con el de la ventana.
 // `FILA_DUPLICADA` (ampliación posterior): de un subconjunto de columnas (cualquier tipo de
 // dato), ninguna fila puede repetir exactamente los mismos valores (comparados tras recortar
 // espacios, distinguiendo mayúsculas de minúsculas) que otra fila anterior del mismo archivo; solo
@@ -122,12 +131,7 @@ export function EditorReglasValidacionFormatoExcel({
   error,
 }: EditorReglasValidacionFormatoExcelProps) {
   function actualizarRegla(indice: number, cambios: Partial<ReglaValidacionEditable>) {
-    onCambiar(reglas.map((regla, i) => {
-      if (i !== indice) return regla;
-      const actualizada = { ...regla, ...cambios };
-      if (actualizada.tipo === "FECHA_POSTERIOR_O_IGUAL" && actualizada.configuracion) actualizada.columnas = columnasComparacionFechas(actualizada.configuracion).filter(Boolean);
-      return actualizada;
-    }));
+    onCambiar(reglas.map((regla, i) => (i === indice ? aplicarCamposDerivados(regla, cambios) : regla)));
   }
 
   function agregarRegla() {
@@ -151,10 +155,7 @@ export function EditorReglasValidacionFormatoExcel({
         <p className="text-xs text-gob-gray-a">
           &ldquo;Al menos una columna con valor&rdquo; exige que, de un conjunto de columnas, al
           menos una venga con valor en el registro; si todas vienen vacías, se rechaza.
-          &ldquo;Fecha efectiva dentro del año de la ventana&rdquo; usa la columna principal si
-          trae valor; si viene vacía, usa la más antigua de las columnas alternativas que sí
-          traigan una fecha, y exige que el año de esa fecha efectiva coincida con el año de la
-          ventana. &ldquo;Fila duplicada&rdquo; exige que, de un conjunto de columnas, ninguna
+          &ldquo;Fila duplicada&rdquo; exige que, de un conjunto de columnas, ninguna
           fila repita exactamente los mismos valores que otra fila anterior del mismo archivo
           (comparación sensible a mayúsculas); solo se rechaza la 2ª aparición en adelante, y las
           filas con esas columnas totalmente vacías quedan excluidas del chequeo. &ldquo;Validar
@@ -162,8 +163,17 @@ export function EditorReglasValidacionFormatoExcel({
           repartido en número y dígito verificador. &ldquo;Sin contenido HTML en las
           celdas&rdquo; rechaza celdas con etiquetas o entidades HTML, revisando todas las
           columnas. &ldquo;Sin filas vacías entre filas con datos&rdquo; rechaza las filas sin
-          ningún dato que queden entre filas con datos. Se evalúan
-          después de comprobar las columnas requeridas.
+          ningún dato que queden entre filas con datos. &ldquo;Año de una fecha comparado con el
+          año de la ventana&rdquo; compara el año de una columna de fecha con el año de la ventana
+          de carga (menor, menor o igual, igual, mayor o igual, o mayor), opcionalmente sumándole
+          antes un ajuste en años (p. ej. 1 o -2); las celdas vacías se
+          omiten, y en su mensaje puedes escribir {MARCADOR_ANIO_VENTANA} para mostrar el año de la
+          ventana. &ldquo;Año de fechas dentro de un rango en torno al año de la ventana&rdquo; exige
+          que el año de cada fecha de las columnas elegidas esté entre el año de la ventana menos
+          los años antes y el año de la ventana más los años después (ambos extremos incluidos); las
+          celdas vacías se omiten, y en su mensaje puedes escribir {MARCADOR_ANIO_VENTANA},{" "}
+          {MARCADOR_ANIO_DESDE} y {MARCADOR_ANIO_HASTA}. Se evalúan después de comprobar las
+          columnas requeridas.
         </p>
       </div>
 
@@ -179,6 +189,8 @@ export function EditorReglasValidacionFormatoExcel({
               (nombreColumna) =>
                 nombreColumna.length > 0 && !columnaExiste(nombreColumna, nombresColumnasDisponibles),
             );
+            const configuracionAnioVentana = configuracionAnioVentanaEditable(regla) ?? { operador: "MAYOR_IGUAL" as const };
+            const configuracionAnioRango = configuracionAnioRangoEditable(regla) ?? { aniosAntes: 0, aniosDespues: 0 };
 
             return (
               <div
@@ -208,7 +220,7 @@ export function EditorReglasValidacionFormatoExcel({
                       tipo: evento.target.value as TipoReglaValidacion,
                       columnas: [],
                       modoRut: undefined,
-                      configuracion: evento.target.value === "FECHA_POSTERIOR_O_IGUAL" ? { origen: { modo: "COLUMNA", columna: "" }, operador: "MAYOR_IGUAL", referencia: { modo: "COLUMNA", columna: "" } } : null,
+                      configuracion: configuracionInicial(evento.target.value as TipoReglaValidacion),
                     })
                   }
                 />
@@ -218,7 +230,7 @@ export function EditorReglasValidacionFormatoExcel({
                   // cambiar de tipo ya reinicia `columnas` a `[]`.
                   <p className="text-xs text-gob-gray-a">{AYUDA_REGLA_TODAS_LAS_COLUMNAS[regla.tipo]}</p>
                 ) : regla.tipo === "FECHA_POSTERIOR_O_IGUAL" ? (
-                  <EditorComparacionFechas idBase={`regla-${indice}`} columnas={columnasDisponibles} configuracion={regla.configuracion ?? { origen: { modo: "COLUMNA", columna: "" }, operador: "MAYOR_IGUAL", referencia: { modo: "COLUMNA", columna: "" } }} onCambiar={(configuracion) => actualizarRegla(indice, { configuracion })} />
+                  <EditorComparacionFechas idBase={`regla-${indice}`} columnas={columnasDisponibles} configuracion={esConfiguracionComparacionFechas(regla.configuracion) ? regla.configuracion : CONFIGURACION_COMPARACION_FECHAS_INICIAL} onCambiar={(configuracion) => actualizarRegla(indice, { configuracion })} />
                 ) : regla.tipo === "RUT_VALIDO" ? (
                   <EditorColumnasReglaRut
                     idBase={`regla-${indice}`}
@@ -228,53 +240,88 @@ export function EditorReglasValidacionFormatoExcel({
                     columnasFaltantes={columnasFaltantes}
                     onCambiar={(cambios) => actualizarRegla(indice, cambios)}
                   />
-                ) : regla.tipo === "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA" ? (
+                ) : regla.tipo === "COMPARACION_ANIO_VENTANA" ? (
                   <>
                     <CampoSelect
-                      id={`regla-${indice}-columna-principal`}
-                      etiqueta="Columna principal"
+                      id={`regla-${indice}-columna-anio-ventana`}
+                      etiqueta="Columna de fecha"
                       opciones={[{ valor: "", etiqueta: "Selecciona una columna" }, ...opcionesColumnasFecha]}
                       value={regla.columnas[0] ?? ""}
-                      onChange={(evento) => {
-                        const nuevaPrincipal = evento.target.value;
-                        // Al cambiar la principal, se descarta de las alternativas si ya estaba
-                        // seleccionada ahí, para que la misma columna nunca cuente dos veces.
-                        const alternativasSinPrincipal = regla.columnas
-                          .slice(1)
-                          .filter((nombre) => nombre !== nuevaPrincipal);
-
-                        actualizarRegla(indice, {
-                          columnas: nuevaPrincipal ? [nuevaPrincipal, ...alternativasSinPrincipal] : alternativasSinPrincipal,
-                        });
-                      }}
-                      ayuda="Se usa esta fecha si trae valor. Solo se listan columnas de tipo Fecha."
+                      onChange={(evento) => actualizarRegla(indice, { columnas: evento.target.value ? [evento.target.value] : [] })}
+                      ayuda="Se compara el año de esta fecha con el año de la ventana de carga. Las celdas vacías se omiten."
                       error={
                         opcionesColumnasFecha.length === 0
                           ? "Este formato no tiene ninguna columna de tipo Fecha"
-                          : null
+                          : columnasFaltantes.length > 0
+                            ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes.map((nombre) => `"${nombre}"`).join(", ")}`
+                            : null
                       }
                     />
-
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <CampoSelect
+                        id={`regla-${indice}-operador-anio-ventana`}
+                        etiqueta="Año de la columna respecto del año de la ventana"
+                        opciones={OPCIONES_OPERADOR_COMPARACION}
+                        value={configuracionAnioVentana.operador}
+                        onChange={(evento) =>
+                          actualizarRegla(indice, {
+                            configuracion: { ...configuracionAnioVentana, operador: evento.target.value as OperadorComparacionFechas },
+                          })
+                        }
+                      />
+                      <CampoEntero
+                        id={`regla-${indice}-desplazamiento-anio-ventana`}
+                        etiqueta="Ajuste en años"
+                        permitirNegativos
+                        valor={configuracionAnioVentana.desplazamientoAnios ?? 0}
+                        onCambiarValor={(ajuste) =>
+                          actualizarRegla(indice, { configuracion: conDesplazamientoAnios(configuracionAnioVentana.operador, ajuste) })
+                        }
+                        ayuda={`Se suma al año de la fecha antes de comparar (p. ej. 1 o -2). De ${DESPLAZAMIENTO_ANIOS_MINIMO} a ${DESPLAZAMIENTO_ANIOS_MAXIMO}.`}
+                        error={errorDesplazamientoAnios(configuracionAnioVentana.desplazamientoAnios)}
+                      />
+                    </div>
+                  </>
+                ) : regla.tipo === "ANIO_DENTRO_DE_RANGO_VENTANA" ? (
+                  <>
                     <CampoSeleccionMultiple
-                      id={`regla-${indice}-columnas-alternativas`}
+                      id={`regla-${indice}-columnas-anio-rango`}
                       conSeleccionarTodas
-                      etiqueta="Columnas alternativas"
-                      opciones={opcionesColumnasFecha.filter((opcion) => opcion.valor !== (regla.columnas[0] ?? ""))}
-                      valoresSeleccionados={regla.columnas.slice(1)}
-                      onCambiar={(alternativas) =>
-                        actualizarRegla(indice, {
-                          columnas: regla.columnas[0] ? [regla.columnas[0], ...alternativas] : alternativas,
-                        })
-                      }
-                      ayuda="Si la columna principal viene vacía, se usa la más antigua de estas que traiga fecha. Selecciona al menos una."
+                      etiqueta="Columnas de fecha"
+                      opciones={opcionesColumnasFecha}
+                      valoresSeleccionados={regla.columnas}
+                      onCambiar={(columnas) => actualizarRegla(indice, { columnas })}
+                      ayuda={`Selecciona al menos 1 columna. Se rechaza la fila si el año de alguna fecha queda fuera del rango; las celdas vacías se omiten. En el mensaje puedes usar ${MARCADOR_ANIO_VENTANA}, ${MARCADOR_ANIO_DESDE} y ${MARCADOR_ANIO_HASTA}.`}
                       error={
-                        columnasFaltantes.length > 0
-                          ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes
-                              .map((nombre) => `"${nombre}"`)
-                              .join(", ")}`
-                          : null
+                        opcionesColumnasFecha.length === 0
+                          ? "Este formato no tiene ninguna columna de tipo Fecha"
+                          : columnasFaltantes.length > 0
+                            ? `Hace referencia a columnas que ya no existen en este formato: ${columnasFaltantes.map((nombre) => `"${nombre}"`).join(", ")}`
+                            : null
                       }
                     />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <CampoEntero
+                        id={`regla-${indice}-anios-antes`}
+                        etiqueta="Años antes del año de la ventana"
+                        valor={configuracionAnioRango.aniosAntes}
+                        onCambiarValor={(aniosAntes) =>
+                          actualizarRegla(indice, { configuracion: { ...configuracionAnioRango, aniosAntes } })
+                        }
+                        ayuda={`De ${ANIOS_RANGO_MINIMO} a ${ANIOS_RANGO_MAXIMO}`}
+                        error={errorAniosRango(configuracionAnioRango.aniosAntes, "Los años antes")}
+                      />
+                      <CampoEntero
+                        id={`regla-${indice}-anios-despues`}
+                        etiqueta="Años después del año de la ventana"
+                        valor={configuracionAnioRango.aniosDespues}
+                        onCambiarValor={(aniosDespues) =>
+                          actualizarRegla(indice, { configuracion: { ...configuracionAnioRango, aniosDespues } })
+                        }
+                        ayuda={`De ${ANIOS_RANGO_MINIMO} a ${ANIOS_RANGO_MAXIMO}`}
+                        error={errorAniosRango(configuracionAnioRango.aniosDespues, "Los años después")}
+                      />
+                    </div>
                   </>
                 ) : regla.tipo === "FECHA_NO_FUTURA" ? (
                   <CampoSelect

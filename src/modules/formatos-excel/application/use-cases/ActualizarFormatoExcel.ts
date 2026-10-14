@@ -1,9 +1,11 @@
 import { columnasComparacionFechas } from "@/modules/formatos-excel/domain/entities/ComparacionFechas";
-import type {
-  FormatoExcel,
-  SeparadorCsv,
-  TipoDatoColumna,
-  TipoReglaValidacion,
+import {
+  esConfiguracionComparacionFechas,
+  type ConfiguracionReglaValidacion,
+  type FormatoExcel,
+  type SeparadorCsv,
+  type TipoDatoColumna,
+  type TipoReglaValidacion,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { FormatoExcelRepository } from "@/modules/formatos-excel/domain/repositories/FormatoExcelRepository";
 import { FormatoDuplicadoError } from "@/modules/formatos-excel/domain/errors/FormatoDuplicadoError";
@@ -28,7 +30,7 @@ export type DatosReglaValidacionEdicion = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
-  configuracion?: import("@/modules/formatos-excel/domain/entities/FormatoExcel").ConfiguracionComparacionFechas | null;
+  configuracion?: ConfiguracionReglaValidacion | null;
 };
 
 export type DatosEdicionFormatoExcel = {
@@ -106,7 +108,7 @@ export async function actualizarFormatoExcel(
 
   const reglasValidacionConOrden = datos.reglasValidacion.map((regla, indice) => ({
     ...regla,
-    columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && regla.configuracion ? columnasComparacionFechas(regla.configuracion) : regla.columnas,
+    columnas: regla.tipo === "FECHA_POSTERIOR_O_IGUAL" && esConfiguracionComparacionFechas(regla.configuracion) ? columnasComparacionFechas(regla.configuracion) : regla.columnas,
     orden: indice + 1,
   }));
 

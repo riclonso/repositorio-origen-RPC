@@ -854,6 +854,11 @@ En la misma fecha se eliminó la regla `FECHA_DENTRO_DE_VENTANA_VIGENTE` (migrac
 `20261005130000_quitar_regla_fecha_dentro_ventana`, que borra las reglas que la usaran): se
 solapaba con `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`, que queda como única regla de fecha. Las
 menciones a esa regla más abajo también son históricas.
+El 2026-10-14 (RF-41) se eliminó también `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (migración
+`20261014120000_quitar_regla_fecha_efectiva_anio_ventana`, mismo patrón: borra las reglas que la
+usaran y recrea el enum sin el valor). La reemplaza `COMPARACION_ANIO_VENTANA` (RF-40), que compara
+el año de una sola columna `FECHA`, más un ajuste opcional en años, con `ventana.anio`. La sección
+"Segundo tipo de regla de fecha" más abajo es histórica.
 
 ### Tipos de dato enumerados por formato (RF-35)
 

@@ -3,6 +3,7 @@
 // para cubrir cada regla activa e inactiva sobre el mismo corpus.
 import type {
   ColumnaFormatoExcel,
+  ConfiguracionReglaValidacion,
   FormatoExcel,
   ReglaValidacionFormatoExcel,
   TipoReglaValidacion,
@@ -55,18 +56,50 @@ const COLUMNAS_BASE: ColumnaFormatoExcel[] = [
   columna(10, "Comentario", "TEXTO", false),
 ];
 
-function regla(orden: number, tipo: TipoReglaValidacion, columnas: string[], mensaje: string): ReglaValidacionFormatoExcel {
-  return { id: `regla-${orden}`, orden, tipo, columnas, mensaje };
+function regla(
+  orden: number,
+  tipo: TipoReglaValidacion,
+  columnas: string[],
+  mensaje: string,
+  configuracion: ConfiguracionReglaValidacion | null = null,
+): ReglaValidacionFormatoExcel {
+  return { id: `regla-${orden}`, orden, tipo, columnas, mensaje, ...(configuracion ? { configuracion } : {}) };
 }
 
 const TODAS_LAS_REGLAS: ReglaValidacionFormatoExcel[] = [
   regla(1, "ALGUNA_COLUMNA_CON_VALOR", ["Correo", "Comentario"], "Indica correo o comentario"),
-  regla(2, "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA", ["Fecha Diagnóstico", "Fecha Nacimiento"], "La fecha efectiva no es del año"),
   regla(3, "FILA_DUPLICADA", ["RUT"], "RUT repetido"),
   regla(4, "FILA_DUPLICADA", ["Nombre", "Fecha Nacimiento"], "Persona repetida"),
   regla(5, "RUT_VALIDO", ["RUT"], "RUT inválido"),
   regla(6, "CONTENIDO_HTML", [], "La celda trae HTML"),
   regla(7, "FILA_VACIA", [], "No se permiten filas vacías"),
+  // El corpus trae diagnósticos de 2024 (año de la ventana) y algunos de 2019: con MAYOR_IGUAL
+  // fallan solo los de 2019, y el mensaje ejercita el reemplazo del marcador `{anioVentana}`.
+  regla(
+    8,
+    "COMPARACION_ANIO_VENTANA",
+    ["Fecha Diagnóstico"],
+    'El año de "Fecha Diagnóstico" debe ser mayor o igual al año de la ventana ({anioVentana})',
+    { operador: "MAYOR_IGUAL" },
+  ),
+  // Con ajuste en años: 2019 + 5 = 2024 cumple y 2024 + 5 no, así que falla el caso contrario al anterior.
+  regla(
+    9,
+    "COMPARACION_ANIO_VENTANA",
+    ["Fecha Diagnóstico"],
+    'El año de "Fecha Diagnóstico" + 5 debe ser igual al año de la ventana ({anioVentana})',
+    { operador: "IGUAL", desplazamientoAnios: 5 },
+  ),
+  // Rango [2019, 2025] sobre dos columnas de fecha: los diagnósticos (2019 y 2024) cumplen y las
+  // fechas de nacimiento anteriores a 2019 hacen fallar la fila (un solo error por fila). El mensaje
+  // ejercita los tres marcadores.
+  regla(
+    10,
+    "ANIO_DENTRO_DE_RANGO_VENTANA",
+    ["Fecha Nacimiento", "Fecha Diagnóstico"],
+    "El año de las fechas debe estar entre {anioDesde} y {anioHasta} (ventana {anioVentana})",
+    { aniosAntes: 5, aniosDespues: 1 },
+  ),
 ];
 
 function formato(id: string, columnas: ColumnaFormatoExcel[], reglas: ReglaValidacionFormatoExcel[]): FormatoExcel {

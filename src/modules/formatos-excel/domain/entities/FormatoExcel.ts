@@ -79,17 +79,66 @@ export const OPERADORES_COMPARACION_FECHAS = ["MAYOR", "MAYOR_IGUAL", "IGUAL", "
 export type OperadorComparacionFechas = (typeof OPERADORES_COMPARACION_FECHAS)[number];
 // `operador` es opcional: las reglas guardadas antes de existir se interpretan como `MAYOR_IGUAL`.
 export type ConfiguracionComparacionFechas = { origen: FuenteFecha; operador?: OperadorComparacionFechas; referencia: FuenteFechaReferencia };
+// `COMPARACION_ANIO_VENTANA`: año de `columnas[0]` <operador> año de la ventana. Aquí el operador
+// es obligatorio (no hay reglas guardadas antes de que existiera). `desplazamientoAnios` (entero,
+// -100..100) se suma al año de la fecha antes de comparar; ausente equivale a 0 (y el 0 no se guarda).
+export type ConfiguracionComparacionAnioVentana = { operador: OperadorComparacionFechas; desplazamientoAnios?: number };
+export const DESPLAZAMIENTO_ANIOS_MINIMO = -100;
+export const DESPLAZAMIENTO_ANIOS_MAXIMO = 100;
+// `ANIO_DENTRO_DE_RANGO_VENTANA`: el año de cada fecha con valor debe caer en
+// [año de la ventana − aniosAntes, año de la ventana + aniosDespues]. Ambos enteros 0..100,
+// obligatorios y siempre persistidos (también cuando son 0).
+export type ConfiguracionAnioDentroDeRango = { aniosAntes: number; aniosDespues: number };
+export const ANIOS_RANGO_MINIMO = 0;
+export const ANIOS_RANGO_MAXIMO = 100;
+// Configuración propia de los tipos de regla que la necesitan; `null` en todos los demás.
+export type ConfiguracionReglaValidacion =
+  | ConfiguracionComparacionFechas
+  | ConfiguracionComparacionAnioVentana
+  | ConfiguracionAnioDentroDeRango;
+
+// Guardas de tipo: `origen` solo existe en la comparación entre dos fechas.
+export function esConfiguracionComparacionFechas(
+  configuracion: ConfiguracionReglaValidacion | null | undefined,
+): configuracion is ConfiguracionComparacionFechas {
+  return configuracion != null && "origen" in configuracion;
+}
+
+export function esConfiguracionComparacionAnioVentana(
+  configuracion: ConfiguracionReglaValidacion | null | undefined,
+): configuracion is ConfiguracionComparacionAnioVentana {
+  if (configuracion == null || !("operador" in configuracion) || "origen" in configuracion) return false;
+  const { desplazamientoAnios } = configuracion as ConfiguracionComparacionAnioVentana;
+  return desplazamientoAnios === undefined || Number.isInteger(desplazamientoAnios);
+}
+
+function esAniosRangoValido(valor: unknown): boolean {
+  return typeof valor === "number" && Number.isInteger(valor) && valor >= ANIOS_RANGO_MINIMO && valor <= ANIOS_RANGO_MAXIMO;
+}
+
+// Sin `operador` ni `origen`: ninguna de las otras dos guardas acepta esta forma, ni esta las suyas.
+export function esConfiguracionAnioDentroDeRango(
+  configuracion: ConfiguracionReglaValidacion | null | undefined,
+): configuracion is ConfiguracionAnioDentroDeRango {
+  if (configuracion == null || "operador" in configuracion || "origen" in configuracion) return false;
+  if (!("aniosAntes" in configuracion) || !("aniosDespues" in configuracion)) return false;
+  return esAniosRangoValido(configuracion.aniosAntes) && esAniosRangoValido(configuracion.aniosDespues);
+}
 
 export const TIPOS_REGLA_VALIDACION = [
   "FECHA_POSTERIOR_O_IGUAL",
   "ALGUNA_COLUMNA_CON_VALOR",
-  "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
   "FILA_DUPLICADA",
   "RUT_VALIDO",
   "CONTENIDO_HTML",
   "FILA_VACIA",
   // Una columna de fecha no puede ser posterior al día (America/Santiago) en que se valida la subida.
   "FECHA_NO_FUTURA",
+  // El año de una columna de fecha se compara con el año de la ventana (`configuracion.operador`).
+  "COMPARACION_ANIO_VENTANA",
+  // El año de cada fecha con valor (una o más columnas) debe caer en un rango en torno al año de la
+  // ventana (`configuracion.aniosAntes` / `configuracion.aniosDespues`).
+  "ANIO_DENTRO_DE_RANGO_VENTANA",
 ] as const;
 
 // RF-32: tipos que se aplican siempre a TODAS las columnas del formato presentes en el archivo
@@ -102,18 +151,10 @@ export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 // `actualizar()` regenera los ids de las columnas en cada edición (`deleteMany` + `create`), así
 // que una FK dura dejaría las reglas huérfanas en el primer guardado posterior a su creación.
 //
-// Convención de `columnas[]` específica de `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`:
-// `columnas[0]` es la columna PRINCIPAL (p. ej. "Fecha de diagnóstico") y `columnas[1..]` son las
-// columnas ALTERNATIVAS (p. ej. "Fecha de toma de muestra", "Fecha de recepción de muestra"), sin
-// tope fijo de alternativas. El evaluador
-// (`modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion.ts`) usa la
-// principal si trae valor; si está vacía, usa la MÁS ANTIGUA de las alternativas que sí traigan
-// una fecha válida. El orden entre alternativas (`columnas[1..]`) no afecta el resultado.
-//
-// Convención de `columnas[]` específica de `FILA_DUPLICADA`: es la clave compuesta que identifica
-// una fila (sin columna principal ni alternativas, a diferencia de la regla anterior); el orden
-// de `columnas[]` sí importa para construir la clave de comparación, aunque el resultado de la
-// regla es el mismo sin importar el orden en que se declararon.
+// Convención de `columnas[]` específica de `FILA_DUPLICADA`: todas las columnas, en conjunto,
+// forman la clave compuesta que identifica una fila. El orden de `columnas[]` se usa para construir
+// la clave de comparación, aunque el resultado de la regla es el mismo sin importar el orden en que
+// se declararon.
 //
 // Convención de `columnas[]` específica de `RUT_VALIDO`: 1 o 2 columnas. Con 1, `columnas[0]`
 // trae el RUT completo (con o sin puntos y guion). Con 2, `columnas[0]` es el NÚMERO (cuerpo) y
@@ -126,14 +167,30 @@ export type TipoReglaValidacion = (typeof TIPOS_REGLA_VALIDACION)[number];
 // mencione una columna eliminada, así que con una lista explícita borrar UNA columna eliminaría la
 // regla completa, y una columna agregada después quedaría sin cubrir. Con `[]` la regla nunca
 // queda huérfana. El esquema Zod exige `[]` y como máximo una regla de cada uno por formato.
+//
+// Convención de `columnas[]` específica de `FECHA_NO_FUTURA` y `COMPARACION_ANIO_VENTANA`:
+// exactamente una columna, de tipo `FECHA`. En `COMPARACION_ANIO_VENTANA` el `mensaje` admite el
+// marcador `MARCADOR_ANIO_VENTANA`, que el evaluador reemplaza por el año de la ventana.
+//
+// Convención de `columnas[]` específica de `ANIO_DENTRO_DE_RANGO_VENTANA`: una o más columnas,
+// todas de tipo `FECHA`. Las celdas vacías o no parseables se ignoran; la fila falla (un solo
+// error) si alguna fecha cae fuera del rango. El `mensaje` admite `MARCADOR_ANIO_VENTANA`,
+// `MARCADOR_ANIO_DESDE` y `MARCADOR_ANIO_HASTA`.
 export type ReglaValidacionFormatoExcel = {
   id: string;
   orden: number;
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
-  configuracion?: ConfiguracionComparacionFechas | null;
+  configuracion?: ConfiguracionReglaValidacion | null;
 };
+
+// Marcador del mensaje de `COMPARACION_ANIO_VENTANA` (ver convención arriba). Nunca se reemplaza
+// por el valor de la celda: el mensaje de una regla no lleva datos del archivo.
+export const MARCADOR_ANIO_VENTANA = "{anioVentana}";
+// Límites del rango de `ANIO_DENTRO_DE_RANGO_VENTANA` (mismo criterio: nunca valores de celda).
+export const MARCADOR_ANIO_DESDE = "{anioDesde}";
+export const MARCADOR_ANIO_HASTA = "{anioHasta}";
 
 export type FormatoExcel = {
   id: string;
@@ -185,7 +242,7 @@ export type DatosReglaValidacionNueva = {
   tipo: TipoReglaValidacion;
   columnas: string[];
   mensaje: string;
-  configuracion?: ConfiguracionComparacionFechas | null;
+  configuracion?: ConfiguracionReglaValidacion | null;
 };
 
 // Sin `id`: mismo criterio que `DatosColumnaNueva`.

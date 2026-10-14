@@ -254,20 +254,22 @@ model TipoEnumeradoFormatoExcel {
 // enum, mismo criterio que `TipoDatoColumna`.
 // RF-15 agrega `FECHA_DENTRO_DE_VENTANA_VIGENTE`: exige que la fecha de una columna del archivo
 // caiga dentro del rango de la ventana de carga elegida por el notificador para esa subida.
-// Ampliación posterior agrega `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: a diferencia de la
-// anterior (rango exacto apertura/vencimiento sobre UNA columna), esta calcula una "fecha
-// efectiva" a partir de VARIAS columnas (una principal + al menos una alternativa, convención en
-// `columnas[]` documentada en `domain/entities/FormatoExcel.ts`) y la compara solo contra el AÑO
-// CALENDARIO de la ventana (`VentanaCarga.anio`), no contra su rango exacto de fechas.
+// `COMPARACION_ANIO_VENTANA`: el año de UNA columna de fecha (`columnas[0]`) se compara contra el
+// año de la ventana con el operador de `configuracion.operador` (MENOR, MENOR_IGUAL, IGUAL,
+// MAYOR_IGUAL, MAYOR), tras sumarle `configuracion.desplazamientoAnios` (entero -100..100,
+// opcional, ausente = 0). Celda vacía → la regla no aplica. Puede haber varias por formato.
 enum TipoReglaValidacionFormatoExcel {
   FECHA_POSTERIOR_O_IGUAL
   ALGUNA_COLUMNA_CON_VALOR
-  FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA
   FILA_DUPLICADA
   RUT_VALIDO
   CONTENIDO_HTML
   FILA_VACIA
   FECHA_NO_FUTURA
+  COMPARACION_ANIO_VENTANA
+  // El año de cada fecha con valor (una o más columnas FECHA) debe caer en
+  // [año de la ventana − aniosAntes, año de la ventana + aniosDespues] (`configuracion`).
+  ANIO_DENTRO_DE_RANGO_VENTANA
 }
 
 // Las columnas de la regla se referencian por NOMBRE (`String[]`), no por FK al id de

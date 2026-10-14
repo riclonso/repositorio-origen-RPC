@@ -202,7 +202,6 @@ function probarEsquema(): void {
 
   const tiposExistentes: TipoReglaValidacion[] = [
     "ALGUNA_COLUMNA_CON_VALOR",
-    "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA",
     "FILA_DUPLICADA",
     "RUT_VALIDO",
   ];

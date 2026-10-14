@@ -64,7 +64,8 @@ function esBooleanoValido(valor: ValorCeldaArchivo): boolean {
 // a partir de un string de fecha simple, que JavaScript interpreta como medianoche UTC — si esta
 // función construyera con hora LOCAL del servidor, la comparación en
 // `EvaluadorReglasValidacion` quedaría corrida por el huso horario del proceso. La usa
-// `EvaluadorReglasValidacion` para `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`. Nunca se invoca
+// `EvaluadorReglasValidacion` para las reglas de fecha (`FECHA_NO_FUTURA`,
+// `COMPARACION_ANIO_VENTANA`, comparación entre fechas). Nunca se invoca
 // sobre una celda que no haya pasado ya la validación de tipo correspondiente: si la celda no es
 // una fecha válida, devuelve `null` en vez de lanzar, para que el llamador decida qué hacer (en
 // la práctica, ese caso ya quedó reportado como `TIPO_DATO_INVALIDO` en un paso anterior).

@@ -12,6 +12,13 @@
 // Se reutilizan sin copiar los validadores que el diseño declara "sin cambios" (tipos de dato,
 // reglas puras, HTML, filas vacías, conversión de celdas). Se COPIA el rastreador de `FILA_DUPLICADA`
 // con su clave textual original (`Map<string, número>`), porque RF-38 cambia esa clave por un resumen.
+//
+// ÚNICO cambio posterior a la congelación (regla `COMPARACION_ANIO_VENTANA`): el mensaje de las
+// reglas por fila se obtiene con `mensajeReglaValidacion` (compartida, como `cumpleReglaValidacion`)
+// en vez de leer `regla.mensaje` directamente. Esa regla reemplaza el marcador `{anioVentana}` por el
+// año de la ventana al registrar el error; para los tipos que existían al congelar devuelve
+// `regla.mensaje` sin tocarlo, así que el resultado de la referencia para ellos no cambia. Sin esto la
+// referencia registraría el marcador literal y la equivalencia daría diferencias falsas.
 import type {
   ColumnaFormatoExcel,
   FormatoExcel,
@@ -39,6 +46,7 @@ import {
 import {
   columnasConContenidoHtml,
   cumpleReglaValidacion,
+  mensajeReglaValidacion,
   type ContextoEvaluacionReglas,
 } from "../../src/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
 import { lectorArchivoReporteExcelJs } from "../../src/modules/reporte-excel/infrastructure/lectura-archivo/LectorArchivoReporteExcelJs";
@@ -239,7 +247,7 @@ export async function validarEnMemoriaReferencia(
 
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, fila, { ventana })) {
-        errores.push({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
+        errores.push({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeReglaValidacion(regla, { ventana }) });
       }
     }
 

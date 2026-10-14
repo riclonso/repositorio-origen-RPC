@@ -1,6 +1,15 @@
-import { cumpleComparacionFechas } from "./ComparadorFechas";
+import { cumpleComparacionFechas, cumpleOperador } from "./ComparadorFechas";
 import { createHash, hash } from "node:crypto";
-import type { ReglaValidacionFormatoExcel } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
+import {
+  esConfiguracionAnioDentroDeRango,
+  esConfiguracionComparacionAnioVentana,
+  esConfiguracionComparacionFechas,
+  MARCADOR_ANIO_DESDE,
+  MARCADOR_ANIO_HASTA,
+  MARCADOR_ANIO_VENTANA,
+  type ConfiguracionAnioDentroDeRango,
+  type ReglaValidacionFormatoExcel,
+} from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type { ValorCeldaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import {
   celdaVacia,
@@ -19,7 +28,7 @@ function aTextoRut(valor: ValorCeldaArchivo): string {
   return String(valor ?? "").trim();
 }
 
-// Contexto adicional que necesita `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA`: el año no se deriva
+// Contexto adicional que necesita `COMPARACION_ANIO_VENTANA`: el año no se deriva
 // de la fila, sino de la ventana de carga elegida para la subida completa (`VentanaCarga.anio`).
 // `diaCalendarioHoy` (para `FECHA_NO_FUTURA`): el día calendario en America/Santiago del momento de
 // la validación, como `Date.UTC(año, mes, día)`; se calcula una vez por archivo, no por fila.
@@ -35,11 +44,35 @@ export function diaCalendarioSantiago(instante: Date): number {
   return Date.UTC(Number(partes.year), Number(partes.month) - 1, Number(partes.day));
 }
 
+function rangoAniosVentana(configuracion: ConfiguracionAnioDentroDeRango, anioVentana: number): { desde: number; hasta: number } {
+  return { desde: anioVentana - configuracion.aniosAntes, hasta: anioVentana + configuracion.aniosDespues };
+}
+
+// Mensaje que se registra cuando una regla falla. `COMPARACION_ANIO_VENTANA` interpreta solo el
+// marcador `{anioVentana}`; `ANIO_DENTRO_DE_RANGO_VENTANA` además `{anioDesde}` y `{anioHasta}`. En
+// los demás tipos el mensaje se devuelve tal cual, así que ningún mensaje existente cambia. Nunca
+// incluye valores de celdas. No depende de la fila: quien recorre un archivo lo calcula una vez por regla.
+export function mensajeReglaValidacion(regla: ReglaValidacionFormatoExcel, contexto: Pick<ContextoEvaluacionReglas, "ventana">): string {
+  const anioVentana = contexto.ventana.anio;
+  if (regla.tipo === "COMPARACION_ANIO_VENTANA") {
+    return regla.mensaje.replaceAll(MARCADOR_ANIO_VENTANA, String(anioVentana));
+  }
+  if (regla.tipo === "ANIO_DENTRO_DE_RANGO_VENTANA" && esConfiguracionAnioDentroDeRango(regla.configuracion)) {
+    const { desde, hasta } = rangoAniosVentana(regla.configuracion, anioVentana);
+    return regla.mensaje
+      .replaceAll(MARCADOR_ANIO_VENTANA, String(anioVentana))
+      .replaceAll(MARCADOR_ANIO_DESDE, String(desde))
+      .replaceAll(MARCADOR_ANIO_HASTA, String(hasta));
+  }
+  return regla.mensaje;
+}
+
 // Tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
-// fila), `FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA` (una "fecha efectiva" calculada a
-// partir de varias columnas debe caer dentro del AÑO calendario de la ventana), `FILA_DUPLICADA`,
-// `RUT_VALIDO`, y (RF-32) `CONTENIDO_HTML` y `FILA_VACIA`.
+// fila), `FILA_DUPLICADA`,
+// `RUT_VALIDO`, (RF-32) `CONTENIDO_HTML` y `FILA_VACIA`, `FECHA_POSTERIOR_O_IGUAL`,
+// `FECHA_NO_FUTURA`, `COMPARACION_ANIO_VENTANA` (año de una fecha frente al año de la ventana) y
+// `ANIO_DENTRO_DE_RANGO_VENTANA` (año de cada fecha dentro de un rango en torno al año de la ventana).
 // Un tipo de regla nuevo exige agregar su propio `case` aquí, mismo criterio que
 // `ValidadoresTipoDato` para los tipos de dato.
 //
@@ -57,7 +90,37 @@ export function cumpleReglaValidacion(
 ): boolean {
   switch (regla.tipo) {
     case "FECHA_POSTERIOR_O_IGUAL":
-      return cumpleComparacionFechas(regla.configuracion, fila);
+      return cumpleComparacionFechas(esConfiguracionComparacionFechas(regla.configuracion) ? regla.configuracion : null, fila);
+    // Año de `columnas[0]` + desplazamiento (ausente = 0) <operador> año de la ventana. Vacía → no aplica; valor no parseable → ya
+    // reportado como TIPO_DATO_INVALIDO. Año en UTC, igual que `parsearFecha` construye la fecha.
+    case "COMPARACION_ANIO_VENTANA": {
+      const valor = fila[regla.columnas[0] ?? ""] ?? null;
+      if (celdaVacia(valor)) return true;
+      const fecha = parsearFecha(valor);
+      if (!fecha) return true;
+      // Inalcanzable en la práctica: Zod la exige al guardar y el mapper del repositorio valida su forma al leer.
+      if (!esConfiguracionComparacionAnioVentana(regla.configuracion)) return false;
+      const { operador, desplazamientoAnios = 0 } = regla.configuracion;
+      return cumpleOperador(fecha.getUTCFullYear() + desplazamientoAnios - contexto.ventana.anio, operador);
+    }
+    // Año de cada columna en [año ventana − aniosAntes, año ventana + aniosDespues], bordes incluidos.
+    // Vacías o no parseables no cuentan (estas últimas ya son TIPO_DATO_INVALIDO). Un solo booleano
+    // por fila: varias columnas fuera de rango producen un único error.
+    case "ANIO_DENTRO_DE_RANGO_VENTANA": {
+      const anios: number[] = [];
+      for (const nombreColumna of regla.columnas) {
+        const valor = fila[nombreColumna] ?? null;
+        if (celdaVacia(valor)) continue;
+        const fecha = parsearFecha(valor);
+        if (fecha) anios.push(fecha.getUTCFullYear());
+      }
+      // Mismo orden que `COMPARACION_ANIO_VENTANA`: sin ninguna fecha evaluable la regla no aplica.
+      if (anios.length === 0) return true;
+      // Inalcanzable en la práctica: Zod la exige al guardar y el mapper del repositorio valida su forma al leer.
+      if (!esConfiguracionAnioDentroDeRango(regla.configuracion)) return false;
+      const { desde, hasta } = rangoAniosVentana(regla.configuracion, contexto.ventana.anio);
+      return anios.every((anio) => anio >= desde && anio <= hasta);
+    }
     // Vacía → no falla (la obligatoriedad la decide `requerida`); valor no parseable → ya
     // reportado como TIPO_DATO_INVALIDO. Se compara el día calendario: hoy está permitido.
     case "FECHA_NO_FUTURA": {
@@ -70,45 +133,6 @@ export function cumpleReglaValidacion(
     }
     case "ALGUNA_COLUMNA_CON_VALOR":
       return regla.columnas.some((nombreColumna) => !celdaVacia(fila[nombreColumna] ?? null));
-    // `columnas[0]` = principal, `columnas[1..]` = alternativas (convención documentada en
-    // `domain/entities/FormatoExcel.ts`). Prioridad: (1) principal con valor parseable → esa es
-    // la fecha efectiva; (2) principal vacía → la MÁS ANTIGUA de las alternativas con valor
-    // parseable; (3) ninguna columna aporta una fecha utilizable → falla la regla (decisión
-    // explícita: no depende de que alguna columna esté marcada "requerida"). Una columna con
-    // valor que no parsea como fecha ya quedó reportada como `TIPO_DATO_INVALIDO` en un paso
-    // anterior: se trata como "no utilizable" (ni como fecha válida, ni como aporte a "vacío"),
-    // sin duplicar el error.
-    case "FECHA_EFECTIVA_DENTRO_DEL_ANIO_VENTANA": {
-      const [nombrePrincipal, ...nombresAlternativas] = regla.columnas;
-      if (!nombrePrincipal) return true; // config inválida, no debería pasar la validación de schema
-
-      const valorPrincipal = fila[nombrePrincipal] ?? null;
-      if (!celdaVacia(valorPrincipal)) {
-        const fechaPrincipal = parsearFecha(valorPrincipal);
-        if (!fechaPrincipal) return true; // ya reportado como TIPO_DATO_INVALIDO, no duplicar
-
-        return fechaPrincipal.getFullYear() === contexto.ventana.anio;
-      }
-
-      const fechasAlternativas = nombresAlternativas
-        .map((nombre) => fila[nombre] ?? null)
-        .filter((valor) => !celdaVacia(valor))
-        .map((valor) => parsearFecha(valor))
-        .filter((fecha): fecha is Date => fecha !== null);
-
-      const algunaAlternativaConValorNoVacio = nombresAlternativas.some(
-        (nombre) => !celdaVacia(fila[nombre] ?? null),
-      );
-
-      // Alguna alternativa traía valor pero ninguna parseó: ya reportado, no duplicar.
-      if (algunaAlternativaConValorNoVacio && fechasAlternativas.length === 0) return true;
-
-      // Ninguna columna (ni la principal ni ninguna alternativa) aportó una fecha utilizable.
-      if (fechasAlternativas.length === 0) return false;
-
-      const fechaEfectiva = fechasAlternativas.reduce((minima, actual) => (actual < minima ? actual : minima));
-      return fechaEfectiva.getFullYear() === contexto.ventana.anio;
-    }
     // Ver comentario de la función: `FILA_DUPLICADA` se evalúa aparte, con estado
     // (`crearRastreadorFilasDuplicadas`/`evaluarFilaDuplicada`), no aquí.
     case "FILA_DUPLICADA":
