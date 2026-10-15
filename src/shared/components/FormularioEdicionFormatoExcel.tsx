@@ -212,13 +212,12 @@ export function FormularioEdicionFormatoExcel({
         <div
           role="group"
           aria-label="Acciones del formato"
-          className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4 rounded-full border border-gob-accent p-3 shadow-[0_10px_26px_rgba(23,59,105,0.12)]"
-          style={{ backgroundColor: "var(--color-header-perfil, var(--color-gob-primary))" }}
+          className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4 rounded-full border border-[#173b69] bg-[#173b69] p-3 shadow-[0_10px_26px_rgba(23,59,105,0.12)]"
         >
           <BotonIcono
             etiqueta="Guardar cambios"
             Icono={IconoGuardarGrande}
-            tono="neutro"
+            tono="azul"
             grande
             deshabilitado={enviando}
             motivoDeshabilitado="Guardando cambios..."
@@ -246,7 +245,7 @@ export function FormularioEdicionFormatoExcel({
             variante="primario"
             cargando={enviando}
             textoCargando="Guardando..."
-              onClick={guardar}
+            onClick={guardar}
           >
             Guardar cambios
           </Boton>
