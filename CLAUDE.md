@@ -401,8 +401,8 @@ módulo usa `node:fs`: solo puede importarse desde Route Handlers y Server Actio
 sistema operativo del servidor. `logs/` está en `.gitignore`: estos archivos contienen RUT e IP de
 funcionarios y no deben versionarse.
 
-**Estado:** `logs/errores.txt` y `logs/auditoria.txt` están implementados. `logs/accesos.txt` está
-**pendiente de implementar** (RF-07).
+**Estado:** `logs/errores.txt`, `logs/auditoria.txt` y `logs/accesos.txt` (RF-07, versión mínima) están
+implementados. Los tres se consultan en `/dashboard/logs`, una pestaña por archivo.
 
 ### Base de datos
 
@@ -430,7 +430,7 @@ funcionarios y no deben versionarse.
   + `shared/components/NavegacionPanel` con su propia lista de enlaces (`nav-enlaces.ts` en cada área).
   Ambas están protegidas por `proxy.ts` con chequeo positivo, no por lógica propia. Bajo `/dashboard`
   viven el mantenedor de usuarios (`usuarios/`, implementado — RF-06) y el visor de logs (`logs/`, lee
-  `errores.txt`/`auditoria.txt` vía `infrastructure/logging/leerLogs.ts`). `/notificador` es por ahora
+  `errores.txt`, `auditoria.txt` y `accesos.txt` vía `infrastructure/logging/leerLogs.ts`). `/notificador` es por ahora
   solo shell + bienvenida (RF-12): el flujo de reporte Excel/CSV, objetivo central del sistema, todavía
   no está especificado.
 - `app/globals.css` — Tailwind v4 vía `@import "tailwindcss"`, tokens de tema con `@theme inline` (sin

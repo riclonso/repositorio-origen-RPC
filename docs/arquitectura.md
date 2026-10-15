@@ -2397,6 +2397,10 @@ pendiente de activación" y "cuenta inactiva" en un único motivo interno `CREDE
 ser distinguible desde afuera), así que no hay una señal que distinguir hacia el log tampoco. Separar
 esas ramas en `LoginUser.ts` para poblar `usuario_inactivo` queda fuera de esta entrega.
 
+**Visor.** `/dashboard/logs` tiene una pestaña "Accesos" (`TipoLog = "accesos"` en `leerLogs.ts`) que lee
+`logs/accesos.txt` con el mismo lector en cola, filtro por fechas y paginación que "Auditoría". Muestra el
+RUT, la IP y el motivo del rechazo; el RUT y la IP solo los ve el ADMIN.
+
 ### Patrón de UI nuevo: "menu button" (WAI-ARIA) para el menú de configuración de la cuenta
 
 `MenuConfiguracionUsuario.tsx` (montado en `EncabezadoPanel`, que gana la prop `rutaBase` para

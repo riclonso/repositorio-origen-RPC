@@ -8,17 +8,18 @@ import { prisma } from "@/infrastructure/database/prisma";
 // desde un Client Component ni desde `src/proxy.ts`. Vive junto a `logger.ts` porque lee lo que
 // ese módulo escribe.
 
-export type TipoLog = "errores" | "auditoria";
+export type TipoLog = "errores" | "auditoria" | "accesos";
 
 // Allowlist fija tipo -> archivo. El tipo NUNCA se concatena a una ruta: se resuelve contra este
 // mapa, de modo que ningún valor de la URL puede escaparse del directorio `logs/`.
 const ARCHIVO_POR_TIPO: Record<TipoLog, string> = {
   errores: "errores.txt",
   auditoria: "auditoria.txt",
+  accesos: "accesos.txt",
 };
 
 export function esTipoLog(valor: string | undefined): valor is TipoLog {
-  return valor === "errores" || valor === "auditoria";
+  return valor === "errores" || valor === "auditoria" || valor === "accesos";
 }
 
 // Tamaños de página ofrecidos. El primero es el valor por defecto.

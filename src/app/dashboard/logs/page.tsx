@@ -36,6 +36,11 @@ const PESTANAS: { tipo: TipoLog; etiqueta: string; descripcion: string }[] = [
     etiqueta: "Auditoría",
     descripcion: "Operaciones sobre usuarios e intentos de recuperación: quién hizo qué y con qué resultado.",
   },
+  {
+    tipo: "accesos",
+    etiqueta: "Accesos",
+    descripcion: "Intentos de inicio de sesión, exitosos y fallidos, con el RUT, la IP de origen y el motivo del rechazo.",
+  },
 ];
 
 const formatoFecha = new Intl.DateTimeFormat("es-CL", {
@@ -215,7 +220,7 @@ function EntradaLogItem({
               : "border-gob-primary/30 bg-gob-primary/5 text-gob-primary"
           }`}
         >
-          {esError ? "Error" : etiquetaResultado(entrada.campos)}
+          {esError ? "Error" : etiquetaResultado(tipo, entrada.campos)}
         </span>
         <span className="rounded bg-[#f3f6f8] px-2 py-1 font-mono text-[11px] tabular-nums text-gob-gray-a">{formatear(entrada.timestamp)}</span>
         <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-gob-tertiary sm:truncate">
@@ -238,7 +243,9 @@ function EntradaLogItem({
 }
 
 // Para auditoría, el resultado (EXITO / RECHAZADO / SIN_EFECTO) es lo primero que interesa.
-function etiquetaResultado(campos: Record<string, unknown>): string {
+// En accesos, el evento (login_exitoso / login_fallido) cumple ese papel.
+function etiquetaResultado(tipo: TipoLog, campos: Record<string, unknown>): string {
+  if (tipo === "accesos") return campos.evento === "login_exitoso" ? "Exitoso" : "Fallido";
   const resultado = campos.resultado;
   return typeof resultado === "string" ? resultado : "Info";
 }
@@ -246,6 +253,13 @@ function etiquetaResultado(campos: Record<string, unknown>): string {
 function resumen(tipo: TipoLog, entrada: EntradaLog): string {
   if (entrada.crudo !== null) return "Registro sin formato";
   if (tipo === "errores") return entrada.mensaje ?? "Error sin mensaje";
+
+  if (tipo === "accesos") {
+    const rut = typeof entrada.campos.rut === "string" ? entrada.campos.rut : "RUT desconocido";
+    if (entrada.campos.evento === "login_exitoso") return `Inicio de sesión de ${rut}`;
+    const motivo = typeof entrada.campos.motivo === "string" ? ` (${entrada.campos.motivo})` : "";
+    return `Intento fallido de ${rut}${motivo}`;
+  }
 
   // Auditoría: componer una línea legible con los campos que existan.
   const accion = typeof entrada.campos.accion === "string" ? entrada.campos.accion : "Evento";
