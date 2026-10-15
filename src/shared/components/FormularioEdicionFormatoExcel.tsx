@@ -14,6 +14,8 @@ import {
   esSeparadorCsv,
 } from "@/shared/components/opciones-formato-excel";
 import { Boton } from "@/shared/components/Boton";
+import { BotonIcono } from "@/shared/components/BotonIcono";
+import { IconoCerrarGrande, IconoGuardarGrande } from "@/shared/components/iconos";
 import { DialogoConfirmacion } from "@/shared/components/DialogoConfirmacion";
 import { CampoTexto } from "@/shared/components/CampoTexto";
 import { TablaColumnasFormatoExcel, type ColumnaEditable } from "@/shared/components/TablaColumnasFormatoExcel";
@@ -31,12 +33,16 @@ type FormularioEdicionFormatoExcelProps = {
   // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras guardar.
   rutaBase: string;
   permitirEditarNombresColumnas?: boolean;
+  // Guardar y cancelar como iconos flotantes al costado derecho (panel de administrador) en vez
+  // de la barra inferior fija.
+  barraFlotante?: boolean;
 };
 
 export function FormularioEdicionFormatoExcel({
   formato,
   rutaBase,
   permitirEditarNombresColumnas = false,
+  barraFlotante = false,
 }: FormularioEdicionFormatoExcelProps) {
   const router = useRouter();
   // Valores iniciales del formulario (la página remonta el componente con `key={formato.id}`).
@@ -200,25 +206,52 @@ export function FormularioEdicionFormatoExcel({
         </p>
       ) : null}
 
-      {/* Barra de acciones fija al pie: en un formulario largo, "Guardar" queda a la vista sin
-          tener que volver arriba. Fondo blanco y borde superior para separarla del contenido. */}
-      <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-gob-accent bg-white py-4">
-        <Link
-          href={rutaBase}
-          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+      {barraFlotante ? (
+        // Acciones como iconos flotantes al costado derecho, siempre visibles mientras se
+        // recorre el formulario. Cada icono lleva etiqueta accesible (`BotonIcono`).
+        <div
+          role="group"
+          aria-label="Acciones del formato"
+          className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4 rounded-full border border-gob-accent p-3 shadow-[0_10px_26px_rgba(23,59,105,0.12)]"
+          style={{ backgroundColor: "var(--color-header-perfil, var(--color-gob-primary))" }}
         >
-          Cancelar
-        </Link>
-        <Boton
-          type="button"
-          variante="primario"
-          cargando={enviando}
-          textoCargando="Guardando..."
-          onClick={guardar}
-        >
-          Guardar cambios
-        </Boton>
-      </div>
+          <BotonIcono
+            etiqueta="Guardar cambios"
+            Icono={IconoGuardarGrande}
+            tono="neutro"
+            grande
+            deshabilitado={enviando}
+            motivoDeshabilitado="Guardando cambios..."
+            onClick={guardar}
+          />
+          <BotonIcono
+            etiqueta="Cancelar y volver al listado"
+            Icono={IconoCerrarGrande}
+            href={rutaBase}
+            grande
+          />
+        </div>
+      ) : (
+        // Barra de acciones fija al pie: en un formulario largo, "Guardar" queda a la vista sin
+        // tener que volver arriba. Fondo blanco y borde superior para separarla del contenido.
+        <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-gob-accent bg-white py-4">
+          <Link
+            href={rutaBase}
+            className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+          >
+            Cancelar
+          </Link>
+          <Boton
+            type="button"
+            variante="primario"
+            cargando={enviando}
+            textoCargando="Guardando..."
+              onClick={guardar}
+          >
+            Guardar cambios
+          </Boton>
+        </div>
+      )}
 
       <DialogoConfirmacion
         abierto={columnaPendienteEliminacion !== null}

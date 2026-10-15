@@ -17,6 +17,7 @@ import {
   Eye,
   EyeSlash,
   FileText,
+  FloppyDisk,
   Gear,
   Hourglass,
   Key,
@@ -131,6 +132,10 @@ export const IconoMensaje = crearIcono(ChatCircleText, TAMANO_ACCION);
 export const IconoEnviarMensaje = crearIcono(PaperPlaneTilt, TAMANO_CAMPO);
 export const IconoMensajeLeido = crearIcono(Checks, 14);
 export const IconoCerrar = crearIcono(X, TAMANO_CAMPO);
+export const IconoGuardar = crearIcono(FloppyDisk, TAMANO_CAMPO);
+// Versiones grandes para los botones flotantes de acción (`BotonIcono` con `grande`).
+export const IconoGuardarGrande = crearIcono(FloppyDisk, 24);
+export const IconoCerrarGrande = crearIcono(X, 24);
 // Indicador flotante de conversación en una tarjeta: los tres puntos se entienden mejor a tamaño
 // grande que el glifo de texto usado por los botones convencionales de mensajería.
 export const IconoConversacion = crearIcono(ChatCircleDots, TAMANO_CAMPO);
