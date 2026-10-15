@@ -127,43 +127,48 @@ export function FormularioEdicionFormatoExcel({
   }
 
   return (
-    <div className="mt-6 flex flex-col gap-5">
-      <div className="grid gap-5 md:grid-cols-2">
-        <CampoTexto
-          id="nombre"
-          etiqueta="Nombre del formato"
-          value={nombre}
-          onChange={(evento) => setNombre(evento.target.value)}
-          error={errores.nombre}
-        />
-        <CampoTexto
-          id="descripcion"
-          etiqueta="Descripción (opcional)"
-          value={descripcion}
-          onChange={(evento) => setDescripcion(evento.target.value)}
-          error={errores.descripcion}
-        />
-        <CampoTexto
-          id="tipo-archivo"
-          etiqueta="Tipo de archivo"
-          value={ETIQUETA_TIPO_ARCHIVO[formato.tipoArchivo]}
-          readOnly
-          ayuda="No se puede cambiar después de crear el formato."
-        />
-        {formato.tipoArchivo === "CSV" ? (
-          <CampoSelect
-            id="separador-csv"
-            etiqueta="Separador"
-            opciones={OPCIONES_SEPARADOR_CSV}
-            value={separadorCsv ?? ""}
-            onChange={(evento) => {
-              if (esSeparadorCsv(evento.target.value)) setSeparadorCsv(evento.target.value);
-            }}
-            ayuda="Los archivos que suban los notificadores se leerán con este separador."
-            error={errores.separadorCsv}
+    <div className="mt-8 flex flex-col gap-10">
+      <section aria-labelledby="titulo-datos-generales" className="flex flex-col gap-4">
+        <h2 id="titulo-datos-generales" className="text-base font-semibold text-gob-black">
+          Datos generales
+        </h2>
+        <div className="grid gap-5 md:grid-cols-2">
+          <CampoTexto
+            id="nombre"
+            etiqueta="Nombre del formato"
+            value={nombre}
+            onChange={(evento) => setNombre(evento.target.value)}
+            error={errores.nombre}
           />
-        ) : null}
-      </div>
+          <CampoTexto
+            id="descripcion"
+            etiqueta="Descripción (opcional)"
+            value={descripcion}
+            onChange={(evento) => setDescripcion(evento.target.value)}
+            error={errores.descripcion}
+          />
+          <CampoTexto
+            id="tipo-archivo"
+            etiqueta="Tipo de archivo"
+            value={ETIQUETA_TIPO_ARCHIVO[formato.tipoArchivo]}
+            readOnly
+            ayuda="No se puede cambiar después de crear el formato."
+          />
+          {formato.tipoArchivo === "CSV" ? (
+            <CampoSelect
+              id="separador-csv"
+              etiqueta="Separador"
+              opciones={OPCIONES_SEPARADOR_CSV}
+              value={separadorCsv ?? ""}
+              onChange={(evento) => {
+                if (esSeparadorCsv(evento.target.value)) setSeparadorCsv(evento.target.value);
+              }}
+              ayuda="Los archivos que suban los notificadores se leerán con este separador."
+              error={errores.separadorCsv}
+            />
+          ) : null}
+        </div>
+      </section>
 
       <GestorTiposEnumeradosFormatoExcel
         tiposEnumerados={tiposEnumerados}
@@ -195,7 +200,15 @@ export function FormularioEdicionFormatoExcel({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-3">
+      {/* Barra de acciones fija al pie: en un formulario largo, "Guardar" queda a la vista sin
+          tener que volver arriba. Fondo blanco y borde superior para separarla del contenido. */}
+      <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-gob-accent bg-white py-4">
+        <Link
+          href={rutaBase}
+          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
+        >
+          Cancelar
+        </Link>
         <Boton
           type="button"
           variante="primario"
@@ -205,12 +218,6 @@ export function FormularioEdicionFormatoExcel({
         >
           Guardar cambios
         </Boton>
-        <Link
-          href={rutaBase}
-          className="inline-flex items-center justify-center rounded-md border border-gob-accent bg-white px-4 py-2 text-sm font-medium text-gob-gray-a transition-colors hover:bg-gob-neutral active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary"
-        >
-          Cancelar
-        </Link>
       </div>
 
       <DialogoConfirmacion
