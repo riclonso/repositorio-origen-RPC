@@ -91,7 +91,7 @@ posterior (la numeración RF de ambas ramas se solapaba, por eso aquí se listan
 
 | ID    | Requerimiento                          | Estado |
 |-------|-----------------------------------------|--------|
-| RF-07 | Log de accesos: registrar todo intento de login, exitoso y fallido | **Versión mínima implementada en RF-21**: `infrastructure/logging/accesos.ts` (`registrarAcceso()`), logger Winston independiente (`logs/accesos.txt`) y conectado en `app/api/auth/login/route.ts` para éxito, credenciales inválidas, RUT inválido y cuenta bloqueada. Pendiente: el motivo `usuario_inactivo` está declarado en `EventoAcceso` pero no se emite todavía (`LoginUser.ts` colapsa RUT inexistente/cuenta pendiente/cuenta inactiva en un único motivo interno anti-enumeración; separarlos queda fuera de esta entrega). |
+| RF-07 | Log de accesos: registrar todo intento de login, exitoso y fallido | **Versión mínima implementada en RF-21**, visible en `/dashboard/logs` (pestaña "Accesos"): `infrastructure/logging/accesos.ts` (`registrarAcceso()`), logger Winston independiente (`logs/accesos.txt`) y conectado en `app/api/auth/login/route.ts` para éxito, credenciales inválidas, RUT inválido y cuenta bloqueada. Pendiente: el motivo `usuario_inactivo` está declarado en `EventoAcceso` pero no se emite todavía (`LoginUser.ts` colapsa RUT inexistente/cuenta pendiente/cuenta inactiva en un único motivo interno anti-enumeración; separarlos queda fuera de esta entrega). |
 
 ### Pendientes de definir
 
