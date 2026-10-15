@@ -14,15 +14,19 @@ type BotonIconoProps = {
   Icono: ComponentType<PropsIcono>;
   href?: string;
   onClick?: () => void;
-  tono?: "neutro" | "primario" | "exito" | "peligro";
+  tono?: "neutro" | "primario" | "exito" | "azul" | "peligro";
   // Solo aplica a la variante botón (sin `href`). `motivoDeshabilitado` reemplaza al `title`
   // mientras está deshabilitado, para explicar al puntero por qué no está disponible.
   deshabilitado?: boolean;
   motivoDeshabilitado?: string;
+  // Tamaño mayor (48px) para acciones flotantes que deben destacar sobre el contenido.
+  grande?: boolean;
 };
 
 const CLASES_BASE =
   "inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors active:translate-y-[1px] focus-visible:outline-2 focus-visible:outline-offset-2";
+
+const CLASES_GRANDE = "h-12 w-12";
 
 const CLASES_TONO = {
   neutro:
@@ -33,6 +37,10 @@ const CLASES_TONO = {
   // una acción primaria de navegación sin perder el significado positivo de la aprobación.
   exito:
     "border-gob-success bg-white text-gob-success hover:bg-gob-success/10 focus-visible:outline-gob-success",
+  // Azul del encabezado del panel de administración (`#173b69`, ver `EncabezadoPanel`), en
+  // contorno como el resto de iconos de este componente.
+  azul:
+    "border-[#173b69] bg-white text-[#173b69] hover:bg-[#173b69]/10 focus-visible:outline-[#173b69]",
   peligro:
     "border-gob-accent bg-white text-gob-danger hover:border-gob-danger hover:bg-gob-danger/10 focus-visible:outline-gob-danger",
 } as const;
@@ -49,8 +57,9 @@ export function BotonIcono({
   tono = "neutro",
   deshabilitado = false,
   motivoDeshabilitado,
+  grande = false,
 }: BotonIconoProps): ReactNode {
-  const clases = `${CLASES_BASE} ${CLASES_TONO[tono]}`;
+  const clases = `${CLASES_BASE} ${grande ? CLASES_GRANDE : ""} ${CLASES_TONO[tono]}`;
 
   // El tooltip da la misma información al puntero que `aria-label` al lector de pantalla.
   if (href) {

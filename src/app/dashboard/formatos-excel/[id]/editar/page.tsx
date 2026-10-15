@@ -49,7 +49,12 @@ export default async function EditarFormatoExcelPage({ params }: EditarFormatoEx
           (ver comentario del inicializador perezoso en el propio componente), así que sin
           esta key una navegación cliente-a-cliente entre dos ids dejaría los campos con los
           valores del formato anterior. */}
-      <FormularioEdicionFormatoExcel key={formato.id} formato={formato} rutaBase="/dashboard/formatos-excel" />
+      <FormularioEdicionFormatoExcel
+        key={formato.id}
+        formato={formato}
+        rutaBase="/dashboard/formatos-excel"
+        barraFlotante
+      />
     </div>
   );
 }
