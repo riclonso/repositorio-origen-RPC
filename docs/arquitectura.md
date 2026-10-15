@@ -1218,6 +1218,12 @@ desconocida" para errores de columna y "—" para el resto de los errores con fi
 Excel de errores. Las etiquetas visibles de los tipos de regla viven en `shared/utils/reglasValidacion.ts`
 (`Record<TipoReglaValidacion, string>`: un tipo nuevo sin etiqueta no compila).
 
+**Columnas de un error de regla.** Un error `REGLA_VALIDACION` (`FILA_DUPLICADA`, `ALGUNA_COLUMNA_CON_VALOR`,
+`RUT_VALIDO`, fechas, etc.) guarda en `columna` las columnas de la regla unidas con coma y espacio
+(`"RUT, DV"`), que en conjunto no cumplen la regla. Sin columnas propias (`FILA_VACIA`) queda `null` y se
+muestra "—". Lo escribe `MotorValidacionFilas` (`columnasDeRegla`), así que solo aplica a las cargas
+validadas desde ese cambio: las anteriores conservan `null` porque el error no guarda el id de la regla.
+
 ### Primera capacidad de escritura de REVISOR_REPOSITORIO
 
 Hasta RF-15, `/revisor` era 100% solo lectura (bienvenida + listado de cargas aprobadas, RF-14).

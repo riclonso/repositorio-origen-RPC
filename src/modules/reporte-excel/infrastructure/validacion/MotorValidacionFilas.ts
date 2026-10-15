@@ -164,6 +164,10 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
   // Mensaje de cada regla resuelto una vez por archivo (marcador `{anioVentana}`), no por fila.
   const mensajesReglas = new Map(formato.reglasValidacion.map((regla) => [regla, mensajeReglaValidacion(regla, contextoReglas)]));
   const mensajeDe = (regla: ReglaValidacionFormatoExcel): string => mensajesReglas.get(regla) ?? regla.mensaje;
+  // Columnas que en conjunto cumplen (o incumplen) cada regla, para mostrarlas en el reporte de errores.
+  // `null` cuando la regla no tiene columnas propias (`FILA_VACIA`, `CONTENIDO_HTML`: `columnas: []`).
+  const columnasDeRegla = (regla: ReglaValidacionFormatoExcel): string | null =>
+    regla.columnas.length > 0 ? regla.columnas.join(", ") : null;
 
   const encabezados: string[] = [];
   let encabezadosProcesados = false;
@@ -200,14 +204,14 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
 
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, fila, contextoReglas)) {
-        errores.agregar({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
+        errores.agregar({ numeroFila, columna: columnasDeRegla(regla), tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
       }
     }
 
     // Igual que las demás reglas, pero con el estado del rastreador.
     for (const regla of reglasFilaDuplicada) {
       if (evaluarFilaDuplicada(rastreadorFilasDuplicadas, regla, fila)) {
-        errores.agregar({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
+        errores.agregar({ numeroFila, columna: columnasDeRegla(regla), tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
       }
     }
 
@@ -261,7 +265,7 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
     }
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, filaNula, contextoReglas)) {
-        resultado.push({ columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
+        resultado.push({ columna: columnasDeRegla(regla), tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
       }
     }
     return resultado;

@@ -129,7 +129,7 @@ test("varias columnas con una o varias fuera de rango producen un solo error por
   ]);
   assert.deepEqual(
     errores.map((error) => [error.numeroFila, error.tipoError, error.columna]),
-    [[2, "REGLA_VALIDACION", null], [3, "REGLA_VALIDACION", null]],
+    [[2, "REGLA_VALIDACION", "DIAGNOSTICO, INGRESO"], [3, "REGLA_VALIDACION", "DIAGNOSTICO, INGRESO"]],
   );
 });
 

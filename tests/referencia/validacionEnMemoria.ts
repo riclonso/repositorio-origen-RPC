@@ -216,6 +216,9 @@ export async function validarEnMemoriaReferencia(
   const validacionesColumnas = prepararValidacionesColumnas(formato, columnasAValidar);
   const reglasFilaDuplicada = formato.reglasValidacion.filter((regla) => regla.tipo === "FILA_DUPLICADA");
   const rastreadorFilasDuplicadas = crearRastreadorFilasDuplicadas(reglasFilaDuplicada);
+  // Mismo criterio que `MotorValidacionFilas`: las columnas de la regla, o `null` si no tiene.
+  const columnasDeRegla = (regla: ReglaValidacionFormatoExcel): string | null =>
+    regla.columnas.length > 0 ? regla.columnas.join(", ") : null;
 
   filasAValidar.forEach((fila: Record<string, ValorCeldaArchivo>, indice) => {
     const numeroFila = indice + 2;
@@ -247,13 +250,13 @@ export async function validarEnMemoriaReferencia(
 
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, fila, { ventana })) {
-        errores.push({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeReglaValidacion(regla, { ventana }) });
+        errores.push({ numeroFila, columna: columnasDeRegla(regla), tipoError: "REGLA_VALIDACION", mensaje: mensajeReglaValidacion(regla, { ventana }) });
       }
     }
 
     for (const regla of reglasFilaDuplicada) {
       if (evaluarFilaDuplicada(rastreadorFilasDuplicadas, regla, fila, numeroFila)) {
-        errores.push({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
+        errores.push({ numeroFila, columna: columnasDeRegla(regla), tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
       }
     }
 
