@@ -67,6 +67,17 @@ export function mensajeReglaValidacion(regla: ReglaValidacionFormatoExcel, conte
   return regla.mensaje;
 }
 
+// Columna que se informa en el error de una regla: TODAS las columnas que intervienen en ella, sin
+// repetir y en el orden de `regla.columnas`, unidas por ", " (p. ej. "Número RUT, DV" en un
+// `RUT_VALIDO` de dos columnas). En `FECHA_POSTERIOR_O_IGUAL` ese arreglo ya trae las columnas de las
+// dos fechas (`columnasComparacionFechas` al guardar). `null` solo si la regla no declara columnas
+// (`FILA_VACIA`; `CONTENIDO_HTML` informa la celda puntual). No depende de la fila: se calcula una
+// vez por regla.
+export function columnasErrorRegla(regla: ReglaValidacionFormatoExcel): string | null {
+  const columnas = [...new Set(regla.columnas)];
+  return columnas.length > 0 ? columnas.join(", ") : null;
+}
+
 // Tipos de regla soportados hoy (ver `TIPOS_REGLA_VALIDACION` en `formatos-excel`):
 // `ALGUNA_COLUMNA_CON_VALOR` (de un conjunto de columnas, al menos una debe traer valor en la
 // fila), `FILA_DUPLICADA`,

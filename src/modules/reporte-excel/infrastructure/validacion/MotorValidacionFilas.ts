@@ -18,6 +18,7 @@ import { celdaVacia, filaCompletamenteVacia } from "@/modules/reporte-excel/doma
 import { crearValidadorColumna, type ValidadorCelda } from "@/modules/reporte-excel/infrastructure/validacion/ValidadoresTipoDato";
 import {
   columnasConContenidoHtml,
+  columnasErrorRegla,
   crearRastreadorFilasDuplicadas,
   cumpleReglaValidacion,
   diaCalendarioSantiago,
@@ -164,6 +165,9 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
   // Mensaje de cada regla resuelto una vez por archivo (marcador `{anioVentana}`), no por fila.
   const mensajesReglas = new Map(formato.reglasValidacion.map((regla) => [regla, mensajeReglaValidacion(regla, contextoReglas)]));
   const mensajeDe = (regla: ReglaValidacionFormatoExcel): string => mensajesReglas.get(regla) ?? regla.mensaje;
+  // Columnas involucradas en cada regla (todas las de una regla compuesta, p. ej. RUT + DV), una vez por archivo.
+  const columnasReglas = new Map(formato.reglasValidacion.map((regla) => [regla, columnasErrorRegla(regla)]));
+  const columnasDe = (regla: ReglaValidacionFormatoExcel): string | null => columnasReglas.get(regla) ?? null;
 
   const encabezados: string[] = [];
   let encabezadosProcesados = false;
@@ -200,14 +204,14 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
 
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, fila, contextoReglas)) {
-        errores.agregar({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
+        errores.agregar({ numeroFila, columna: columnasDe(regla), tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
       }
     }
 
     // Igual que las demás reglas, pero con el estado del rastreador.
     for (const regla of reglasFilaDuplicada) {
       if (evaluarFilaDuplicada(rastreadorFilasDuplicadas, regla, fila)) {
-        errores.agregar({ numeroFila, columna: null, tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
+        errores.agregar({ numeroFila, columna: columnasDe(regla), tipoError: "REGLA_VALIDACION", mensaje: regla.mensaje });
       }
     }
 
@@ -261,7 +265,7 @@ export function crearMotorValidacionFilas(opciones: OpcionesMotorValidacion): Mo
     }
     for (const regla of formato.reglasValidacion) {
       if (!cumpleReglaValidacion(regla, filaNula, contextoReglas)) {
-        resultado.push({ columna: null, tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
+        resultado.push({ columna: columnasDe(regla), tipoError: "REGLA_VALIDACION", mensaje: mensajeDe(regla) });
       }
     }
     return resultado;

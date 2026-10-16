@@ -140,7 +140,7 @@ test("el mensaje reemplaza {anioVentana} por el año de la ventana y nunca inclu
   const errores = validarFilas([regla], [["15-06-2019", "a"]]);
   assert.equal(errores.length, 1);
   assert.equal(errores[0].tipoError, "REGLA_VALIDACION");
-  assert.equal(errores[0].columna, null);
+  assert.equal(errores[0].columna, "DIAGNOSTICO");
   assert.equal(errores[0].mensaje, "El año debe ser ≥ 2026 (ventana 2026)");
   assert.ok(!errores[0].mensaje.includes("2019"));
 });

@@ -22,7 +22,11 @@ import {
   MENSAJE_TEXTO_ENRIQUECIDO_ENCABEZADO,
   TOPE_FILAS_DATOS,
 } from "../src/modules/reporte-excel/domain/entities/CargaArchivo";
-import type { ContextoEvaluacionReglas } from "../src/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
+import {
+  columnasErrorRegla,
+  mensajeReglaValidacion,
+  type ContextoEvaluacionReglas,
+} from "../src/modules/reporte-excel/infrastructure/validacion/EvaluadorReglasValidacion";
 import { validarXlsxEnStreaming } from "../src/modules/reporte-excel/infrastructure/validacion/ValidadorArchivoReporteStreaming";
 import { validarEnMemoriaReferencia, type ResultadoValidacionReferencia } from "./referencia/validacionEnMemoria";
 import { FORMATOS_PRUEBA, VENTANA_PRUEBA } from "./fixtures/equivalencia/formatosPrueba";
@@ -37,7 +41,43 @@ function describirError(error: ResultadoValidacionReferencia["errores"][number])
   return `${error.numeroFila}|${error.columna ?? "∅"}|${error.tipoError}|${error.mensaje}`;
 }
 
-function primeraDiferencia(esperado: ResultadoValidacionReferencia, obtenido: ResultadoValidacionReferencia): string | null {
+// Excepción aprobada (columnas de los errores de regla): la referencia guardaba `columna = null` en
+// todo error `REGLA_VALIDACION` de una regla con columnas; ahora lleva las columnas involucradas
+// (`columnasErrorRegla`, p. ej. "Número RUT, DV"). Donde la referencia trae `null`, se acepta la
+// columna de cualquier regla del formato con ese mismo mensaje; el resto del error se compara igual.
+type ColumnasPorMensajeRegla = Map<string, Set<string | null>>;
+
+function columnasPorMensajeRegla(formato: FormatoExcel, ventana: Ventana): ColumnasPorMensajeRegla {
+  const mapa: ColumnasPorMensajeRegla = new Map();
+  for (const regla of formato.reglasValidacion) {
+    for (const mensaje of [regla.mensaje, mensajeReglaValidacion(regla, { ventana })]) {
+      const columnas = mapa.get(mensaje) ?? new Set();
+      columnas.add(columnasErrorRegla(regla));
+      mapa.set(mensaje, columnas);
+    }
+  }
+  return mapa;
+}
+
+function ajustarColumnaRegla(
+  izquierda: ResultadoValidacionReferencia["errores"][number],
+  derecha: ResultadoValidacionReferencia["errores"][number],
+  columnasRegla: ColumnasPorMensajeRegla,
+): ResultadoValidacionReferencia["errores"][number] {
+  const esColumnaAprobada =
+    izquierda.tipoError === "REGLA_VALIDACION" &&
+    derecha.tipoError === "REGLA_VALIDACION" &&
+    izquierda.columna === null &&
+    izquierda.mensaje === derecha.mensaje &&
+    columnasRegla.get(derecha.mensaje)?.has(derecha.columna) === true;
+  return esColumnaAprobada ? { ...derecha, columna: null } : derecha;
+}
+
+function primeraDiferencia(
+  esperado: ResultadoValidacionReferencia,
+  obtenido: ResultadoValidacionReferencia,
+  columnasRegla: ColumnasPorMensajeRegla,
+): string | null {
   if (esperado.estado !== obtenido.estado) return `estado ${esperado.estado} ≠ ${obtenido.estado}`;
   if (esperado.cantidadFilasDatos !== obtenido.cantidadFilasDatos) {
     return `cantidadFilasDatos ${esperado.cantidadFilasDatos} ≠ ${obtenido.cantidadFilasDatos}`;
@@ -48,7 +88,7 @@ function primeraDiferencia(esperado: ResultadoValidacionReferencia, obtenido: Re
   const largo = Math.max(esperado.errores.length, obtenido.errores.length);
   for (let indice = 0; indice < largo; indice += 1) {
     const izquierda = esperado.errores[indice];
-    const derecha = obtenido.errores[indice];
+    const derecha = izquierda && obtenido.errores[indice] ? ajustarColumnaRegla(izquierda, obtenido.errores[indice], columnasRegla) : obtenido.errores[indice];
     if (!izquierda || !derecha || describirError(izquierda) !== describirError(derecha)) {
       return `error #${indice}: ${izquierda ? describirError(izquierda) : "—"} ≠ ${derecha ? describirError(derecha) : "—"}`;
     }
@@ -65,6 +105,7 @@ function verificarTextoEnriquecido(
   formato: FormatoExcel,
   referencia: ResultadoValidacionReferencia,
   nuevo: ResultadoValidacionReferencia,
+  columnasRegla: ColumnasPorMensajeRegla,
 ): void {
   const esperado = caso.textoEnriquecido;
   assert.ok(esperado);
@@ -95,7 +136,7 @@ function verificarTextoEnriquecido(
       celdasEsperadas.map((celda) => `${celda.numeroFila}|${celda.columna}`),
       `${formato.id}: celdas enriquecidas`,
     );
-    assert.equal(primeraDiferencia(referencia, { ...nuevo, errores: resto, cantidadErrores: nuevo.cantidadErrores - enriquecidos.length, estado: resto.length > 0 ? "CON_ERRORES" : "PENDIENTE_VISTO_BUENO" }), null);
+    assert.equal(primeraDiferencia(referencia, { ...nuevo, errores: resto, cantidadErrores: nuevo.cantidadErrores - enriquecidos.length, estado: resto.length > 0 ? "CON_ERRORES" : "PENDIENTE_VISTO_BUENO" }, columnasRegla), null);
     return;
   }
 
@@ -140,10 +181,11 @@ async function comparar(
     return;
   }
   assert.ok(referencia && nuevo);
+  const columnasRegla = columnasPorMensajeRegla(formato, ventana);
 
   if (caso?.textoEnriquecido) {
     try {
-      verificarTextoEnriquecido(caso, formato, referencia, nuevo);
+      verificarTextoEnriquecido(caso, formato, referencia, nuevo, columnasRegla);
     } catch (error) {
       diferencias += 1;
       console.error(`DIFERENCIA ${etiqueta} (texto enriquecido):`, error);
@@ -151,7 +193,7 @@ async function comparar(
     return;
   }
 
-  const diferencia = primeraDiferencia(referencia, nuevo);
+  const diferencia = primeraDiferencia(referencia, nuevo, columnasRegla);
   if (diferencia) {
     diferencias += 1;
     console.error(`DIFERENCIA ${etiqueta}: ${diferencia}`);

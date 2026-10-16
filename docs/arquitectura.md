@@ -1171,7 +1171,7 @@ archivo ni bucles anidados, manteniendo la complejidad en O(filas) por regla de 
    no confundir "una columna vacía" con "clave completa vacía".
 
 Reporta con el mismo contrato que las demás reglas: `tipoError: "REGLA_VALIDACION"`,
-`columna: null` (mismo criterio que `ALGUNA_COLUMNA_CON_VALOR`, por involucrar varias columnas),
+`columna`: las columnas de la clave unidas por ", " (`columnasErrorRegla`, igual que toda regla con columnas; antes `null`),
 `mensaje: regla.mensaje` sin texto dinámico agregado. Migración
 `20260917142311_agregar_regla_fila_duplicada`: aditiva (`ALTER TYPE ... ADD VALUE`), sin backfill,
 mismo caveat de reinicio del cliente de Prisma en memoria que las migraciones de enum anteriores.
@@ -2614,6 +2614,9 @@ usa utilidades internas de exceljs (`src/types/exceljs-internos.d.ts`, versión 
 diferencias, salvo los cambios decididos:
 - **más de 500.000 filas de datos** → `TOPE_FILAS_EXCEDIDO` (antes se ignoraban las sobrantes);
 - **texto enriquecido** en un encabezado o una celda → `TEXTO_ENRIQUECIDO`;
+- **columna de los errores de regla**: donde la referencia guardaba `columna: null` en un
+  `REGLA_VALIDACION`, ahora van las columnas de la regla (`columnasErrorRegla`); la prueba acepta la
+  columna de una regla del formato con el mismo mensaje y compara el resto del error igual;
 - **filas numeradas fuera de orden** (`<row r>` repetido o descendente) → `ARCHIVO_NO_PROCESADO`. El
   conteo de filas usa el número que declara el propio archivo, igual que `rowCount` en memoria; sin
   esa exigencia, un archivo fabricado se saltaba el tope. Una fila sin `r` toma la anterior + 1.
