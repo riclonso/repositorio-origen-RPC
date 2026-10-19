@@ -29,6 +29,7 @@ export const idCargaArchivoSchema = idRutaSchema;
 export type SolicitudReemplazoPropiaDTO = {
   id: string;
   cargaArchivoId: string;
+  ventanaCargaId: string;
   formatoExcelNombre: string;
   anio: number;
   nombreArchivoOriginal: string;
@@ -50,6 +51,7 @@ export function aSolicitudReemplazoPropiaDTO(solicitud: SolicitudReemplazoCarga,
   return {
     id: solicitud.id,
     cargaArchivoId: solicitud.cargaArchivoId,
+    ventanaCargaId: solicitud.ventanaCargaId,
     formatoExcelNombre: solicitud.formatoExcelNombre,
     anio: solicitud.anio,
     nombreArchivoOriginal: solicitud.nombreArchivoOriginal,

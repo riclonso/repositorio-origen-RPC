@@ -61,6 +61,11 @@ type CargaDetalleVista = CargaResumenVista & { errores: ErrorCargaArchivo[] };
 export type SolicitudReemplazoPropiaVista = {
   id: string;
   cargaArchivoId: string;
+  ventanaCargaId: string;
+  // Texto que escribió el propio notificador al pedir el reemplazo.
+  motivo: string;
+  // Comentario opcional del revisor al resolver la solicitud.
+  comentarioRevision: string | null;
   estado: EstadoSolicitudReemplazoCarga;
   origen: OrigenSolicitudReemplazoCarga;
   vencida: boolean;
@@ -204,6 +209,9 @@ type EstadoTarjetaCombinacion = {
   intentosFallidos: CargaResumenVista[];
   // RF-38: la carga más reciente de la combinación, si su archivo todavía se está validando.
   cargaProcesando: CargaResumenVista | null;
+  // Última solicitud aprobada de una carga pendiente de esta ventana: es la que genera la reapertura
+  // "Reemplazo aprobado" (las solicitudes llegan de la más reciente a la más antigua).
+  solicitudReemplazoAprobada: SolicitudReemplazoPropiaVista | null;
 };
 
 // RF-38: el intento más reciente (por `createdAt`) de la combinación, si está en `PROCESANDO`.
@@ -212,6 +220,21 @@ function cargaEnValidacion(cargas: CargaResumenVista[], ventanaCargaId: string):
     .filter((carga) => carga.ventanaCargaId === ventanaCargaId)
     .reduce<CargaResumenVista | null>((actual, carga) => (!actual || carga.createdAt > actual.createdAt ? carga : actual), null);
   return masReciente?.estado === "PROCESANDO" ? masReciente : null;
+}
+
+// Intentos `CON_ERRORES` de la combinación posteriores al último envío (`finalizadaEn` más reciente
+// de cualquier carga de esa ventana). Finalizar y enviar deja el historial vacío, y al subir un
+// reemplazo el historial parte de cero con los intentos fallidos nuevos. Solo se ocultan en la
+// tarjeta: los intentos siguen en la base de datos y su detalle sigue accesible.
+function intentosFallidosDesdeUltimoEnvio(cargas: CargaResumenVista[], ventanaCargaId: string): CargaResumenVista[] {
+  const deLaVentana = cargas.filter((carga) => carga.ventanaCargaId === ventanaCargaId);
+  const ultimoEnvio = deLaVentana.reduce<string | null>(
+    (maximo, carga) => (carga.finalizadaEn && (!maximo || carga.finalizadaEn > maximo) ? carga.finalizadaEn : maximo),
+    null,
+  );
+  return deLaVentana.filter(
+    (carga) => carga.estado === "CON_ERRORES" && (!ultimoEnvio || carga.createdAt > ultimoEnvio),
+  );
 }
 
 // Deriva, sin consultas nuevas, el estado de la tarjeta de una combinación a partir de lo que el
@@ -248,10 +271,15 @@ function derivarEstadoTarjeta(
     solicitudPendiente: solicitudesDeLaAprobada.some((solicitud) => solicitud.estado === "PENDIENTE"),
     cargaPendienteDecision,
     solicitudPendienteDeCargaPendiente,
-    intentosFallidos: cargas.filter(
-      (carga) => carga.ventanaCargaId === ventanaCargaId && carga.estado === "CON_ERRORES",
-    ),
+    intentosFallidos: intentosFallidosDesdeUltimoEnvio(cargas, ventanaCargaId),
     cargaProcesando: cargaEnValidacion(cargas, ventanaCargaId),
+    solicitudReemplazoAprobada:
+      solicitudes.find(
+        (solicitud) =>
+          solicitud.ventanaCargaId === ventanaCargaId &&
+          solicitud.estado === "APROBADA" &&
+          solicitud.origen === "CARGA_PENDIENTE_DECISION",
+      ) ?? null,
   };
 }
 
@@ -377,12 +405,55 @@ function CabeceraTarjetaCarga({
   tituloCombinacion,
   reapertura,
   ventanaCerrada,
+  motivoSolicitud,
+  comentarioRevisor,
 }: {
   idTitulo: string;
   tituloCombinacion: string;
   reapertura: ReaperturaVigentePropiaVista | null;
   ventanaCerrada: boolean;
+  // Motivo de la solicitud de reemplazo aprobada que originó la reapertura, si se conoce.
+  motivoSolicitud: string | null;
+  // Comentario del revisor al aprobar esa solicitud (opcional).
+  comentarioRevisor: string | null;
 }) {
+  // Reapertura por una solicitud de reemplazo propia ya aprobada: no es un rechazo del revisor. La
+  // etiqueta ya dice que se aprobó; debajo van el motivo que escribió el notificador y el plazo.
+  if (reapertura?.porReemplazoAprobado) {
+    return (
+      <div>
+        <div className={estilosTarjeta.cabecera}>
+          <h3 id={idTitulo} className={estilosTarjeta.titulo}>
+            {tituloCombinacion}
+          </h3>
+          <span className={`${estilosTarjeta.estado} ${estilosTarjeta.aprobado}`}>Reemplazo aprobado</span>
+        </div>
+        <dl className="mt-2 flex flex-col gap-1 text-sm leading-5 text-gob-gray-a">
+          {motivoSolicitud ? (
+            <div>
+              <dt className="inline font-semibold text-gob-tertiary">Motivo Reemplazo: </dt>
+              <dd className="inline wrap-break-word">{motivoSolicitud}</dd>
+            </div>
+          ) : null}
+          {comentarioRevisor ? (
+            <div>
+              <dt className="inline font-semibold text-gob-tertiary">Mensaje del revisor: </dt>
+              <dd className="inline wrap-break-word">{comentarioRevisor}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt className="inline font-semibold text-gob-tertiary">Plazo para subirlo: </dt>
+            <dd className="inline">
+              <time dateTime={reapertura.fechaLimite} className="tabular-nums">
+                {formatearFechaHoraIso(reapertura.fechaLimite)}
+              </time>
+            </dd>
+          </div>
+        </dl>
+      </div>
+    );
+  }
+
   if (reapertura) {
     return (
       <div role="alert" className={estilosTarjeta.cabecera}>
@@ -566,6 +637,7 @@ type TarjetaCargaArchivoProps = {
   avisoMensajes: ReactNode;
   // RF-38: carga de la combinación cuyo archivo se está validando (al recargar la página).
   cargaProcesando: CargaResumenVista | null;
+  solicitudReemplazoAprobada: SolicitudReemplazoPropiaVista | null;
   // Se invoca cuando la validación termina (no al recibir el 202), con el mismo resultado de antes.
   onSubidaExitosa: (clave: string, carga: CargaDetalleVista) => void;
   onSolicitudReemplazoEnviada: () => void;
@@ -586,6 +658,7 @@ function TarjetaCargaArchivo({
   reapertura,
   avisoMensajes,
   cargaProcesando,
+  solicitudReemplazoAprobada,
   onSubidaExitosa,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaArchivoProps) {
@@ -686,6 +759,8 @@ function TarjetaCargaArchivo({
   }
 
   const tituloCombinacion = `${combinacion.formatoNombre} · ${combinacion.anio}`;
+  // Solo un rechazo real del revisor pinta la tarjeta en rojo; un reemplazo aprobado no.
+  const rechazoDelRevisor = reapertura !== null && !reapertura.porReemplazoAprobado;
 
   // Estado "bloqueado": ya se finalizó y envió una carga para esta combinación y todavía nadie
   // (ADMIN/REVISOR_REPOSITORIO) la decidió. No admite una subida nueva, pero sí solicitar su
@@ -742,7 +817,7 @@ function TarjetaCargaArchivo({
       id={idTarjetaVentana(combinacion.ventanaCargaId)}
       aria-labelledby={idTitulo}
       className={`${estilosIndicador.tarjeta} flex h-full w-full max-w-md flex-col scroll-mt-6 rounded-lg border bg-white p-5 transition-colors ${
-        reapertura ? "border-[#dfadb4] bg-[#fff8f8] shadow-[0_6px_18px_rgba(161,31,31,0.06)]" : "border-gob-accent"
+        rechazoDelRevisor ? "border-[#dfadb4] bg-[#fff8f8] shadow-[0_6px_18px_rgba(161,31,31,0.06)]" : "border-gob-accent"
       }`}
     >
       <CabeceraTarjetaCarga
@@ -750,6 +825,8 @@ function TarjetaCargaArchivo({
         tituloCombinacion={tituloCombinacion}
         reapertura={reapertura}
         ventanaCerrada={combinacion.cerrada}
+        motivoSolicitud={solicitudReemplazoAprobada?.motivo ?? null}
+        comentarioRevisor={solicitudReemplazoAprobada?.comentarioRevision ?? null}
       />
 
       {avisoMensajes}
@@ -795,7 +872,7 @@ function TarjetaCargaArchivo({
         <a
           href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
           className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
-            reapertura
+            rechazoDelRevisor
               ? "border-[#cf8d97] bg-white text-gob-danger hover:bg-[#fff0f1]"
               : "border-green-600 bg-green-800 text-white hover:bg-gob-neutral"
           }`}
@@ -1014,6 +1091,7 @@ export function PanelCargaArchivo({
               reapertura={reapertura}
               avisoMensajes={avisoMensajesDeCombinacion(combinacion, mensajesPorVentana)}
               cargaProcesando={estadoTarjeta.cargaProcesando}
+              solicitudReemplazoAprobada={estadoTarjeta.solicitudReemplazoAprobada}
               onSubidaExitosa={registrarResultado}
               onSolicitudReemplazoEnviada={refrescarSolicitudes}
             />
