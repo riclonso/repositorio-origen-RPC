@@ -54,6 +54,7 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
         formato={formato}
         rutaBase="/revisor/formatos-excel"
         permitirEditarNombresColumnas
+        barraFlotante
       />
     </div>
   );
