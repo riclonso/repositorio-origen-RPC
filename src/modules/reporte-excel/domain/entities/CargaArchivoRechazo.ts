@@ -11,6 +11,16 @@ import { fechaVencimientoAutorizacion } from "@/modules/ventanas-carga/domain/en
 // reutilizar de `shared/schemas/` (esas son de contraseñas).
 export const LONGITUD_MAXIMA_MOTIVO_RECHAZO = 500;
 
+// Motivo generado por el sistema (no editable por el revisor) para el rechazo de la carga original
+// que dispara la aprobación de una solicitud de reemplazo con origen `CARGA_PENDIENTE_DECISION`.
+// También identifica esa reapertura en el panel del notificador, que no la presenta como un rechazo
+// sino como un reemplazo aprobado (`esReaperturaPorReemplazoAprobado`).
+export const MOTIVO_RECHAZO_POR_REEMPLAZO_APROBADO = "Reemplazo autorizado a solicitud del propio notificador.";
+
+export function esReaperturaPorReemplazoAprobado(motivo: string): boolean {
+  return motivo === MOTIVO_RECHAZO_POR_REEMPLAZO_APROBADO;
+}
+
 // Vista denormalizada (join a `CargaArchivo`/`FormatoExcel`/`VentanaCarga`/`Usuario`), mismo
 // criterio que `SolicitudReemplazoCarga`: los listados (banner del notificador, sección
 // "Rechazadas" del detalle de ventana) no necesitan una consulta aparte por fila.

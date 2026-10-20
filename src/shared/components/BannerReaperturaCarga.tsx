@@ -37,6 +37,8 @@ export type ReaperturaVigentePropiaVista = {
   // ISO. El panel lo compara con `vistoBuenoEn` de la carga vigente para saber si esta reapertura
   // habilita reemplazarla (`rechazoPosteriorAAprobacion`).
   rechazadoEn: string;
+  // Reapertura por una solicitud de reemplazo aprobada (no un rechazo del revisor).
+  porReemplazoAprobado: boolean;
 };
 
 type BannerReaperturaCargaProps = {
@@ -59,9 +61,13 @@ export function BannerReaperturaCarga({ reaperturas }: BannerReaperturaCargaProp
           className="rounded-lg border-2 border-gob-danger bg-gob-warning-fondo p-4 shadow-sm"
         >
           <p className="text-sm font-semibold text-gob-danger">
-            Tu carga de {reapertura.formatoExcelNombre} ({reapertura.anio}) fue rechazada
+            {reapertura.porReemplazoAprobado
+              ? `Tu solicitud de reemplazo de ${reapertura.formatoExcelNombre} (${reapertura.anio}) fue aprobada`
+              : `Tu carga de ${reapertura.formatoExcelNombre} (${reapertura.anio}) fue rechazada`}
           </p>
-          <p className="mt-1 text-sm text-gob-gray-a">Motivo: {reapertura.motivo}</p>
+          {reapertura.porReemplazoAprobado ? null : (
+            <p className="mt-1 text-sm text-gob-gray-a">Motivo: {reapertura.motivo}</p>
+          )}
           <p className="mt-1 text-sm text-gob-gray-a">
             Puedes volver a subir un archivo para esta combinación hasta el{" "}
             <strong>{formatearFechaHora(new Date(reapertura.fechaLimite))}</strong>

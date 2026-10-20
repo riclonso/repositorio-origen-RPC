@@ -118,6 +118,9 @@ export default async function NotificadorPage() {
   const solicitudesIniciales: SolicitudReemplazoPropiaVista[] = solicitudesPropias.solicitudes.map((solicitud) => ({
     id: solicitud.id,
     cargaArchivoId: solicitud.cargaArchivoId,
+    ventanaCargaId: solicitud.ventanaCargaId,
+    motivo: solicitud.motivo,
+    comentarioRevision: solicitud.comentarioRevision,
     estado: solicitud.estado,
     origen: solicitud.origen,
     vencida: solicitudVencida(solicitud, ahora),

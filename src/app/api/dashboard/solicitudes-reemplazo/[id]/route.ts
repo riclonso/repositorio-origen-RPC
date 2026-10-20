@@ -10,6 +10,7 @@ import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repos
 import { rechazarCarga } from "@/modules/reporte-excel/application/use-cases/RechazarCarga";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
 import { auditarCargaArchivo } from "@/modules/reporte-excel/infrastructure/auditoria/auditarCargaArchivo";
+import { MOTIVO_RECHAZO_POR_REEMPLAZO_APROBADO } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import {
   MENSAJE_DATOS_INVALIDOS,
   MENSAJE_ERROR_INTERNO,
@@ -24,11 +25,6 @@ import {
 
 const ACCION = "SOLICITUD_REEMPLAZO_REVISADA" as const;
 const ACCION_CARGA_RECHAZADA = "CARGA_ARCHIVO_RECHAZADA" as const;
-
-// Motivo generado por el sistema (no editable por el revisor) para el rechazo de la carga original
-// que dispara la aprobación de una solicitud de reemplazo con origen `CARGA_PENDIENTE_DECISION`.
-// Dentro del tope de `LONGITUD_MAXIMA_MOTIVO_RECHAZO` de `CargaArchivoRechazo`.
-const MOTIVO_RECHAZO_POR_REEMPLAZO_APROBADO = "Reemplazo autorizado a solicitud del propio notificador.";
 
 // Aprueba o rechaza una solicitud `PENDIENTE`. Cualquier ADMIN o REVISOR_REPOSITORIO puede
 // resolver cualquier solicitud (a diferencia de la eliminación de ventanas de carga, no hay

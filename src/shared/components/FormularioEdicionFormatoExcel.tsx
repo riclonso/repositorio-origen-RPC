@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
+import { colorDeRuta } from "@/shared/utils/colorArea";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { FormatoExcel, SeparadorCsv } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
@@ -33,7 +34,7 @@ type FormularioEdicionFormatoExcelProps = {
   // puede asumir una de las dos rutas para "Cancelar" ni para la redirección tras guardar.
   rutaBase: string;
   permitirEditarNombresColumnas?: boolean;
-  // Guardar y cancelar como iconos flotantes al costado derecho (panel de administrador) en vez
+  // Guardar y cancelar como iconos flotantes al costado derecho (paneles de administrador y revisor) en vez
   // de la barra inferior fija.
   barraFlotante?: boolean;
 };
@@ -212,12 +213,14 @@ export function FormularioEdicionFormatoExcel({
         <div
           role="group"
           aria-label="Acciones del formato"
-          className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4 rounded-full border border-[#173b69] bg-[#173b69] p-3 shadow-[0_10px_26px_rgba(23,59,105,0.12)]"
+          // Mismo color que el encabezado del panel en curso (administrador, revisor, ...).
+          style={{ "--color-area": colorDeRuta(rutaBase) } as CSSProperties}
+          className="fixed right-4 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-4 rounded-full border border-(--color-area) bg-(--color-area) p-3 shadow-[0_10px_26px_rgba(23,59,105,0.12)]"
         >
           <BotonIcono
             etiqueta="Guardar cambios"
             Icono={IconoGuardarGrande}
-            tono="azul"
+            tono="area"
             grande
             deshabilitado={enviando}
             motivoDeshabilitado="Guardando cambios..."

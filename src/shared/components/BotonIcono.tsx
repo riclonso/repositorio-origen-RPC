@@ -14,7 +14,7 @@ type BotonIconoProps = {
   Icono: ComponentType<PropsIcono>;
   href?: string;
   onClick?: () => void;
-  tono?: "neutro" | "primario" | "exito" | "azul" | "peligro";
+  tono?: "neutro" | "primario" | "exito" | "azul" | "area" | "peligro";
   // Solo aplica a la variante botón (sin `href`). `motivoDeshabilitado` reemplaza al `title`
   // mientras está deshabilitado, para explicar al puntero por qué no está disponible.
   deshabilitado?: boolean;
@@ -30,19 +30,23 @@ const CLASES_GRANDE = "h-12 w-12";
 
 const CLASES_TONO = {
   neutro:
-    "border-gob-accent bg-white text-gob-primary hover:border-gob-primary hover:bg-gob-neutral focus-visible:outline-gob-primary",
+    "border-gob-accent bg-white text-gob-primary hover:border-gob-primary hover:bg-white focus-visible:outline-gob-primary",
   primario:
-    "border-gob-primary bg-gob-primary text-white hover:bg-gob-primary-oscuro focus-visible:outline-gob-primary",
+    "border-gob-primary bg-gob-primary text-white hover:bg-white hover:text-gob-primary focus-visible:outline-gob-primary",
   // Confirmaciones compactas: contorno e icono verde sobre fondo blanco, para diferenciarlas de
   // una acción primaria de navegación sin perder el significado positivo de la aprobación.
   exito:
-    "border-gob-success bg-white text-gob-success hover:bg-gob-success/10 focus-visible:outline-gob-success",
+    "border-gob-success bg-white text-gob-success hover:bg-white focus-visible:outline-gob-success",
   // Azul del encabezado del panel de administración (`#173b69`, ver `EncabezadoPanel`), en
   // contorno como el resto de iconos de este componente.
   azul:
-    "border-[#173b69] bg-white text-[#173b69] hover:bg-[#173b69]/10 focus-visible:outline-[#173b69]",
+    "border-[#173b69] bg-white text-[#173b69] hover:bg-white focus-visible:outline-[#173b69]",
+  // Color del área en curso (el del encabezado), leído de la variable `--color-area` que define un
+  // contenedor ancestro (ver `colorDeRuta()` en `shared/utils/colorArea.ts`). Hover verde claro.
+  area:
+    "border-(--color-area) bg-white text-(--color-area) hover:bg-green-200 focus-visible:outline-(--color-area)",
   peligro:
-    "border-gob-accent bg-white text-gob-danger hover:border-gob-danger hover:bg-gob-danger/10 focus-visible:outline-gob-danger",
+    "border-gob-accent bg-white text-gob-danger hover:border-gob-danger hover:bg-white focus-visible:outline-gob-danger",
 } as const;
 
 // Mismo trato visual que el botón de eliminar deshabilitado de `TablaFormatosExcel`.

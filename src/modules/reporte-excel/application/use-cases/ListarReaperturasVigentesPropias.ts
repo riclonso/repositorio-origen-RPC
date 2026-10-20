@@ -1,4 +1,4 @@
-import { fechaLimiteReapertura, reaperturaVigente } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
+import { esReaperturaPorReemplazoAprobado, fechaLimiteReapertura, reaperturaVigente } from "@/modules/reporte-excel/domain/entities/CargaArchivoRechazo";
 import type { CargaArchivoRepository } from "@/modules/reporte-excel/domain/repositories/CargaArchivoRepository";
 
 export type ReaperturaVigenteVista = {
@@ -10,6 +10,9 @@ export type ReaperturaVigenteVista = {
   // El panel lo compara con `vistoBuenoEn` de la carga vigente (`rechazoPosteriorAAprobacion`)
   // para decidir si esta reapertura habilita reemplazarla.
   rechazadoEn: Date;
+  // La reapertura viene de aprobar una solicitud de reemplazo del propio notificador (no de un
+  // rechazo del revisor): el panel la presenta como "Reemplazo aprobado", no como "Rechazado".
+  porReemplazoAprobado: boolean;
 };
 
 // Banner de `/notificador` (RF nuevo): reaperturas vigentes y todavía no consumidas del
@@ -30,6 +33,7 @@ export async function listarReaperturasVigentesPropias(
       anio: rechazo.anio,
       motivo: rechazo.motivo,
       rechazadoEn: rechazo.rechazadoEn,
+      porReemplazoAprobado: esReaperturaPorReemplazoAprobado(rechazo.motivo),
       fechaLimite: fechaLimiteReapertura(rechazo, { fechaVencimiento: rechazo.ventanaFechaVencimiento }),
     }));
 }

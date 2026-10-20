@@ -3,24 +3,16 @@ import { MenuConfiguracionUsuario } from "@/shared/components/MenuConfiguracionU
 import { MenuNotificacionesRevisor } from "@/shared/components/MenuNotificacionesRevisor";
 import { obtenerSesionAdministradorOrigen } from "@/modules/auth/infrastructure/auth/SesionDelegada";
 import { VolverSesionAdministrador } from "@/shared/components/VolverSesionAdministrador";
+import { COLOR_AREA, type RutaArea } from "@/shared/utils/colorArea";
 
 type EncabezadoPanelProps = {
   // Base de ruta del área actual, para que el menú de configuración enlace a
   // `${rutaBase}/perfil` y `${rutaBase}/perfil/contrasena` sin que este componente conozca las
   // tres áreas del sistema. Mismo patrón `rutaBase` ya usado por `TablaUsuarios`/`TablaFormatosExcel`.
-  rutaBase: "/dashboard" | "/notificador" | "/revisor" | "/bioestadistica";
+  rutaBase: RutaArea;
   // Solo el revisor recibe la bandeja de trabajo de solicitudes pendientes; los demás perfiles
   // conservan el encabezado actual sin un control que no les corresponde.
   bandejaNotificaciones?: BandejaRevision;
-};
-
-// Color de fondo de cada área: distingue de un vistazo en qué panel se está.
-const COLOR_FONDO_AREA: Record<EncabezadoPanelProps["rutaBase"], string> = {
-  "/dashboard": "bg-[#173b69]",
-  "/notificador": "bg-[#678d6c]",
-  "/revisor": "bg-[#3f84d8]",
-  // RF-37: área del perfil Bioestadística.
-  "/bioestadistica": "bg-[#5b4f8f]",
 };
 
 // Encabezado común a los paneles: branding institucional a la izquierda y el menú de
@@ -29,11 +21,12 @@ const COLOR_FONDO_AREA: Record<EncabezadoPanelProps["rutaBase"], string> = {
 // (`BarraLateralPanel`).
 export async function EncabezadoPanel({ rutaBase, bandejaNotificaciones }: EncabezadoPanelProps) {
   const sesionAdministradorOrigen = await obtenerSesionAdministradorOrigen();
-  const colorFondo = COLOR_FONDO_AREA[rutaBase];
   const colorSubtitulo = rutaBase === "/notificador" || rutaBase === "/bioestadistica" ? "text-white" : "text-white/60";
 
   return (
-    <header className={`flex items-center justify-between gap-4 border-b border-transparent px-4 py-3.5 md:px-7 ${colorFondo}`}>
+    <header className={`flex items-center justify-between gap-4 border-b border-transparent px-4 py-3.5 md:px-7`}
+      style={{ backgroundColor: COLOR_AREA[rutaBase] }}
+    >
       <div className="min-w-0">
         <p className="text-sm font-semibold tracking-wide text-white">Repositorio RPC</p>
         <p className={`text-xs ${colorSubtitulo}`}>SEREMI de Salud Biobío</p>
