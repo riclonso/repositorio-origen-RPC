@@ -87,6 +87,10 @@ export type CombinacionCargaVista = {
   formatoNombre: string;
   anio: number;
   ventanaCargaId: string;
+  // Fecha y hora (ISO) en que se abre la ventana; ordena las tarjetas de la más nueva a la más antigua.
+  fechaApertura: string;
+  // Fecha y hora (ISO) en que se cierra la ventana; la tarjeta la muestra bajo el estado.
+  fechaVencimiento: string;
   // RF-36: ventana cerrada POR FECHA (publicada, no archivada) que se muestra solo porque el
   // notificador tiene una solicitud de reemplazo en curso o una habilitación fuera de plazo vigente.
   cerrada: boolean;
@@ -222,19 +226,23 @@ function cargaEnValidacion(cargas: CargaResumenVista[], ventanaCargaId: string):
   return masReciente?.estado === "PROCESANDO" ? masReciente : null;
 }
 
-// Intentos `CON_ERRORES` de la combinación posteriores al último envío (`finalizadaEn` más reciente
-// de cualquier carga de esa ventana). Finalizar y enviar deja el historial vacío, y al subir un
-// reemplazo el historial parte de cero con los intentos fallidos nuevos. Solo se ocultan en la
-// tarjeta: los intentos siguen en la base de datos y su detalle sigue accesible.
+// Intentos `CON_ERRORES` de la combinación posteriores al último intento bueno. El corte es el más
+// reciente entre (a) el último envío (`finalizadaEn` de cualquier carga de la ventana) y (b) la última
+// subida que validó sin errores (pendiente, aprobada o rechazada tras revisarse), aunque aún no se
+// haya enviado: un fallo anterior a una subida correcta ya no es relevante, y tras un reemplazo
+// aprobado el historial parte de cero con los intentos fallidos nuevos. Solo se ocultan en la tarjeta:
+// los intentos siguen en la base de datos y su detalle sigue accesible.
 function intentosFallidosDesdeUltimoEnvio(cargas: CargaResumenVista[], ventanaCargaId: string): CargaResumenVista[] {
   const deLaVentana = cargas.filter((carga) => carga.ventanaCargaId === ventanaCargaId);
-  const ultimoEnvio = deLaVentana.reduce<string | null>(
-    (maximo, carga) => (carga.finalizadaEn && (!maximo || carga.finalizadaEn > maximo) ? carga.finalizadaEn : maximo),
-    null,
-  );
-  return deLaVentana.filter(
-    (carga) => carga.estado === "CON_ERRORES" && (!ultimoEnvio || carga.createdAt > ultimoEnvio),
-  );
+  const corte = deLaVentana.reduce<string | null>((maximo, carga) => {
+    const marcas = [carga.finalizadaEn];
+    if (carga.estado !== "CON_ERRORES" && carga.estado !== "PROCESANDO") marcas.push(carga.createdAt);
+    return marcas.reduce<string | null>(
+      (actual, marca) => (marca && (!actual || marca > actual) ? marca : actual),
+      maximo,
+    );
+  }, null);
+  return deLaVentana.filter((carga) => carga.estado === "CON_ERRORES" && (!corte || carga.createdAt > corte));
 }
 
 // Deriva, sin consultas nuevas, el estado de la tarjeta de una combinación a partir de lo que el
@@ -283,6 +291,21 @@ function derivarEstadoTarjeta(
   };
 }
 
+// Grupo de orden de una tarjeta (menor = más arriba). Sigue el mismo criterio con que
+// `TarjetaCargaArchivo` decide qué estado dibujar: pendiente de decisión, aprobada sin habilitación,
+// reapertura, ventana cerrada por fecha; cualquier otra es una ventana por subir.
+function grupoOrdenTarjeta(
+  combinacion: CombinacionCargaVista,
+  estado: EstadoTarjetaCombinacion,
+  reaperturas: ReaperturaVigentePropiaVista[],
+): number {
+  if (estado.cargaPendienteDecision) return 1;
+  if (estado.cargaAprobada && estado.habilitacionReemplazo === null) return 3;
+  if (reaperturas.some((reapertura) => reapertura.ventanaCargaId === combinacion.ventanaCargaId)) return 2;
+  if (combinacion.cerrada) return 4;
+  return 0;
+}
+
 // RF-38: aviso mientras el servidor valida el archivo recién subido.
 function AvisoValidando() {
   return (
@@ -313,26 +336,33 @@ function AvisoReemplazoHabilitado({
   nombreArchivoVigente: string;
   venceElSolicitud: string | null;
 }) {
-  const motivo =
-    habilitacion === "SOLICITUD"
-      ? "Tu solicitud de reemplazo fue aprobada"
-      : "Tu carga anterior fue rechazada";
+  const titulo =
+    habilitacion === "SOLICITUD" ? "Tu solicitud de reemplazo fue aprobada" : "Tu carga anterior fue rechazada";
   const plazo = habilitacion === "SOLICITUD" ? venceElSolicitud : null;
 
   return (
-    <p className="mt-2 text-sm font-medium text-gob-primary">
-      {motivo}: puedes subir un archivo que reemplazará a <strong>{nombreArchivoVigente}</strong>.
-      {plazo ? (
-        <>
-          {" "}
-          Plazo para subirlo y enviarlo:{" "}
-          <time dateTime={plazo} className="font-semibold tabular-nums">
-            {formatearFechaHoraIso(plazo)}
-          </time>
-          .
-        </>
-      ) : null}
-    </p>
+    <div className="mt-3 rounded-md border-l-4 border-gob-primary bg-gob-primary/5 px-4 py-3 text-sm leading-5">
+      <p className="font-semibold text-gob-primary">{titulo}</p>
+      <p className="mt-1 text-gob-gray-a">Ya puedes subir un archivo nuevo que reemplazará al vigente.</p>
+      <dl className="mt-3 flex flex-col gap-2">
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-gob-gray-a">Archivo a reemplazar</dt>
+          <dd className="mt-0.5 font-semibold wrap-break-word text-gob-tertiary">{nombreArchivoVigente}</dd>
+        </div>
+        {plazo ? (
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-gob-gray-a">
+              Plazo para subirlo y enviarlo
+            </dt>
+            <dd className="mt-0.5 font-semibold text-gob-tertiary">
+              <time dateTime={plazo} className="tabular-nums">
+                {formatearFechaHoraIso(plazo)}
+              </time>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
   );
 }
 
@@ -396,6 +426,19 @@ function TablaIntentosFallidos({ intentos }: { intentos: CargaResumenVista[] }) 
   );
 }
 
+// Fecha de cierre de la ventana, bajo la etiqueta de estado de la tarjeta (en una ventana ya cerrada
+// por fecha dice "Cerró" en vez de "Cierra").
+function CierreVentana({ fechaVencimiento, cerrada = false }: { fechaVencimiento: string; cerrada?: boolean }) {
+  return (
+    <p className="mt-2 text-right text-xs leading-4 text-gob-gray-a">
+      {cerrada ? "Cerró" : "Cierra"}
+      <time dateTime={fechaVencimiento} className="mt-0.5 block font-semibold tabular-nums text-gob-tertiary">
+        {formatearFechaHoraIso(fechaVencimiento)}
+      </time>
+    </p>
+  );
+}
+
 // Cabecera de la tarjeta de subida. Con una reapertura vigente se destaca como rechazo con su motivo
 // y plazo; RF-36: una ventana cerrada por fecha (habilitada solo por una autorización) se marca como
 // "Fuera de plazo" para que no se lea como una ventana abierta. Extraída de `TarjetaCargaArchivo`
@@ -405,6 +448,7 @@ function CabeceraTarjetaCarga({
   tituloCombinacion,
   reapertura,
   ventanaCerrada,
+  fechaVencimiento,
   motivoSolicitud,
   comentarioRevisor,
 }: {
@@ -412,6 +456,7 @@ function CabeceraTarjetaCarga({
   tituloCombinacion: string;
   reapertura: ReaperturaVigentePropiaVista | null;
   ventanaCerrada: boolean;
+  fechaVencimiento: string;
   // Motivo de la solicitud de reemplazo aprobada que originó la reapertura, si se conoce.
   motivoSolicitud: string | null;
   // Comentario del revisor al aprobar esa solicitud (opcional).
@@ -484,15 +529,21 @@ function CabeceraTarjetaCarga({
         <h3 id={idTitulo} className={estilosTarjeta.titulo}>
           {tituloCombinacion}
         </h3>
-        <span className={`${estilosTarjeta.estado} ${estilosTarjeta.pendiente}`}>Fuera de plazo</span>
+        <div className="flex flex-col items-end">
+          <span className={`${estilosTarjeta.estado} ${estilosTarjeta.pendiente}`}>Fuera de plazo</span>
+          <CierreVentana fechaVencimiento={fechaVencimiento} cerrada />
+        </div>
       </div>
     );
   }
 
   return (
-    <h3 id={idTitulo} className="text-base font-semibold text-gob-tertiary">
-      {tituloCombinacion}
-    </h3>
+    <div className={estilosTarjeta.cabecera}>
+      <h3 id={idTitulo} className="min-w-0 text-base font-semibold text-gob-tertiary">
+        {tituloCombinacion}
+      </h3>
+      <CierreVentana fechaVencimiento={fechaVencimiento} />
+    </div>
   );
 }
 
@@ -535,11 +586,13 @@ type TarjetaCargaBloqueadaProps = {
   idTitulo: string;
   tituloCombinacion: string;
   formatoExcelId: string;
+  fechaVencimiento: string;
   mensaje: ReactNode;
   cargaArchivoId: string;
   placeholderMotivo: string;
   solicitudPendiente: boolean;
-  // La etiqueta de estado distingue una carga que espera decisión de una ya aprobada.
+  // La etiqueta de estado distingue una carga que espera decisión de una ya aprobada. Solo la aprobada
+  // ofrece "Solicitar reemplazo".
   variante: "pendiente" | "aprobada";
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`).
   avisoMensajes: ReactNode;
@@ -554,6 +607,7 @@ function TarjetaCargaBloqueada({
   idTitulo,
   tituloCombinacion,
   formatoExcelId,
+  fechaVencimiento,
   mensaje,
   cargaArchivoId,
   placeholderMotivo,
@@ -574,9 +628,12 @@ function TarjetaCargaBloqueada({
         <h3 id={idTitulo} className={estilosTarjeta.titulo}>
           {tituloCombinacion}
         </h3>
-        <span className={`${estilosTarjeta.estado} ${estaPendienteDeAprobacion ? estilosTarjeta.pendiente : estilosTarjeta.aprobado}`}>
-          {etiquetaEstado}
-        </span>
+        <div className="flex flex-col items-end">
+          <span className={`${estilosTarjeta.estado} ${estaPendienteDeAprobacion ? estilosTarjeta.pendiente : estilosTarjeta.aprobado}`}>
+            {etiquetaEstado}
+          </span>
+          <CierreVentana fechaVencimiento={fechaVencimiento} />
+        </div>
       </div>
 
       <p className="mt-2 text-sm text-gob-gray-a">{mensaje}</p>
@@ -596,7 +653,7 @@ function TarjetaCargaBloqueada({
           <p role="status" className="text-sm font-semibold text-[#075d9b]">
             Solicitud de reemplazo pendiente.
           </p>
-        ) : (
+        ) : estaPendienteDeAprobacion ? null : (
           <FormularioSolicitudReemplazo
             rutaApi="/api/notificador/solicitudes-reemplazo"
             cuerpo={{ cargaArchivoId }}
@@ -771,10 +828,11 @@ function TarjetaCargaArchivo({
         idTitulo={idTitulo}
         tituloCombinacion={tituloCombinacion}
         formatoExcelId={combinacion.formatoExcelId}
+        fechaVencimiento={combinacion.fechaVencimiento}
         mensaje={
           <>
             El archivo <strong>{cargaPendienteDecision.nombreArchivoOriginal}</strong> fue enviado y está esperando
-            aprobación. Si necesita corregirlo, presione <strong>Solicitar reemplazo</strong>.
+            aprobación. Podrá solicitar un reemplazo cuando sea aprobado.
           </>
         }
         cargaArchivoId={cargaPendienteDecision.id}
@@ -795,6 +853,7 @@ function TarjetaCargaArchivo({
         idTitulo={idTitulo}
         tituloCombinacion={tituloCombinacion}
         formatoExcelId={combinacion.formatoExcelId}
+        fechaVencimiento={combinacion.fechaVencimiento}
         mensaje={
           <>
             El archivo <strong>{cargaAprobada.nombreArchivoOriginal}</strong> ya fue aprobado. Si necesita
@@ -825,6 +884,7 @@ function TarjetaCargaArchivo({
         tituloCombinacion={tituloCombinacion}
         reapertura={reapertura}
         ventanaCerrada={combinacion.cerrada}
+        fechaVencimiento={combinacion.fechaVencimiento}
         motivoSolicitud={solicitudReemplazoAprobada?.motivo ?? null}
         comentarioRevisor={solicitudReemplazoAprobada?.comentarioRevision ?? null}
       />
@@ -868,33 +928,35 @@ function TarjetaCargaArchivo({
 
       </div>
 
-      <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-gob-accent pt-4">
-        <a
-          href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
-          className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
-            rechazoDelRevisor
-              ? "border-[#cf8d97] bg-white text-gob-danger hover:bg-[#fff0f1]"
-              : "border-green-600 bg-green-800 text-white hover:bg-gob-neutral"
-          }`}
-        >
-          <IconoDescargar className="shrink-0" />
-          Descargar plantilla
-        </a>
-        <Boton
-          onClick={() => void subirArchivo()}
-          disabled={!archivo || idEnValidacion !== null}
-          cargando={subiendo}
-          textoCargando={progreso === null ? "Subiendo archivo…" : `Subiendo archivo… ${progreso} %`}
-          className="w-fit"
-        >
-          <IconoSubir className="shrink-0" />
-          Subir archivo
-        </Boton>
-      </div>
-
       {resultado ? <ResultadoUltimaSubida resultado={resultado} /> : null}
 
       <TablaIntentosFallidos intentos={intentosFallidos} />
+
+      <div className="mt-auto pt-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-gob-accent pt-4">
+          <a
+            href={`/api/formatos-excel/${combinacion.formatoExcelId}/plantilla`}
+            className={`inline-flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
+              rechazoDelRevisor
+                ? "border-[#cf8d97] bg-white text-gob-danger hover:bg-[#fff0f1]"
+                : "border-green-600 bg-green-800 text-white hover:bg-gob-neutral"
+            }`}
+          >
+            <IconoDescargar className="shrink-0" />
+            Descargar plantilla
+          </a>
+          <Boton
+            onClick={() => void subirArchivo()}
+            disabled={!archivo || idEnValidacion !== null}
+            cargando={subiendo}
+            textoCargando={progreso === null ? "Subiendo archivo…" : `Subiendo archivo… ${progreso} %`}
+            className="w-fit"
+          >
+            <IconoSubir className="shrink-0" />
+            Subir archivo
+          </Boton>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1036,12 +1098,26 @@ export function PanelCargaArchivo({
     }
   }
 
-  // Una corrección con plazo es la tarea más urgente del notificador. Se prioriza sin mutar las
-  // props originales y las tarjetas restantes preservan el orden que ya entregaba el servidor.
+  // Orden de las tarjetas: primero las ventanas nuevas (por subir), luego pendientes de aprobación,
+  // rechazadas, aprobadas y al final las fuera de plazo; dentro de cada grupo, de la más nueva a la más
+  // antigua. Se ordena sin mutar las props originales.
   const combinacionesOrdenadas = [...combinaciones].toSorted((izquierda, derecha) => {
-    const izquierdaRechazada = reaperturas.some((reapertura) => reapertura.ventanaCargaId === izquierda.ventanaCargaId);
-    const derechaRechazada = reaperturas.some((reapertura) => reapertura.ventanaCargaId === derecha.ventanaCargaId);
-    return Number(derechaRechazada) - Number(izquierdaRechazada);
+    const grupoIzquierda = grupoOrdenTarjeta(
+      izquierda,
+      derivarEstadoTarjeta(izquierda.ventanaCargaId, misCargas, misSolicitudes, reaperturas),
+      reaperturas,
+    );
+    const grupoDerecha = grupoOrdenTarjeta(
+      derecha,
+      derivarEstadoTarjeta(derecha.ventanaCargaId, misCargas, misSolicitudes, reaperturas),
+      reaperturas,
+    );
+    if (grupoIzquierda !== grupoDerecha) return grupoIzquierda - grupoDerecha;
+
+    return (
+      derecha.fechaApertura.localeCompare(izquierda.fechaApertura) ||
+      derecha.anio - izquierda.anio
+    );
   });
   const hayIconosMensajes = combinaciones.some(
     (combinacion) => (mensajesPorVentana[combinacion.ventanaCargaId]?.total ?? 0) > 0,

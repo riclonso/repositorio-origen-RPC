@@ -44,6 +44,9 @@ export function ModalCargaExitosa({ abierto, nombreArchivo, onCerrar, onFinaliza
       <p className="mt-3 text-sm text-gob-gray-a">
         Al finalizar y enviar, el archivo quedará pendiente de aprobación. Esta acción no se puede deshacer.
       </p>
+      <p className="mt-3 text-sm text-gob-gray-a">
+        Si más adelante quiere reemplazar el archivo, primero debe ser aprobado por el revisor.
+      </p>
       {error ? <p role="alert" className="mt-3 text-sm font-medium text-gob-danger">{error}</p> : null}
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Boton variante="secundario" onClick={onCerrar} disabled={procesando}>Cancelar</Boton>

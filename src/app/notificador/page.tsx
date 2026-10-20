@@ -104,6 +104,8 @@ export default async function NotificadorPage() {
         formatoNombre: formato.nombre,
         anio: ventana.anio,
         ventanaCargaId: ventana.id,
+        fechaApertura: ventana.fechaApertura.toISOString(),
+        fechaVencimiento: ventana.fechaVencimiento.toISOString(),
         cerrada,
       })),
   );
