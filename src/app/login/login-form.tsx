@@ -52,8 +52,9 @@ export function LoginForm() {
         <Image
           src="/logo-seremi-biobio.jpg"
           alt="Logo SEREMI de Salud Biobío"
-          width={120}
-          height={120}
+          width={155}
+          height={141}
+          className="h-auto w-[120px]"
           priority
         />
       </div>
