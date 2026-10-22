@@ -4,6 +4,9 @@ import { z } from "zod";
 import { obtenerFormatoExcel } from "@/modules/formatos-excel/application/use-cases/ObtenerFormatoExcel";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { FormularioEdicionFormatoExcel } from "@/shared/components/FormularioEdicionFormatoExcel";
+import { obtenerVistaReglasLlenado } from "@/modules/formatos-excel/application/use-cases/ObtenerReglasLlenadoParaNotificador";
+import { prismaReglasLlenadoRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaReglasLlenadoRepository";
+import { SeccionReglasLlenado } from "@/shared/components/SeccionReglasLlenado";
 
 export const metadata: Metadata = {
   title: "Editar formato de archivo - Repositorio RPC - SEREMI de Salud Biobío",
@@ -23,7 +26,11 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
     notFound();
   }
 
-  const formato = await obtenerFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository });
+  const [formato, reglas] = await Promise.all([
+    obtenerFormatoExcel(idValido.data, { repositorio: prismaFormatoExcelRepository }),
+    // RF-45: archivo de reglas de llenado del formato (o `null`).
+    obtenerVistaReglasLlenado(idValido.data, { repositorio: prismaReglasLlenadoRepository }),
+  ]);
 
   if (!formato) {
     notFound();
@@ -43,6 +50,20 @@ export default async function EditarFormatoExcelRevisorPage({ params }: EditarFo
       >
         Descargar plantilla
       </a>
+
+      <SeccionReglasLlenado
+        formatoExcelId={formato.id}
+        reglas={
+          reglas
+            ? {
+                nombreArchivoOriginal: reglas.nombreArchivoOriginal,
+                tamanoBytes: reglas.tamanoBytes,
+                subidoEn: reglas.subidoEn.toISOString(),
+                subidoPorNombre: reglas.subidoPorNombre,
+              }
+            : null
+        }
+      />
 
       {/* `key={formato.id}` fuerza el remonte del formulario al navegar entre ediciones de
           formatos distintos: su estado interno se inicializa una sola vez desde `formato`

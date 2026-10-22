@@ -108,7 +108,12 @@ export type AccionAuditoria =
   | "CARGA_BIOESTADISTICA_RECIBIDA"
   | "CARGA_BIOESTADISTICA_PROCESADA"
   | "SOLICITUD_REEMPLAZO_BIOESTADISTICA_CREADA"
-  | "SOLICITUD_REEMPLAZO_BIOESTADISTICA_REVISADA";
+  | "SOLICITUD_REEMPLAZO_BIOESTADISTICA_REVISADA"
+  // RF-45: archivo de reglas para llenar el archivo a notificar, asociado al formato. Nunca el
+  // contenido: solo formato, extensión y tamaño. Las descargas no se auditan.
+  | "REGLAS_LLENADO_SUBIDAS"
+  | "REGLAS_LLENADO_REEMPLAZADAS"
+  | "REGLAS_LLENADO_ELIMINADAS";
 
 // "SIN_EFECTO" no es un rechazo: la petición se aceptó y respondió con normalidad, pero no
 // produjo ningún cambio (la cuenta no existía, estaba inactiva, agotó su cupo). Es la única
@@ -278,7 +283,11 @@ export type MotivoAuditoria =
   | "PROCESAMIENTO_INTERRUMPIDO"
   // RF-38, de `CARGA_ARCHIVO_PROCESADA` (RECHAZADO): el archivo del notificador no se pudo leer. De
   // `CARGA_ARCHIVO_REGISTRADA` además se usa `EN_PROCESO` (arriba): ya hay uno validándose.
-  | "ARCHIVO_NO_PROCESADO";
+  | "ARCHIVO_NO_PROCESADO"
+  // RF-45 (reglas de llenado): el archivo supera el tope de tamaño (413) o su contenido real no
+  // corresponde a la extensión (o la extensión no está en la lista blanca).
+  | "EXCEDE_TAMANO"
+  | "TIPO_INVALIDO";
 
 // Ningún campo de este evento admite contraseñas, hashes, fragmentos ni longitudes de
 // contraseña: de una operación sobre credenciales solo se registra quién, a quién y cuándo.
@@ -412,6 +421,8 @@ export type EventoAuditoria = {
   cantidadFilasDatos?: number | null;
   tamanoBytes?: number | null;
   solicitudReemplazoBioestadisticaId?: string | null;
+  // RF-45: extensión validada del archivo de reglas de llenado (`tamanoBytes` se reutiliza).
+  extensionArchivo?: string | null;
   ip: string | null;
   userAgent: string | null;
 };

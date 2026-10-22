@@ -227,6 +227,12 @@ export type FormatoExcelResumen = {
   puedeEliminar: boolean;
 };
 
+// Formato asignado a un notificador (RF-14). RF-45: incluye el nombre del archivo de reglas de llenado
+// (null si el formato no tiene), resuelto en la misma consulta; nunca quién lo subió.
+export type FormatoExcelAsignado = FormatoExcelResumen & {
+  reglasLlenadoNombre: string | null;
+};
+
 export type DatosColumnaNueva = {
   orden: number;
   nombre: string;

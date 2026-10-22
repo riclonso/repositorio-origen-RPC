@@ -66,8 +66,8 @@ function main(): void {
   const descartables = [...RELACIONES_DESCARTABLES_USUARIO];
   const clasificadas = [...historial, ...descartables];
 
-  assert.equal(historial.length, 15, "Se esperaban 15 relaciones de historial");
-  assert.equal(descartables.length, 2, "Se esperaban 2 relaciones descartables");
+  assert.equal(historial.length, 16, "Se esperaban 16 relaciones de historial");
+  assert.equal(descartables.length, 3, "Se esperaban 3 relaciones descartables");
   assert.equal(new Set(clasificadas).size, clasificadas.length, "Una relación está clasificada dos veces");
 
   const sinClasificar = enSchema.filter((relacion) => !clasificadas.includes(relacion));

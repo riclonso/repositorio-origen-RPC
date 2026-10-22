@@ -31,12 +31,14 @@ import type { ResumenMensajesPorVentana } from "@/modules/mensajeria/domain/enti
 import { ModalCargaExitosa } from "@/shared/components/ModalCargaExitosa";
 import { ModalErroresCarga } from "@/shared/components/ModalErroresCarga";
 import {
+  IconoCargaAprobada,
   IconoDescargar,
   IconoSubir,
 } from "@/shared/components/iconos";
 import { formatearFechaHora } from "@/shared/utils/fecha";
 import estilosIndicador from "@/shared/components/IndicadorMensajes.module.css";
 import estilosTarjeta from "./tarjeta-carga.module.css";
+import { EnlaceReglasLlenado } from "./enlace-reglas-llenado";
 
 // Vista liviana de las cargas propias del notificador: mismos campos que `CargaArchivoResumenDTO`,
 // con las fechas ya como texto (llegan así tanto desde el servidor -prop inicial- como desde
@@ -94,6 +96,8 @@ export type CombinacionCargaVista = {
   // RF-36: ventana cerrada POR FECHA (publicada, no archivada) que se muestra solo porque el
   // notificador tiene una solicitud de reemplazo en curso o una habilitación fuera de plazo vigente.
   cerrada: boolean;
+  // RF-45: nombre del archivo de reglas de llenado del formato; `null` oculta el enlace.
+  reglasLlenadoNombre: string | null;
 };
 
 const MENSAJE_ERROR_GENERICO = "No se pudo completar la operación. Intenta nuevamente.";
@@ -596,6 +600,8 @@ type TarjetaCargaBloqueadaProps = {
   variante: "pendiente" | "aprobada";
   // RF-31: aviso de mensajes del equipo revisor de esta ventana (o `null`).
   avisoMensajes: ReactNode;
+  // RF-45: enlace a las reglas de llenado (o `null` si el formato no tiene).
+  enlaceReglas: ReactNode;
   onSolicitudReemplazoEnviada: () => void;
 };
 
@@ -614,6 +620,7 @@ function TarjetaCargaBloqueada({
   solicitudPendiente,
   variante,
   avisoMensajes,
+  enlaceReglas,
   onSolicitudReemplazoEnviada,
 }: TarjetaCargaBloqueadaProps) {
   const estaPendienteDeAprobacion = variante === "pendiente";
@@ -640,6 +647,13 @@ function TarjetaCargaBloqueada({
 
       {avisoMensajes}
 
+      {estaPendienteDeAprobacion ? null : (
+        <div className="my-6 flex flex-1 flex-col items-center justify-center gap-2 text-[#146c43]">
+          <IconoCargaAprobada />
+          <p className="text-sm font-semibold">Archivo aprobado</p>
+        </div>
+      )}
+
       <div className="mt-auto flex flex-wrap items-center gap-3 border-t border-gob-accent pt-4">
         <a
           href={`/api/formatos-excel/${formatoExcelId}/plantilla`}
@@ -648,6 +662,8 @@ function TarjetaCargaBloqueada({
           <IconoDescargar className="shrink-0" />
           Descargar plantilla
         </a>
+
+        {enlaceReglas}
 
         {solicitudPendiente ? (
           <p role="status" className="text-sm font-semibold text-[#075d9b]">
@@ -818,6 +834,13 @@ function TarjetaCargaArchivo({
   const tituloCombinacion = `${combinacion.formatoNombre} · ${combinacion.anio}`;
   // Solo un rechazo real del revisor pinta la tarjeta en rojo; un reemplazo aprobado no.
   const rechazoDelRevisor = reapertura !== null && !reapertura.porReemplazoAprobado;
+  const enlaceReglas = (
+    <EnlaceReglasLlenado
+      ventanaCargaId={combinacion.ventanaCargaId}
+      nombreArchivo={combinacion.reglasLlenadoNombre}
+      etiquetaTarjeta={tituloCombinacion}
+    />
+  );
 
   // Estado "bloqueado": ya se finalizó y envió una carga para esta combinación y todavía nadie
   // (ADMIN/REVISOR_REPOSITORIO) la decidió. No admite una subida nueva, pero sí solicitar su
@@ -840,6 +863,7 @@ function TarjetaCargaArchivo({
         solicitudPendiente={solicitudPendienteDeCargaPendiente}
         variante="pendiente"
         avisoMensajes={avisoMensajes}
+        enlaceReglas={enlaceReglas}
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );
@@ -866,6 +890,7 @@ function TarjetaCargaArchivo({
         solicitudPendiente={solicitudPendiente}
         variante="aprobada"
         avisoMensajes={avisoMensajes}
+        enlaceReglas={enlaceReglas}
         onSolicitudReemplazoEnviada={onSolicitudReemplazoEnviada}
       />
     );
@@ -945,6 +970,7 @@ function TarjetaCargaArchivo({
             <IconoDescargar className="shrink-0" />
             Descargar plantilla
           </a>
+          {enlaceReglas}
           <Boton
             onClick={() => void subirArchivo()}
             disabled={!archivo || idEnValidacion !== null}

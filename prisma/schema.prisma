@@ -25,6 +25,8 @@ model Perfil {
 
 model Usuario {
   lecturasNotificacion LecturaNotificacion[]
+  // RF-45: archivos de reglas de llenado subidos por la persona (historial, Restrict).
+  reglasLlenadoSubidas ReglasLlenadoFormato[] @relation("ReglasLlenadoSubidasPor")
   id             String   @id @default(uuid())
   nombres        String
   apellidos      String
@@ -204,6 +206,8 @@ model FormatoExcel {
   // directa a un formato concreto, exigida por Prisma. NUNCA usarla con `include` en `listar()`:
   // mismo motivo que `cargasArchivo`/`usuariosAsignados`.
   ventanasCarga     VentanaCarga[]
+  // RF-45: archivo de reglas para llenar el archivo a notificar (0..1 por formato).
+  reglasLlenado     ReglasLlenadoFormato?
 
   @@map("formato_excel")
 }
@@ -1116,4 +1120,27 @@ model LecturaNotificacion {
   leidoEn DateTime @default(now()) @db.Timestamp(3)
   @@id([usuarioId, avisoId, eventoFecha])
   @@map("lectura_notificacion")
+}
+
+// RF-45: archivo con las reglas para llenar el archivo a notificar, uno por formato (sirve para todas
+// sus ventanas). Reemplazar = UPDATE de esta fila (sin historial de versiones). El binario vive en disco
+// (`DIRECTORIO_ARCHIVOS_REGLAS`); `rutaArchivo` la genera el servidor y nunca contiene el nombre original.
+model ReglasLlenadoFormato {
+  id                    String       @id @default(uuid())
+  formatoExcelId        String       @unique
+  formatoExcel          FormatoExcel @relation(fields: [formatoExcelId], references: [id], onDelete: Cascade)
+  // Solo para mostrar y para el nombre de la descarga; nunca forma parte de la ruta.
+  nombreArchivoOriginal String       @db.VarChar(255)
+  // docx | doc | xlsx | xls | txt, decidida por el servidor.
+  extension             String       @db.VarChar(4)
+  tipoContenido         String
+  rutaArchivo           String
+  tamanoBytes           Int
+  sha256                String       @db.Char(64)
+  subidoPorId           String
+  subidoPor             Usuario      @relation("ReglasLlenadoSubidasPor", fields: [subidoPorId], references: [id], onDelete: Restrict)
+  subidoEn              DateTime     @db.Timestamp(3)
+
+  @@index([subidoPorId])
+  @@map("reglas_llenado_formato")
 }

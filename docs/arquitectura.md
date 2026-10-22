@@ -2306,6 +2306,31 @@ devuelve `conteoFallido: true` con `eraPrimerNoLeido: false`: el POST responde 2
 el fallo se registra como etapa `PREPARACION`; un fallo de `crear()` sigue siendo 500. El correo lleva nombre del notificador, establecimiento, formato y año, con enlace
 a `/revisor`; nunca contenido, longitud, RUT, email del notificador ni nombre de archivo.
 
+## Reglas para llenado de archivo por formato (RF-45)
+
+**Asociado al formato, no a la ventana.** `reglas_llenado_formato` tiene `formatoExcelId` UNIQUE (FK
+`Cascade`): las reglas describen cómo llenar un formato y lo reutilizan sus ventanas de todos los años, así
+que se sube una sola vez; reemplazarlo cambia lo que ven todas. Sin historial de versiones. `subidoPorId`
+es `Restrict` y cuenta como historial en `relacionesHistorialUsuario.ts`.
+
+**Binario en disco, ruta generada.** `AlmacenArchivosDisco` con directorio propio
+(`DIRECTORIO_ARCHIVOS_REGLAS`) y el método `moverDefinitivoEn(temporal, rutaRelativa)`, que rechaza rutas
+absolutas, `..`, segmentos vacíos y `tmp/` antes de verificar que la ruta quede dentro del base, sin cambiar
+la firma que usan RF-37/RF-38. Ruta `<formatoId>/<uuid>.<ext>`; el nombre original solo se muestra.
+Reemplazo: ruta nueva, UPDATE en transacción con `SELECT … FOR UPDATE` sobre `formato_excel`, borrado del
+archivo anterior tras el commit (un fallo solo se registra); si la BD falla se borra el nuevo.
+
+**Tipo por extensión y firma.** `DetectorTipoDocumento`: .docx/.xlsx exigen ZIP con `[Content_Types].xml`
+(máx. 1 MB descomprimido) y entradas reales bajo `word/` o `xl/`; .doc/.xls solo la firma OLE2 (no se
+distingue Word de Excel, decisión aceptada); .txt UTF-8 estricto sin NUL ni controles. Subida con binario
+crudo y `X-Nombre-Archivo`; `Content-Length` obligatorio y 413 antes de leer el cuerpo.
+
+**Un solo predicado de tarjeta.** `app/notificador/_lib/tarjetasNotificador.ts` es la única fuente de qué
+ventanas ve el notificador: la usan la página `/notificador` y la descarga de reglas, que responde 404 (no
+403) si la ventana no le corresponde, y toma el formato de la ventana autorizada, nunca del cliente. El
+listado trae `reglasLlenadoNombre` en el mismo `select`, sin N+1 y sin quién lo subió. Descargas siempre
+`attachment`, `nosniff` y `Cache-Control: private, no-store`.
+
 ## Registro de fallas de envío de correo (RF-44)
 
 **Un log dedicado, solo archivo.** `logs/fallas-correo.txt`, instancia Winston propia

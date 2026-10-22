@@ -5,12 +5,13 @@ import { Prisma } from "@prisma/client";
 // `PrismaUsuarioRepository`. Prohibido duplicar esta lista en otro punto.
 //
 // Clasificación de TODAS las relaciones de lista del `model Usuario` de `prisma/schema.prisma`:
-//  - HISTORIAL (15, todas `onDelete: Restrict`): hechos del sistema que una eliminación borraría o
+//  - HISTORIAL (16, todas `onDelete: Restrict`): hechos del sistema que una eliminación borraría o
 //    dejaría huérfanos. Una sola fila en cualquiera impide eliminar; la FK Restrict es además la
 //    defensa final de la base de datos.
-//  - DESCARTABLES (2, `onDelete: Cascade`): material de la propia cuenta sin valor histórico
-//    (tokens de recuperación, cuyo rastro de emisión ya está en `auditoria.txt`) o configuración
-//    vigente (asignaciones de formatos, cuyos ids se auditan como `formatosQuitados`).
+//  - DESCARTABLES (3, `onDelete: Cascade`): material de la propia cuenta sin valor histórico
+//    (tokens de recuperación, cuyo rastro de emisión ya está en `auditoria.txt`), configuración
+//    vigente (asignaciones de formatos, cuyos ids se auditan como `formatosQuitados`) o el estado
+//    personal de lectura de avisos (`lecturasNotificacion`).
 // `tests/relaciones-usuario.guard.unit.ts` compara esta clasificación contra el schema y falla si
 // alguien agrega una relación nueva a `Usuario` sin clasificarla aquí.
 //
@@ -87,6 +88,11 @@ export const RELACIONES_HISTORIAL_USUARIO: readonly RelacionHistorialUsuario[] =
     nombre: "solicitudesReemplazoBioestadisticaRevisadas",
     existe: Prisma.sql`EXISTS (SELECT 1 FROM "solicitud_reemplazo_bioestadistica" h WHERE h."revisadoPorId" = u."id")`,
   },
+  {
+    // RF-45: archivo de reglas de llenado vigente subido por la persona.
+    nombre: "reglasLlenadoSubidas",
+    existe: Prisma.sql`EXISTS (SELECT 1 FROM "reglas_llenado_formato" h WHERE h."subidoPorId" = u."id")`,
+  },
 ];
 
 // Relaciones que se eliminan en cascada junto con la cuenta. Solo documental (y para la prueba de
@@ -94,6 +100,8 @@ export const RELACIONES_HISTORIAL_USUARIO: readonly RelacionHistorialUsuario[] =
 export const RELACIONES_DESCARTABLES_USUARIO: readonly string[] = [
   "tokensRecuperacion",
   "formatosAsignados",
+  // `onDelete: Cascade` en el schema: marca personal de "aviso leído", sin valor histórico.
+  "lecturasNotificacion",
 ];
 
 // `true` si la cuenta tiene al menos una fila en cualquier relación de historial.

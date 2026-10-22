@@ -88,6 +88,8 @@ export const IconoAdvertencia = crearIcono(WarningCircle, TAMANO_CAMPO);
 // RF-14: carga y validación de archivos de reporte.
 export const IconoSubir = crearIcono(UploadSimple, TAMANO_CAMPO);
 export const IconoAprobado = crearIcono(SealCheck, TAMANO_ACCION);
+// Ilustración central de la tarjeta del notificador cuando su carga ya está aprobada.
+export const IconoCargaAprobada = crearIcono(CheckCircle, 72);
 // Acción de rechazar una carga: la X comunica la decisión negativa sin reutilizar el basurero,
 // que está reservado para eliminaciones irreversibles.
 export const IconoRechazar = crearIcono(X, TAMANO_ACCION);

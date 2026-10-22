@@ -62,6 +62,7 @@ Validadas con Zod en `src/infrastructure/config/env.ts` (falla rápido al import
 | `ADMIN_SEED_PASSWORD`  | Solo usada por `scripts/seed-admin.ts` (no pasa por `env.ts`). |
 | `DIRECTORIO_ARCHIVOS_BIOESTADISTICA` | RF-37. Opcional: directorio base de los archivos de Bioestadística. Si se define, debe ser una ruta absoluta; por defecto es `<cwd>/almacenamiento/bioestadistica` (`almacenamiento/` está en `.gitignore`). El directorio se crea en la primera escritura, nunca al importar `env.ts`. En producción debe apuntar a un volumen persistente incluido en los respaldos (ver "Notas de despliegue"). |
 | `DIRECTORIO_ARCHIVOS_CARGAS` | RF-38. Opcional: directorio base de los archivos subidos por los notificadores. Mismas reglas que la anterior; por defecto `<cwd>/almacenamiento/cargas`. Sugerido en producción: un solo volumen con dos subcarpetas hermanas (`…/bioestadistica` y `…/cargas`). Las cargas anteriores a RF-38 siguen con su binario en la BD. |
+| `DIRECTORIO_ARCHIVOS_REGLAS` | RF-45. Opcional: directorio base de los archivos de reglas para llenado (uno por formato, hasta 20 MB). Mismas reglas que las anteriores; por defecto `<cwd>/almacenamiento/reglas-llenado`. En producción, volumen persistente incluido en los respaldos. |
 
 ## Estado de implementación por módulo
 

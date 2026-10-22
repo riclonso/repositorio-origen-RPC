@@ -42,6 +42,12 @@ diseña sin escribir código), `desarrollador` (implementa lo aprobado, corre re
 `/feature <requerimiento>` (`.claude/commands/feature.md`) los orquesta en orden — úsalo antes de
 implementar cualquier requerimiento nuevo en vez de escribir código directamente.
 
+**Excepción: mejoras solo de frontend no usan `/feature`.** Cambios puramente visuales (estilos,
+iconos, textos, disposición de componentes) que no tocan backend, BD, API, permisos ni reglas de
+negocio se implementan directamente, sin los agentes, para no gastar tokens en diseño y revisión
+innecesarios. Igual se corre react-doctor (scoped) y `npm run lint`, y se verifica en el navegador
+cuando aplique. Si el cambio toca cualquiera de esas capas, vuelve a aplicar `/feature`.
+
 ## Aviso de versión
 
 Este proyecto usa **Next.js 16.3.4** con **React 19.2.8** — una versión más reciente de lo que refleja
@@ -89,6 +95,9 @@ en vez de fallar en runtime más adelante:
   incluido en los respaldos.
 - `DIRECTORIO_ARCHIVOS_CARGAS` — opcional (RF-38), ruta absoluta del directorio de archivos subidos por
   los notificadores; por defecto `<cwd>/almacenamiento/cargas`. Mismo criterio de volumen y respaldo.
+- `DIRECTORIO_ARCHIVOS_REGLAS` — opcional (RF-45), ruta absoluta del directorio de los archivos de reglas
+  para llenado por formato; por defecto `<cwd>/almacenamiento/reglas-llenado`. Mismo criterio de
+  volumen y respaldo.
 
 ## Arquitectura
 
@@ -183,11 +192,11 @@ Puntos que hay que respetar al tocarlo:
   Client no soporta `unaccent()`. El término del usuario va parametrizado por la plantilla etiquetada
   de Prisma y los comodines LIKE se escapan: nunca concatenar el término en el SQL.
 * **Qué es "historial" tiene una sola fuente.** `infrastructure/repositories/relacionesHistorialUsuario.ts`
-  lista las 15 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
+  lista las 16 relaciones `Restrict` que bloquean la eliminación (cargas, vistos buenos,
   publicaciones, solicitudes de reemplazo, rechazos, ventanas, alertas, desde RF-31 los mensajes
-  escritos y recibidos, y desde RF-37 las cargas de Bioestadística y sus solicitudes de reemplazo
-  hechas y revisadas) y las 2 `Cascade` que se
-  descartan (tokens de recuperación, asignaciones de formato). La usan `listar()` (columna
+  escritos y recibidos, desde RF-37 las cargas de Bioestadística y sus solicitudes de reemplazo
+  hechas y revisadas, y desde RF-45 los archivos de reglas de llenado subidos) y las 3 `Cascade` que se
+  descartan (tokens de recuperación, asignaciones de formato, lecturas de notificaciones). La usan `listar()` (columna
   `tieneHistorial`) y `eliminar()`. Al agregar una relación nueva a `Usuario` hay que clasificarla
   ahí; `tests/relaciones-usuario.guard.unit.ts` falla si no. `eliminar()` corre en una transacción
   `Serializable` con `SELECT … FOR UPDATE` que revalida perfil ADMIN restringido, último ADMIN e
@@ -234,7 +243,8 @@ lado contrario; del lado revisor es compartida por todos los revisores). Puntos 
 
 * **Binario en disco** (`DIRECTORIO_ARCHIVOS_CARGAS`, `rutaArchivo`/`tamanoBytes`/`sha256`). Las cargas
   anteriores a RF-38 conservan `contenidoArchivo` de forma permanente: toda lectura del binario debe
-  aceptar las dos fuentes. Hasta 100 MB y 500.000 filas de datos, solo `.xlsx`.
+  aceptar las dos fuentes. Hasta 300 MB (`TAMANO_MAXIMO_ARCHIVO_CARGA`) y 500.000 filas de datos, `.xlsx` o
+  `.csv` según el `tipoArchivo` del formato.
 * **Recepción y validación separadas.** `RecibirArchivoCarga` valida todo lo de negocio **antes** de leer
   el cuerpo y deja la carga en `PROCESANDO` (202); `ProcesarCargaArchivo` valida en `after()` dentro de
   un limitador. `PROCESANDO` no cuenta en ningún listado, tablero ni regla de RF-33/RF-34.

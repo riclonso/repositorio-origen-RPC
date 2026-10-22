@@ -42,6 +42,9 @@ export type AlmacenArchivosDisco = {
   // SHA-256 mientras recibe. Ante cualquier corte, el temporal ya queda eliminado.
   guardarTemporal(origen: ReadableStream<Uint8Array>, limiteBytes: number, cifrado?: { usuarioId: string; excel: boolean; archivoId: string }): Promise<ResultadoGuardadoTemporalDisco>;
   moverDefinitivo(referenciaTemporal: string, anio: number, cargaId: string, extension: "xlsx" | "csv"): Promise<string>;
+  // RF-45: mueve el temporal a una referencia relativa ya generada por el servidor (nunca con datos
+  // del cliente). Valida que quede dentro del directorio base y que no sea el directorio temporal.
+  moverDefinitivoEn(referenciaTemporal: string, referenciaDestino: string): Promise<string>;
   // `null` si el archivo ya no existe.
   abrirLectura(referencia: string): Promise<ArchivoAbiertoDisco | null>;
   // Idempotente: eliminar algo que ya no existe no es un error.
@@ -187,6 +190,24 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
     return referencia;
   }
 
+  async function moverDefinitivoEn(referenciaTemporal: string, referenciaDestino: string): Promise<string> {
+    // `rutaAbsoluta` ya rechaza todo lo que salga de `<base>`; además se exige una referencia
+    // relativa sin segmentos `..` y fuera del subdirectorio temporal.
+    const segmentos = referenciaDestino.split(/[\\/]/);
+    if (
+      path.isAbsolute(referenciaDestino) ||
+      segmentos.some((segmento) => segmento === "" || segmento === "." || segmento === "..") ||
+      segmentos[0] === SUBDIRECTORIO_TEMPORAL
+    ) {
+      throw new Error("Referencia de destino inválida");
+    }
+
+    const destino = rutaAbsoluta(referenciaDestino);
+    await asegurarDirectorio(path.dirname(destino));
+    await rename(rutaAbsoluta(referenciaTemporal), destino);
+    return referenciaDestino;
+  }
+
   async function abrirLectura(referencia: string): Promise<ArchivoAbiertoDisco | null> {
     const ruta = rutaAbsoluta(referencia);
 
@@ -259,5 +280,5 @@ export function crearAlmacenArchivosDisco(configuracion: ConfiguracionAlmacenDis
     return resultado;
   }
 
-  return { guardarTemporal, moverDefinitivo, abrirLectura, eliminar, rutaAbsoluta, fuenteXlsx, eliminarTemporalesAnterioresA };
+  return { guardarTemporal, moverDefinitivo, moverDefinitivoEn, abrirLectura, eliminar, rutaAbsoluta, fuenteXlsx, eliminarTemporalesAnterioresA };
 }

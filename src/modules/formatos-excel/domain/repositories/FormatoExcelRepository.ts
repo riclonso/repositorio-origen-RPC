@@ -2,6 +2,7 @@ import type {
   DatosEdicionFormatoExcel,
   DatosNuevoFormatoExcel,
   FormatoExcel,
+  FormatoExcelAsignado,
   FormatoExcelResumen,
 } from "@/modules/formatos-excel/domain/entities/FormatoExcel";
 import type {
@@ -19,7 +20,7 @@ export interface FormatoExcelRepository {
   estaAsignadoYActivo(usuarioId: string, formatoExcelId: string): Promise<boolean>;
   // Formatos activos asignados a un usuario, para el selector de subida (RF-14). Vista liviana:
   // no trae columnas ni reglas, solo lo necesario para poblar un `<select>`.
-  listarAsignadosAUsuario(usuarioId: string): Promise<FormatoExcelResumen[]>;
+  listarAsignadosAUsuario(usuarioId: string): Promise<FormatoExcelAsignado[]>;
   obtenerPorId(id: string): Promise<FormatoExcel | null>;
   existeActivo(id: string): Promise<boolean>;
   // Resuelve en UNA sola consulta (`WHERE id IN (...) AND activo = true`) cuáles de los ids

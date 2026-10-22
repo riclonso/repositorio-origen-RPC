@@ -1,21 +1,14 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/modules/auth/infrastructure/auth/SesionActual";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
-import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
 import { listarCargasPanelNotificador } from "@/modules/reporte-excel/application/use-cases/ListarCargasPanelNotificador";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
-import { listarVentanasDisponiblesParaNotificador } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasDisponiblesParaNotificador";
-import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
-import { listarSolicitudesReemplazoPropias } from "@/modules/solicitudes-reemplazo/application/use-cases/ListarSolicitudesReemplazoPropias";
-import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
 import {
   fechaVencimientoSolicitud,
   solicitudUtilizable,
   solicitudVencida,
 } from "@/modules/solicitudes-reemplazo/domain/entities/SolicitudReemplazoCarga";
-import { listarVentanasQueAdmitenAutorizaciones } from "@/modules/ventanas-carga/application/use-cases/ListarVentanasQueAdmitenAutorizaciones";
-import { estaAbierta } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
-import { listarReaperturasVigentesPropias } from "@/modules/reporte-excel/application/use-cases/ListarReaperturasVigentesPropias";
+import { resolverTarjetasNotificador } from "./_lib/tarjetasNotificador";
 import type { ReaperturaVigentePropiaVista } from "@/shared/components/BannerReaperturaCarga";
 import {
   listarVentanasConNoLeidosSinTarjeta,
@@ -48,67 +41,35 @@ export default async function NotificadorPage() {
     redirect("/login");
   }
 
-  // Sin un formato asignado, el notificador no puede subir nada (RF-14). Sin ninguna ventana de
-  // carga publicada y abierta ahora mismo (RF-15 ampliación), tampoco. `PanelCargaArchivo` muestra
-  // un único mensaje genérico cuando el arreglo de combinaciones viene vacío, sin distinguir la
-  // causa.
-  const [formatos, cargasPropias, ventanasDisponibles, solicitudesPropias, reaperturasVigentes, mensajesPorVentana] = await Promise.all([
-    prismaFormatoExcelRepository.listarAsignadosAUsuario(sesion.sub),
+  // Formatos asignados, ventanas con tarjeta (abiertas, o RF-36 cerradas con autorización),
+  // solicitudes y reaperturas propias: `resolverTarjetasNotificador` es la FUENTE ÚNICA del predicado
+  // de tarjeta (también autoriza la descarga de reglas de llenado, RF-45). `PanelCargaArchivo` muestra
+  // un único mensaje genérico cuando el arreglo de combinaciones viene vacío, sin distinguir la causa.
+  const ahora = new Date();
+  const [tarjetasNotificador, cargasPropias, mensajesPorVentana] = await Promise.all([
+    resolverTarjetasNotificador(sesion.sub, ahora),
     // Intentos recientes + las cargas que determinan el estado de cada tarjeta, para que una
     // `APROBADA` vigente o una pendiente finalizada nunca queden fuera de un corte de página.
     listarCargasPanelNotificador(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
-    listarVentanasDisponiblesParaNotificador({ repositorio: prismaVentanaCargaRepository }),
-    listarSolicitudesReemplazoPropias(sesion.sub, { repositorio: prismaSolicitudReemplazoCargaRepository }),
-    listarReaperturasVigentesPropias(sesion.sub, { repositorio: prismaCargaArchivoRepository }),
     // RF-31: avisos de mensajes del equipo revisor por ventana, solo del propio hilo (dos `groupBy`).
     obtenerResumenMensajesPorVentana(
       { lado: "NOTIFICADOR", notificadorId: sesion.sub },
       { repositorio: prismaMensajeCargaRepository },
     ),
   ]);
+  const { solicitudesPropias, reaperturasVigentes, ventanasConTarjeta, tarjetas } = tarjetasNotificador;
 
-  const ahora = new Date();
-  const idsVentanasDisponibles = new Set(ventanasDisponibles.map((ventana) => ventana.id));
-
-  // RF-36: ventanas ya cerradas por fecha en las que el notificador tiene una solicitud de reemplazo
-  // en curso (PENDIENTE) o utilizable, o una reapertura vigente: también reciben su tarjeta, para
-  // que pueda seguir la solicitud o subir fuera de plazo. Archivadas, despublicadas y eliminadas
-  // quedan fuera (`listarVentanasQueAdmitenAutorizaciones`). Una sola consulta para todas.
-  const idsVentanasConAutorizacion = new Set(
-    [
-      ...solicitudesPropias.solicitudes
-        .filter((solicitud) => solicitud.estado === "PENDIENTE" || solicitudUtilizable(solicitud, ahora))
-        .map((solicitud) => solicitud.ventanaCargaId),
-      ...reaperturasVigentes.map((reapertura) => reapertura.ventanaCargaId),
-    ].filter((id) => !idsVentanasDisponibles.has(id)),
-  );
-  const ventanasCerradas = (
-    await listarVentanasQueAdmitenAutorizaciones([...idsVentanasConAutorizacion], {
-      repositorio: prismaVentanaCargaRepository,
-    })
-  ).filter((ventana) => !estaAbierta(ventana, ahora));
-
-  // Una entrada por cada par (formato asignado, ventana disponible o cerrada con autorización) cuyo
-  // formato coincide exactamente: el notificador solo debe ver la ventana para subir el archivo que
-  // le corresponde (RF-15 ampliación; corrección posterior reemplaza la comparación por tipo de
-  // archivo genérico por una comparación de id exacta).
-  const ventanasConTarjeta = [
-    ...ventanasDisponibles.map((ventana) => ({ ventana, cerrada: false })),
-    ...ventanasCerradas.map((ventana) => ({ ventana, cerrada: true })),
-  ];
-  const combinaciones: CombinacionCargaVista[] = formatos.flatMap((formato) =>
-    ventanasConTarjeta
-      .filter(({ ventana }) => ventana.formatoExcelId === formato.id)
-      .map(({ ventana, cerrada }) => ({
-        formatoExcelId: formato.id,
-        formatoNombre: formato.nombre,
-        anio: ventana.anio,
-        ventanaCargaId: ventana.id,
-        fechaApertura: ventana.fechaApertura.toISOString(),
-        fechaVencimiento: ventana.fechaVencimiento.toISOString(),
-        cerrada,
-      })),
-  );
+  const combinaciones: CombinacionCargaVista[] = tarjetas.map(({ formato, ventana, cerrada }) => ({
+    formatoExcelId: formato.id,
+    formatoNombre: formato.nombre,
+    anio: ventana.anio,
+    ventanaCargaId: ventana.id,
+    fechaApertura: ventana.fechaApertura.toISOString(),
+    fechaVencimiento: ventana.fechaVencimiento.toISOString(),
+    cerrada,
+    // RF-45: solo el nombre del archivo de reglas (de la misma consulta de formatos), nunca quién lo subió.
+    reglasLlenadoNombre: formato.reglasLlenadoNombre,
+  }));
 
   const cargasIniciales: CargaResumenVista[] = cargasPropias.map((carga) => ({
     ...carga,

@@ -258,6 +258,7 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
             activo: true,
             createdAt: true,
             _count: { select: { columnas: true, reglasValidacion: true, usuariosAsignados: true } },
+            reglasLlenado: { select: { nombreArchivoOriginal: true } },
           },
         },
       },
@@ -279,6 +280,8 @@ export const prismaFormatoExcelRepository: FormatoExcelRepository = {
       // Esta vista alimenta el selector del notificador, no el mantenedor; no se consulta la
       // relación de ventanas para mantenerla liviana y nunca ofrece acciones de eliminación.
       puedeEliminar: false,
+      // RF-45: misma consulta (relación 1:0..1), sin N+1; nunca quién lo subió.
+      reglasLlenadoNombre: formatoExcel.reglasLlenado?.nombreArchivoOriginal ?? null,
     }));
   },
 
