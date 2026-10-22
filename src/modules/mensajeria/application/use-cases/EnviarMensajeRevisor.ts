@@ -13,7 +13,10 @@ export type ResultadoEnviarMensajeRevisor =
   // auditar (dueño y RUT) y para el correo (formato y año), sin volver a consultarla.
   // `eraPrimerNoLeido` alimenta la regla anti-ráfaga del correo: solo se avisa si, antes de este
   // mensaje, el notificador no tenía ningún mensaje del equipo revisor sin leer EN ESA VENTANA.
-  | { ok: true; mensaje: MensajeHilo; carga: CargaArchivo; eraPrimerNoLeido: boolean }
+  // RF-44: `conteoFallido` discrimina si falló ese conteo. Si falló, el mensaje se guardó igual, no
+  // se avisa y `errorConteoAviso` lleva el error para que el Route Handler lo registre (201 igual).
+  | { ok: true; mensaje: MensajeHilo; carga: CargaArchivo; eraPrimerNoLeido: boolean; conteoFallido: false }
+  | { ok: true; mensaje: MensajeHilo; carga: CargaArchivo; eraPrimerNoLeido: false; conteoFallido: true; errorConteoAviso: unknown }
   | { ok: false; motivo: "NO_ENCONTRADO" }
   | { ok: false; motivo: "NO_PENDIENTE" }
   | { ok: false; motivo: "SIN_CONVERSACION" };
@@ -45,14 +48,20 @@ async function guardarMensajeSobreCarga(
   // Anti-ráfaga POR VENTANA: "antes de este mensaje" = sin leer, de esta misma ventana y creado
   // antes que él. Un no leído en otra ventana no bloquea el aviso de esta; de dos envíos
   // concurrentes en la misma ventana, solo el primero dispara el correo.
-  const noLeidosPrevios = await dependencias.repositorio.contarNoLeidosAnteriores({
-    notificadorId: carga.usuarioId,
-    ventanaCargaId: carga.ventanaCargaId,
-    ladoAutor: "REVISOR",
-    creadoAntesDe: mensaje.creadoEn,
-  });
+  // RF-44: el mensaje YA quedó guardado; un fallo del conteo solo significa "no avisar" (nunca un
+  // 500, que invitaría a reenviar y duplicar el mensaje). Un fallo de `crear()` sí se propaga.
+  try {
+    const noLeidosPrevios = await dependencias.repositorio.contarNoLeidosAnteriores({
+      notificadorId: carga.usuarioId,
+      ventanaCargaId: carga.ventanaCargaId,
+      ladoAutor: "REVISOR",
+      creadoAntesDe: mensaje.creadoEn,
+    });
 
-  return { ok: true, mensaje, carga, eraPrimerNoLeido: noLeidosPrevios === 0 };
+    return { ok: true, mensaje, carga, eraPrimerNoLeido: noLeidosPrevios === 0, conteoFallido: false };
+  } catch (errorConteoAviso) {
+    return { ok: true, mensaje, carga, eraPrimerNoLeido: false, conteoFallido: true, errorConteoAviso };
+  }
 }
 
 // El revisor INICIA una conversación (o escribe sobre un archivo concreto) solo desde una carga

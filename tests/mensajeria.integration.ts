@@ -27,8 +27,16 @@ import {
 } from "../src/modules/mensajeria/application/use-cases/ObtenerResumenMensajesPorVentana";
 import type {
   DatosCorreoAvisoMensajeNuevo,
+  DatosCorreoAvisoMensajeRevisores,
+  DestinatarioAvisoRevisores,
   EnviadorAvisoMensajeNuevo,
+  EnviadorAvisoMensajeRevisores,
 } from "../src/modules/mensajeria/application/ports";
+import {
+  avisarMensajeNuevoRevisores,
+  type NotificadorAvisoMensaje,
+} from "../src/modules/mensajeria/application/use-cases/AvisarMensajeNuevoRevisores";
+import type { EtiquetaVentanaMensajes } from "../src/modules/mensajeria/domain/entities/MensajeCarga";
 import {
   avisarMensajeNuevo,
   type DestinatarioAvisoMensaje,
@@ -208,6 +216,7 @@ async function main() {
       { repositorio },
     );
     assert.ok(respuestaA.ok);
+    assert.equal(respuestaA.eraPrimerNoLeido, true, "Primera respuesta sin leer del hilo -> avisa a los revisores");
     assert.equal(respuestaA.mensaje.cargaArchivoId, nuevaA1, "Asociada a la carga del último mensaje del revisor");
     assert.equal(respuestaA.mensaje.autorId, notificadorA);
     console.log("OK: respuesta asociada a la carga del último mensaje del revisor");
@@ -245,6 +254,9 @@ async function main() {
       { repositorio },
     );
     assert.ok(respuestaB1.ok && respuestaB2.ok);
+    assert.equal(respuestaB1.eraPrimerNoLeido, true);
+    assert.equal(respuestaB2.eraPrimerNoLeido, false, "Segunda respuesta sin leer de la tanda -> no avisa");
+    console.log("OK: eraPrimerNoLeido del notificador solo en la primera respuesta de una tanda");
 
     // --- GET del hilo (revisor): 404 si el par no tiene mensajes NI carga pendiente ---
     assert.deepEqual(
@@ -350,6 +362,37 @@ async function main() {
     assert.ok(despuesDeLeer.ok && despuesDeLeer.eraPrimerNoLeido);
     console.log("OK: tras leer, el próximo mensaje vuelve a disparar el correo");
 
+    // --- Anti-ráfaga del lado notificador, POR HILO (notificador, ventana) ---
+    // B todavía tiene `respuestaB2` sin leer por el equipo revisor en la ventana 2: no bloquea el
+    // aviso de su primera respuesta en la ventana 1.
+    await esperar(5);
+    const respuestaBV1 = await responderMensajeNotificador(
+      { notificadorId: notificadorB, ventanaCargaId: ventana1, contenido: "Respuesta en la ventana 1" },
+      { repositorio },
+    );
+    assert.ok(respuestaBV1.ok);
+    assert.equal(respuestaBV1.eraPrimerNoLeido, true, "Un no leído del notificador en OTRA ventana no bloquea el aviso");
+    await esperar(5);
+    const respuestaBV1Segunda = await responderMensajeNotificador(
+      { notificadorId: notificadorB, ventanaCargaId: ventana1, contenido: "Otra respuesta en la ventana 1" },
+      { repositorio },
+    );
+    assert.ok(respuestaBV1Segunda.ok);
+    assert.equal(respuestaBV1Segunda.eraPrimerNoLeido, false, "Dentro del mismo hilo sí aplica la anti-ráfaga");
+    // El equipo revisor lee el hilo: la próxima respuesta vuelve a ser "primer no leído".
+    await marcarMensajesLeidos(
+      { notificadorId: notificadorB, ventanaCargaId: ventana1, ladoLector: "REVISOR", hasta: new Date() },
+      { repositorio },
+    );
+    await esperar(5);
+    const respuestaBV1TrasLeer = await responderMensajeNotificador(
+      { notificadorId: notificadorB, ventanaCargaId: ventana1, contenido: "Después de que leyeron" },
+      { repositorio },
+    );
+    assert.ok(respuestaBV1TrasLeer.ok);
+    assert.equal(respuestaBV1TrasLeer.eraPrimerNoLeido, true, "Tras la lectura del revisor vuelve a avisar");
+    console.log("OK: anti-ráfaga del notificador por hilo; tras leer, vuelve a avisar");
+
     // --- Ajuste A2: conversación existente sin carga pendiente ---
     await prisma.cargaArchivo.update({ where: { id: pendienteB2 }, data: { estado: "APROBADA" } });
     const hiloRevisor = await obtenerHiloVentanaRevisor(
@@ -387,7 +430,15 @@ async function main() {
     // --- Aviso por correo (`avisarMensajeNuevo`), con el puerto y el destinatario inyectados ---
     const buscarDestinatario = async (id: string): Promise<DestinatarioAvisoMensaje | null> => {
       const usuario = await prismaUsuarioRepository.obtenerPorId(id);
-      return usuario ? { nombres: usuario.nombres, email: usuario.email, activo: usuario.activo } : null;
+      return usuario
+        ? {
+            nombres: usuario.nombres,
+            apellidos: usuario.apellidos,
+            rut: usuario.rut,
+            email: usuario.email,
+            activo: usuario.activo,
+          }
+        : null;
     };
     const datosAviso = { notificadorId: notificadorA, formatoExcelNombre: `RF31-${marca}`, anio: 2026 };
 
@@ -399,7 +450,7 @@ async function main() {
         enviados.push(datos);
       },
     };
-    assert.equal(await avisarMensajeNuevo(datosAviso, { enviador: mailerQueRegistra, buscarDestinatario }), "ENVIADO");
+    assert.deepEqual(await avisarMensajeNuevo(datosAviso, { enviador: mailerQueRegistra, buscarDestinatario }), { estado: "ENVIADO" });
     assert.equal(enviados.length, 1);
     assert.deepEqual(Object.keys(enviados[0] ?? {}).sort(), ["anio", "destinatario", "formatoExcelNombre"]);
     assert.equal(enviados[0]?.destinatario.email, `${notificadorA}@example.invalid`);
@@ -411,7 +462,7 @@ async function main() {
       disponible: () => false,
       enviarAviso: async () => assert.fail("No debe enviar si el correo no está disponible"),
     };
-    assert.equal(
+    assert.deepEqual(
       await avisarMensajeNuevo(datosAviso, {
         enviador: mailerNoDisponible,
         buscarDestinatario: async (id) => {
@@ -419,7 +470,7 @@ async function main() {
           return buscarDestinatario(id);
         },
       }),
-      "OMITIDO",
+      { estado: "OMITIDO" },
     );
     assert.equal(busquedas, 0);
 
@@ -429,22 +480,23 @@ async function main() {
       enviarAviso: async () => assert.fail("No debe enviar a una cuenta inactiva o inexistente"),
     };
     await prisma.usuario.update({ where: { id: notificadorA }, data: { activo: false } });
-    assert.equal(
+    assert.deepEqual(
       await avisarMensajeNuevo(datosAviso, { enviador: mailerQueNoDebeLlamarse, buscarDestinatario }),
-      "OMITIDO",
+      { estado: "OMITIDO" },
     );
     await prisma.usuario.update({ where: { id: notificadorA }, data: { activo: true } });
-    assert.equal(
+    assert.deepEqual(
       await avisarMensajeNuevo(
         { ...datosAviso, notificadorId: randomUUID() },
         { enviador: mailerQueNoDebeLlamarse, buscarDestinatario },
       ),
-      "OMITIDO",
+      { estado: "OMITIDO" },
     );
     console.log("OK: aviso OMITIDO sin correo disponible, con cuenta inactiva o inexistente");
 
-    // SMTP caído: el mensaje ya quedó guardado ANTES del aviso; el error se PROPAGA (el Route Handler
-    // lo atrapa en el `.catch` de `after()` y lo registra) y el caso de uso no escribe nada.
+    // SMTP caído (RF-44): el mensaje ya quedó guardado ANTES del aviso; el caso de uso devuelve
+    // FALLIDO con el error y el destinatario (el Route Handler lo registra en `fallas-correo.txt`) y
+    // no escribe nada.
     const mailerQueFalla: EnviadorAvisoMensajeNuevo = {
       disponible: () => true,
       enviarAviso: async () => {
@@ -457,13 +509,15 @@ async function main() {
     );
     assert.ok(conFallo.ok);
     const mensajesAntesDelAviso = await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } });
-    await assert.rejects(
-      avisarMensajeNuevo(
-        { notificadorId: conFallo.carga.usuarioId, formatoExcelNombre: conFallo.carga.formatoExcelNombre, anio: conFallo.carga.anio },
-        { enviador: mailerQueFalla, buscarDestinatario },
-      ),
-      /SMTP caído/,
+    const avisoFallido = await avisarMensajeNuevo(
+      { notificadorId: conFallo.carga.usuarioId, formatoExcelNombre: conFallo.carga.formatoExcelNombre, anio: conFallo.carga.anio },
+      { enviador: mailerQueFalla, buscarDestinatario },
     );
+    assert.equal(avisoFallido.estado, "FALLIDO");
+    if (avisoFallido.estado === "FALLIDO") {
+      assert.ok(avisoFallido.error instanceof Error && avisoFallido.error.message === "SMTP caído");
+      assert.equal(avisoFallido.destinatario.email, `${notificadorA}@example.invalid`);
+    }
     const guardado = await prisma.mensajeCarga.findUnique({ where: { id: conFallo.mensaje.id }, select: { contenido: true } });
     assert.equal(guardado?.contenido, "Con SMTP caído", "El mensaje sigue guardado tras el fallo del SMTP");
     assert.equal(
@@ -471,7 +525,205 @@ async function main() {
       mensajesAntesDelAviso,
       "El aviso fallido no escribe ni borra nada",
     );
-    console.log("OK: un fallo del SMTP se propaga al llamador y no afecta al mensaje ya guardado");
+    console.log("OK: un fallo del SMTP vuelve como FALLIDO y no afecta al mensaje ya guardado");
+
+    // --- RF-44: un fallo del conteo anti-ráfaga nunca es un error para el usuario ---
+    // Repositorio envoltorio: todo real salvo `contarNoLeidosAnteriores`, que falla. El mensaje se
+    // guarda EXACTAMENTE una vez, `ok: true`, no se avisa y el fallo vuelve con `conteoFallido: true` y `errorConteoAviso`.
+    const errorConteo = new Error("Conteo caído");
+    const repositorioConteoCaido = {
+      ...repositorio,
+      contarNoLeidosAnteriores: async (): Promise<number> => {
+        throw errorConteo;
+      },
+    };
+    const dependenciasConteoCaido = { repositorio: repositorioConteoCaido, repositorioCargas };
+
+    const antesRevisorConteo = await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } });
+    const revisorConteoCaido = await enviarMensajeRevisor(
+      { cargaArchivoId: nuevaA1, autorId: revisorA, contenido: "Con conteo caído (revisor)" },
+      dependenciasConteoCaido,
+    );
+    assert.ok(revisorConteoCaido.ok, "El mensaje del revisor se guarda aunque falle el conteo");
+    assert.equal(revisorConteoCaido.eraPrimerNoLeido, false, "Sin conteo no se avisa");
+    assert.ok(revisorConteoCaido.conteoFallido && revisorConteoCaido.errorConteoAviso === errorConteo);
+    assert.equal(
+      await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } }),
+      antesRevisorConteo + 1,
+      "Exactamente un mensaje guardado",
+    );
+
+    const enConversacionConteoCaido = await enviarMensajeRevisorEnConversacion(
+      { ventanaCargaId: ventana1, notificadorId: notificadorA, autorId: revisorB, contenido: "Con conteo caído (conversación)" },
+      dependenciasConteoCaido,
+    );
+    assert.ok(enConversacionConteoCaido.ok && enConversacionConteoCaido.eraPrimerNoLeido === false);
+    assert.ok(enConversacionConteoCaido.ok && enConversacionConteoCaido.conteoFallido);
+
+    const antesNotificadorConteo = await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } });
+    const notificadorConteoCaido = await responderMensajeNotificador(
+      { notificadorId: notificadorA, ventanaCargaId: ventana1, contenido: "Con conteo caído (notificador)" },
+      { repositorio: repositorioConteoCaido },
+    );
+    assert.ok(notificadorConteoCaido.ok, "La respuesta del notificador se guarda aunque falle el conteo");
+    assert.equal(notificadorConteoCaido.eraPrimerNoLeido, false);
+    assert.ok(notificadorConteoCaido.conteoFallido && notificadorConteoCaido.errorConteoAviso === errorConteo);
+    assert.equal(
+      await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } }),
+      antesNotificadorConteo + 1,
+      "Exactamente una respuesta guardada",
+    );
+
+    // En el camino normal el campo no aparece.
+    const sinFalloConteo = await responderMensajeNotificador(
+      { notificadorId: notificadorA, ventanaCargaId: ventana1, contenido: "Conteo normal" },
+      { repositorio },
+    );
+    assert.ok(sinFalloConteo.ok && sinFalloConteo.conteoFallido === false);
+
+    // Un fallo de `crear()` SÍ se propaga (el handler responde 500 y el reintento es correcto: no se
+    // guardó nada).
+    const repositorioCrearCaido = {
+      ...repositorio,
+      crear: async (): Promise<never> => {
+        throw new Error("Crear caído");
+      },
+    };
+    const antesCrearCaido = await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } });
+    await assert.rejects(
+      enviarMensajeRevisor(
+        { cargaArchivoId: nuevaA1, autorId: revisorA, contenido: "No se guarda" },
+        { repositorio: repositorioCrearCaido, repositorioCargas },
+      ),
+      /Crear caído/,
+    );
+    await assert.rejects(
+      responderMensajeNotificador(
+        { notificadorId: notificadorA, ventanaCargaId: ventana1, contenido: "No se guarda" },
+        { repositorio: repositorioCrearCaido },
+      ),
+      /Crear caído/,
+    );
+    assert.equal(await prisma.mensajeCarga.count({ where: { notificadorId: notificadorA } }), antesCrearCaido);
+    console.log("OK: fallo del conteo -> ok:true sin aviso y errorConteoAviso; fallo de crear() se propaga");
+
+    // --- Aviso al equipo revisor (`avisarMensajeNuevoRevisores`), todo inyectado con mocks ---
+    const datosAvisoRevisores = { notificadorId: notificadorB, ventanaCargaId: ventana1 };
+    const notificadorMock: NotificadorAvisoMensaje = { nombreCompleto: "Ana Pérez", establecimientoNombre: "Hospital X" };
+    const etiquetaMock: EtiquetaVentanaMensajes = { ventanaCargaId: ventana1, formatoExcelNombre: `RF31-${marca}`, anio: 2026 };
+    const revisoresMock: DestinatarioAvisoRevisores[] = [
+      { tipo: "REVISOR", revisorId: "revisor-1", nombres: "Uno", apellidos: "A", rut: "1-9", email: "uno@example.invalid" },
+      { tipo: "REVISOR", revisorId: "revisor-2", nombres: "Dos", apellidos: "B", rut: "2-7", email: "dos@example.invalid" },
+      { tipo: "REVISOR", revisorId: "revisor-3", nombres: "Tres", apellidos: "C", rut: "3-5", email: "tres@example.invalid" },
+    ];
+    let consultasAviso = 0;
+    const buscarNotificadorMock = async (): Promise<NotificadorAvisoMensaje | null> => {
+      consultasAviso++;
+      return notificadorMock;
+    };
+    const repositorioEtiquetasMock = {
+      obtenerEtiquetasVentanas: async (): Promise<EtiquetaVentanaMensajes[]> => {
+        consultasAviso++;
+        return [etiquetaMock];
+      },
+    };
+    const crearEnviadorRevisores = (
+      registro: { destinatario: DestinatarioAvisoRevisores; datos: DatosCorreoAvisoMensajeRevisores }[],
+      opciones: { disponible?: boolean; fallaPara?: string } = {},
+    ): EnviadorAvisoMensajeRevisores => ({
+      disponible: () => opciones.disponible ?? true,
+      resolverDestinatarios: async () => {
+        consultasAviso++;
+        return revisoresMock;
+      },
+      enviarAviso: async (destinatario, datos) => {
+        if (destinatario.tipo === "REVISOR" && destinatario.revisorId === opciones.fallaPara) {
+          throw new Error("SMTP caído para este destinatario");
+        }
+        registro.push({ destinatario, datos });
+      },
+    });
+
+    // ENVIADO: un correo por revisor, y el payload sin contenido ni longitud del mensaje.
+    const enviadosRevisores: { destinatario: DestinatarioAvisoRevisores; datos: DatosCorreoAvisoMensajeRevisores }[] = [];
+    const resultadoRevisores = await avisarMensajeNuevoRevisores(datosAvisoRevisores, {
+      enviador: crearEnviadorRevisores(enviadosRevisores),
+      buscarNotificador: buscarNotificadorMock,
+      repositorio: repositorioEtiquetasMock,
+    });
+    assert.deepEqual(resultadoRevisores, {
+      estado: "ENVIADO",
+      enviados: 3,
+      fallidos: [],
+      formatoExcelNombre: `RF31-${marca}`,
+      anio: 2026,
+    });
+    assert.equal(enviadosRevisores.length, 3, "Un correo individual por revisor");
+    assert.deepEqual(
+      Object.keys(enviadosRevisores[0]?.datos ?? {}).sort(),
+      ["anio", "establecimientoNombre", "formatoExcelNombre", "notificadorNombre"],
+    );
+    assert.deepEqual(enviadosRevisores[0]?.datos, {
+      notificadorNombre: "Ana Pérez",
+      establecimientoNombre: "Hospital X",
+      formatoExcelNombre: `RF31-${marca}`,
+      anio: 2026,
+    });
+    console.log("OK: aviso a revisores ENVIADO, un correo por revisor, sin el contenido del mensaje");
+
+    // OMITIDO sin correo disponible: cero consultas y ningún envío.
+    consultasAviso = 0;
+    const noEnviados: { destinatario: DestinatarioAvisoRevisores; datos: DatosCorreoAvisoMensajeRevisores }[] = [];
+    assert.deepEqual(
+      await avisarMensajeNuevoRevisores(datosAvisoRevisores, {
+        enviador: crearEnviadorRevisores(noEnviados, { disponible: false }),
+        buscarNotificador: buscarNotificadorMock,
+        repositorio: repositorioEtiquetasMock,
+      }),
+      { estado: "OMITIDO" },
+    );
+    assert.equal(consultasAviso, 0, "Sin correo disponible no se consulta nada");
+    assert.equal(noEnviados.length, 0);
+
+    // OMITIDO sin notificador o sin etiqueta de ventana.
+    assert.deepEqual(
+      await avisarMensajeNuevoRevisores(datosAvisoRevisores, {
+        enviador: crearEnviadorRevisores(noEnviados),
+        buscarNotificador: async () => null,
+        repositorio: repositorioEtiquetasMock,
+      }),
+      { estado: "OMITIDO" },
+    );
+    assert.deepEqual(
+      await avisarMensajeNuevoRevisores(datosAvisoRevisores, {
+        enviador: crearEnviadorRevisores(noEnviados),
+        buscarNotificador: buscarNotificadorMock,
+        repositorio: { obtenerEtiquetasVentanas: async () => [] },
+      }),
+      { estado: "OMITIDO" },
+    );
+    assert.equal(noEnviados.length, 0);
+    console.log("OK: aviso a revisores OMITIDO sin correo disponible, sin notificador o sin ventana");
+
+    // El fallo de un destinatario no impide los demás; RF-44: el fallido vuelve con su destinatario y
+    // el error, para que el Route Handler lo registre en `fallas-correo.txt`.
+    const enviadosConFallo: { destinatario: DestinatarioAvisoRevisores; datos: DatosCorreoAvisoMensajeRevisores }[] = [];
+    const resultadoConFallo = await avisarMensajeNuevoRevisores(datosAvisoRevisores, {
+      enviador: crearEnviadorRevisores(enviadosConFallo, { fallaPara: "revisor-2" }),
+      buscarNotificador: buscarNotificadorMock,
+      repositorio: repositorioEtiquetasMock,
+    });
+    assert.ok(resultadoConFallo.estado === "ENVIADO");
+    assert.equal(resultadoConFallo.enviados, 2);
+    assert.equal(resultadoConFallo.fallidos.length, 1);
+    assert.deepEqual(resultadoConFallo.fallidos[0]?.destinatario, revisoresMock[1]);
+    const errorFallido = resultadoConFallo.fallidos[0]?.error;
+    assert.ok(errorFallido instanceof Error && errorFallido.message === "SMTP caído para este destinatario");
+    assert.deepEqual(
+      enviadosConFallo.map(({ destinatario }) => (destinatario.tipo === "REVISOR" ? destinatario.revisorId : null)),
+      ["revisor-1", "revisor-3"],
+    );
+    console.log("OK: el fallo de un revisor no corta el envío a los demás");
 
     // --- CHECK de coherencia de lado ---
     await assert.rejects(

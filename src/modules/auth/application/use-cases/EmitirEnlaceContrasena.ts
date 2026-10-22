@@ -7,10 +7,10 @@ import {
 import type { UserRepository } from "@/modules/auth/domain/repositories/UserRepository";
 import type { PasswordResetTokenRepository } from "@/modules/auth/domain/repositories/PasswordResetTokenRepository";
 import type {
+  DestinatarioEnlace,
   EnviadorCorreoRecuperacion,
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
-import { describirFalloEnvio } from "@/modules/auth/application/describirFalloEnvio";
 import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil";
 
 // Emite un enlace de contraseña iniciado por el ADMINISTRADOR: al crear una cuenta, al
@@ -34,15 +34,19 @@ export type ResultadoEmitirEnlaceContrasena =
   | { estado: "ENVIADO"; usuarioId: string; usuarioRut: string; tuvoContrasenaPrevia: boolean }
   | { estado: "NO_ENCONTRADO" }
   | { estado: "CUENTA_INACTIVA"; usuarioId: string; usuarioRut: string }
-  | { estado: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string }
+  | { estado: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string; destinatario: DestinatarioEnlace }
   | { estado: "PERFIL_ADMIN_RESTRINGIDO"; usuarioId: string; usuarioRut: string }
   | {
       estado: "ENVIO_FALLIDO";
       usuarioId: string;
       usuarioRut: string;
       tokenId: string;
-      // Diagnóstico del relay, ya saneado (sin dirección de correo).
-      diagnostico: string;
+      // Mismo criterio que en éxito: distingue REESTABLECIMIENTO de REENVIO en el registro.
+      tuvoContrasenaPrevia: boolean;
+      // RF-44: error original del relay y destinatario, para el registro de fallas de correo. El
+      // token nunca viaja aquí (el cuerpo adjunto al error se registra sin enlaces).
+      errorEnvio: unknown;
+      destinatario: DestinatarioEnlace;
     };
 
 export type DependenciasEmitirEnlaceContrasena = {
@@ -77,8 +81,13 @@ export async function emitirEnlaceContrasena(
     return { estado: "CUENTA_INACTIVA", usuarioId: usuario.id, usuarioRut: usuario.rut };
   }
 
+  const destinatario: DestinatarioEnlace = {
+    nombreCompleto: `${usuario.nombres} ${usuario.apellidos}`.trim(),
+    email: usuario.email,
+  };
+
   if (!dependencias.enviadorCorreo.disponible()) {
-    return { estado: "SIN_CONFIGURACION", usuarioId: usuario.id, usuarioRut: usuario.rut };
+    return { estado: "SIN_CONFIGURACION", usuarioId: usuario.id, usuarioRut: usuario.rut, destinatario };
   }
 
   // El hash nulo significa cuenta pendiente: el correo habla de "activar la cuenta". Si ya tiene
@@ -111,7 +120,9 @@ export async function emitirEnlaceContrasena(
       usuarioId: usuario.id,
       usuarioRut: usuario.rut,
       tokenId: tokenCreado.id,
-      diagnostico: describirFalloEnvio(error),
+      tuvoContrasenaPrevia,
+      errorEnvio: error,
+      destinatario,
     };
   }
 

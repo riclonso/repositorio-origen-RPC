@@ -1,4 +1,6 @@
 import { NextResponse, after } from "next/server";
+import { ejecutarAvisoCorreo } from "@/infrastructure/email/ejecutarAvisoCorreo";
+import { destinatarioUsuario, ventanaFallaCorreo } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
 import { revisarSolicitudReemplazo } from "@/modules/solicitudes-reemplazo/application/use-cases/RevisarSolicitudReemplazo";
 import { prismaSolicitudReemplazoCargaRepository } from "@/modules/solicitudes-reemplazo/infrastructure/repositories/PrismaSolicitudReemplazoCargaRepository";
@@ -127,30 +129,33 @@ export async function PATCH(request: Request, contexto: { params: Promise<{ id: 
     // El correo de notificación se DIFIERE con after(): la decisión ya quedó guardada y no
     // depende de que el relay SMTP esté configurado ni de que el envío tenga éxito. Mismo
     // criterio que el correo de activación de `POST /api/usuarios`.
-    after(async () => {
-      try {
-        const destinatario = await prismaUsuarioRepository.obtenerPorId(solicitud.solicitadoPorId);
-
-        if (!destinatario || !solicitudReemplazoMailer.disponible()) {
-          return;
-        }
-
-        await solicitudReemplazoMailer.enviarResultadoRevision({
-          destinatario: { nombres: destinatario.nombres, email: destinatario.email },
-          formatoExcelNombre: solicitud.formatoExcelNombre,
-          anio: solicitud.anio,
-          nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
-          estado: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
-          comentarioRevision: solicitud.comentarioRevision,
-          venceEl: fechaVencimientoSolicitud(solicitud),
-        });
-      } catch (error) {
-        logger.error("Error al enviar el correo de resultado de una solicitud de reemplazo", {
-          solicitudReemplazoId: solicitud.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    });
+    // RF-44: cada falla (sin SMTP, preparación o envío) queda en `fallas-correo.txt`.
+    after(() =>
+      ejecutarAvisoCorreo({
+        tipoAviso: "RESULTADO_SOLICITUD_REEMPLAZO",
+        ventana: ventanaFallaCorreo(solicitud),
+        referencias: { solicitudReemplazoId: solicitud.id, cargaArchivoId: solicitud.cargaArchivoId },
+        destinatarioConocido: {
+          tipo: "USUARIO",
+          usuarioId: solicitud.solicitadoPorId,
+          nombre: solicitud.solicitadoPorNombre,
+          rut: solicitud.solicitadoPorRut,
+        },
+        disponible: () => solicitudReemplazoMailer.disponible(),
+        preparar: () => prismaUsuarioRepository.obtenerPorId(solicitud.solicitadoPorId),
+        destinatarioDe: (destinatario) => destinatarioUsuario(destinatario),
+        enviar: (destinatario) =>
+          solicitudReemplazoMailer.enviarResultadoRevision({
+            destinatario: { nombres: destinatario.nombres, email: destinatario.email },
+            formatoExcelNombre: solicitud.formatoExcelNombre,
+            anio: solicitud.anio,
+            nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
+            estado: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
+            comentarioRevision: solicitud.comentarioRevision,
+            venceEl: fechaVencimientoSolicitud(solicitud),
+          }),
+      }),
+    );
 
     return NextResponse.json({ solicitud: aSolicitudReemplazoRevisionDTO(solicitud, new Date()) });
   } catch (error) {

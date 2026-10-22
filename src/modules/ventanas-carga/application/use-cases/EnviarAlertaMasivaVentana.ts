@@ -1,6 +1,6 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { AlertaNotificacionRepository } from "@/modules/ventanas-carga/domain/repositories/AlertaNotificacionRepository";
-import type { EnviadorCorreoAlerta } from "@/modules/ventanas-carga/application/ports";
+import type { EnviadorCorreoAlerta, FalloEnvioAlerta } from "@/modules/ventanas-carga/application/ports";
 import { calcularDiasRestantes } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { resolverPlantillaAlerta, sanitizarMensajeResueltoHtml } from "@/modules/ventanas-carga/domain/entities/PlantillaAlerta";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
@@ -12,9 +12,19 @@ export type ResultadoEnvioDestinatario = {
 };
 
 export type ResultadoEnviarAlertaMasivaVentana =
-  | { ok: true; loteId: string; resultados: ResultadoEnvioDestinatario[] }
+  // `fallos` (RF-44): un elemento por destinatario cuyo envío falló, para que el Route Handler lo
+  // registre en `fallas-correo.txt`. Nunca sale en la respuesta HTTP.
+  | { ok: true; loteId: string; resultados: ResultadoEnvioDestinatario[]; fallos: FalloEnvioAlerta[] }
   | { ok: false; motivo: "VENTANA_NO_ENCONTRADA" }
-  | { ok: false; motivo: "SIN_PENDIENTES" };
+  | { ok: false; motivo: "SIN_PENDIENTES" }
+  // RF-44: había pendientes, pero el correo no está configurado. No se crea lote.
+  | {
+      ok: false;
+      motivo: "SIN_CONFIGURACION";
+      formatoExcelNombre: string;
+      anio: number;
+      cantidadPendientes: number;
+    };
 
 function asuntoAlerta(formatoExcelNombre: string, anio: number): string {
   return `Recordatorio: reporta tu archivo de ${formatoExcelNombre} (${anio})`;
@@ -46,6 +56,16 @@ export async function enviarAlertaMasivaVentana(
     return { ok: false, motivo: "SIN_PENDIENTES" };
   }
 
+  if (!dependencias.enviadorCorreo.disponible()) {
+    return {
+      ok: false,
+      motivo: "SIN_CONFIGURACION",
+      formatoExcelNombre: ventana.formatoExcelNombre,
+      anio: ventana.anio,
+      cantidadPendientes: pendientes.length,
+    };
+  }
+
   const loteId = crypto.randomUUID();
   const ahora = new Date();
   const diasRestantes = calcularDiasRestantes(ventana.fechaVencimiento, ahora);
@@ -53,6 +73,7 @@ export async function enviarAlertaMasivaVentana(
   const urlEnlaceSistema = dependencias.enviadorCorreo.construirUrlEnlaceSistema();
 
   const resultados: ResultadoEnvioDestinatario[] = [];
+  const fallos: FalloEnvioAlerta[] = [];
   const filas: Parameters<AlertaNotificacionRepository["crearLote"]>[0] = [];
 
   for (const pendiente of pendientes) {
@@ -90,6 +111,14 @@ export async function enviarAlertaMasivaVentana(
       });
     } catch (error) {
       resultados.push({ usuarioId: pendiente.id, resultado: "ERROR" });
+      fallos.push({
+        ventanaCargaId: id,
+        formatoExcelNombre: ventana.formatoExcelNombre,
+        anio: ventana.anio,
+        loteId,
+        destinatario: pendiente,
+        error,
+      });
       filas.push({
         loteId,
         ventanaCargaId: id,
@@ -107,5 +136,5 @@ export async function enviarAlertaMasivaVentana(
 
   await dependencias.repositorioAlertas.crearLote(filas);
 
-  return { ok: true, loteId, resultados };
+  return { ok: true, loteId, resultados, fallos };
 }

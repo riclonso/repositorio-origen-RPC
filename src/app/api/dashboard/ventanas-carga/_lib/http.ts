@@ -102,6 +102,13 @@ export function respuestaSinPendientes(): NextResponse {
   });
 }
 
+// RF-44: había a quién enviar, pero el relay SMTP no está configurado (la UI ya deshabilita los
+// botones en ese caso; esto cubre una llamada directa a la API). Mismo 503 que el enlace de
+// contraseña del mantenedor.
+export function respuestaCorreoSinConfigurar(): NextResponse {
+  return respuestaError("El envío de correo no está configurado", 503, { codigo: "SIN_CONFIGURACION" });
+}
+
 // El `usuarioId` recibido ya no está en la lista real de pendientes al revalidar en el servidor
 // (ya reportó, fue desactivado, o se le quitó el formato entre que se abrió el modal y se envió).
 export function respuestaDestinatarioNoPendiente(): NextResponse {

@@ -12,6 +12,7 @@ import {
   aMensajeVista,
   exigirNotificador,
   idRutaSchema,
+  programarAvisoMensajeRevisores,
   respuestaError,
   respuestaRecursoNoEncontrado,
   respuestaSinAcceso,
@@ -59,7 +60,8 @@ export async function GET(_request: Request, contexto: ContextoMensajes) {
 
 // RF-31: el notificador responde en su hilo de esa ventana. Nunca inicia: sin un mensaje previo
 // del equipo revisor responde 409 `SIN_CONVERSACION`. La carga a la que se asocia la resuelve el
-// servidor. No se envía correo a los revisores.
+// servidor. Si es la primera respuesta sin leer del hilo, avisa por correo al equipo revisor vía
+// `after()` (sin el contenido); un fallo del SMTP solo se registra y no afecta al 201.
 export async function POST(request: Request, contexto: ContextoMensajes) {
   const [{ ventanaId }, acceso] = await Promise.all([contexto.params, exigirNotificador()]);
 
@@ -107,6 +109,7 @@ export async function POST(request: Request, contexto: ContextoMensajes) {
       ventanaCargaId: mensaje.ventanaCargaId,
       mensajeCargaId: mensaje.id,
     });
+    programarAvisoMensajeRevisores(resultado);
 
     return NextResponse.json({ mensaje: aMensajeVista(mensaje, acceso.sesion.sub) }, { status: 201 });
   } catch (error) {

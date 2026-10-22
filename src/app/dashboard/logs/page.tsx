@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { esTipoAvisoCorreo } from "@/infrastructure/logging/catalogoFallasCorreo";
 import {
   leerLog,
   leerErroresPersistentes,
@@ -7,9 +8,11 @@ import {
   esFechaValida,
   normalizarTamano,
   type EntradaLog,
+  type FiltroLog,
   type TipoLog,
 } from "@/infrastructure/logging/leerLogs";
 import { BotonActualizar } from "./boton-actualizar";
+import { EntradaFallaCorreo } from "./entrada-falla-correo";
 import { FiltrosLogs } from "./filtros-logs";
 import { PaginacionLogs } from "./paginacion-logs";
 import { construirRutaLogs } from "./ruta-logs";
@@ -29,7 +32,7 @@ const PESTANAS: { tipo: TipoLog; etiqueta: string; descripcion: string }[] = [
   {
     tipo: "errores",
     etiqueta: "Errores del sistema",
-    descripcion: "Fallas técnicas registradas: excepciones, errores de base de datos y envíos fallidos.",
+    descripcion: "Fallas técnicas registradas: excepciones y errores de base de datos. Los correos que no se pudieron enviar están en su propia pestaña.",
   },
   {
     tipo: "auditoria",
@@ -40,6 +43,11 @@ const PESTANAS: { tipo: TipoLog; etiqueta: string; descripcion: string }[] = [
     tipo: "accesos",
     etiqueta: "Accesos",
     descripcion: "Intentos de inicio de sesión, exitosos y fallidos, con el RUT, la IP de origen y el motivo del rechazo.",
+  },
+  {
+    tipo: "fallas-correo",
+    etiqueta: "Fallas de envío correo",
+    descripcion: "Correos del sistema que no se pudieron enviar: a quién iban, por qué fallaron y qué decían.",
   },
 ];
 
@@ -59,34 +67,45 @@ type LogsPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function LogsPage({ searchParams }: LogsPageProps) {
-  const parametros = await searchParams;
+type ParametrosLogs = {
+  tipo: TipoLog;
+  filtro: FiltroLog;
+};
+
+// Todos los parámetros en modo tolerante: un valor inválido o ausente cae a su defecto en silencio
+// en vez de romper la pantalla.
+function leerParametrosLogs(parametros: Record<string, string | string[] | undefined>): ParametrosLogs {
   const tipoCrudo = unicoParametro(parametros.tipo);
-  // Modo tolerante: un `?tipo=` inválido o ausente cae a "errores" en vez de romper la pantalla.
   const tipo: TipoLog = esTipoLog(tipoCrudo) ? tipoCrudo : "errores";
 
-  // Fechas del rango: una fecha mal formada se ignora en silencio (modo tolerante), no rompe.
   const desdeCrudo = unicoParametro(parametros.desde);
   const hastaCrudo = unicoParametro(parametros.hasta);
-  const desde = esFechaValida(desdeCrudo) ? desdeCrudo : undefined;
-  const hasta = esFechaValida(hastaCrudo) ? hastaCrudo : undefined;
-
-  // Tamaño de página (25/50/100) y página, ambos tolerantes: un valor inválido cae al defecto.
-  const tamano = normalizarTamano(unicoParametro(parametros.tamano));
+  // RF-44: el tipo de aviso se valida contra el catálogo y solo aplica a su pestaña.
+  const avisoCrudo = unicoParametro(parametros.aviso);
   const paginaCruda = Number(unicoParametro(parametros.pagina));
-  const paginaSolicitada = Number.isFinite(paginaCruda) && paginaCruda >= 1 ? paginaCruda : 1;
 
-  const activa = PESTANAS.find((p) => p.tipo === tipo)!;
-  const filtro = {
-    desde,
-    hasta,
-    pagina: paginaSolicitada,
-    tamano,
+  return {
+    tipo,
+    filtro: {
+      desde: esFechaValida(desdeCrudo) ? desdeCrudo : undefined,
+      hasta: esFechaValida(hastaCrudo) ? hastaCrudo : undefined,
+      tipoAviso: tipo === "fallas-correo" && esTipoAvisoCorreo(avisoCrudo) ? avisoCrudo : undefined,
+      pagina: Number.isFinite(paginaCruda) && paginaCruda >= 1 ? paginaCruda : 1,
+      tamano: normalizarTamano(unicoParametro(parametros.tamano)),
+    },
   };
+}
+
+export default async function LogsPage({ searchParams }: LogsPageProps) {
+  const { tipo, filtro } = leerParametrosLogs(await searchParams);
+  const { desde, hasta, tipoAviso, tamano } = filtro;
+
+  const activa = PESTANAS.find((p) => p.tipo === tipo) ?? PESTANAS[0];
   const { entradas, total, pagina, totalPaginas } = tipo === "errores"
     ? await leerErroresPersistentes(filtro)
     : await leerLog(tipo, filtro);
-  const hayFiltro = desde !== undefined || hasta !== undefined;
+  const hayFiltro = desde !== undefined || hasta !== undefined || tipoAviso !== undefined;
+  const propsPaginacion = { tipo, desde, hasta, tipoAviso, tamano, pagina, total, totalPaginas };
 
   return (
     <div className="mx-auto w-full max-w-7xl pb-6">
@@ -130,66 +149,63 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
         </div>
 
         {/* La `key` remonta el formulario cuando cambia el filtro o la pestaña, para que los
-            campos de fecha reflejen la URL vigente. */}
+            campos reflejen la URL vigente. */}
         <FiltrosLogs
-          key={`${tipo}:${desde ?? ""}:${hasta ?? ""}`}
+          key={`${tipo}:${desde ?? ""}:${hasta ?? ""}:${tipoAviso ?? ""}`}
           tipo={tipo}
           desdeInicial={desde ?? ""}
           hastaInicial={hasta ?? ""}
+          tipoAvisoInicial={tipoAviso}
         />
       </section>
 
       <p className="mt-4 sr-only" role="status" aria-live="polite">
-        {total === 0
-          ? hayFiltro
-            ? "Ningún registro en el rango de fechas seleccionado."
-            : "Sin registros."
-          : `${total} ${total === 1 ? "registro" : "registros"}${hayFiltro ? " en el rango" : ""}, del más reciente al más antiguo.`}
+        {anuncioEstado(total, hayFiltro)}
       </p>
 
       {total === 0 ? (
-        <section className="mt-5 rounded-2xl border border-dashed border-gob-accent bg-white px-6 py-12 text-center">
-          <p className="text-sm font-semibold text-gob-tertiary">No hay registros para mostrar</p>
-          <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-gob-gray-a">
-            {hayFiltro
-              ? "No hay registros en el rango de fechas seleccionado. Ajusta el período para ampliar la búsqueda."
-              : "Los registros aparecerán aquí cuando el sistema genere actividad."}
-          </p>
-        </section>
+        <SinRegistros hayFiltro={hayFiltro} />
       ) : (
         <>
-          <PaginacionLogs
-            tipo={tipo}
-            desde={desde}
-            hasta={hasta}
-            tamano={tamano}
-            pagina={pagina}
-            total={total}
-            totalPaginas={totalPaginas}
-          />
+          <PaginacionLogs {...propsPaginacion} />
 
           <ul className="mt-4 flex flex-col gap-2.5" aria-label="Entradas de registro">
             {entradas.map((entrada) => (
               <li key={entrada.indice}>
-                <EntradaLogItem tipo={tipo} entrada={entrada} formatear={formatearFecha} />
+                {tipo === "fallas-correo" ? (
+                  <EntradaFallaCorreo entrada={entrada} fechaHora={formatearFecha(entrada.timestamp)} />
+                ) : (
+                  <EntradaLogItem tipo={tipo} entrada={entrada} formatear={formatearFecha} />
+                )}
               </li>
             ))}
           </ul>
 
           {/* La paginación se repite abajo: tras recorrer una página larga, el control queda a
               mano sin volver arriba. */}
-          <PaginacionLogs
-            tipo={tipo}
-            desde={desde}
-            hasta={hasta}
-            tamano={tamano}
-            pagina={pagina}
-            total={total}
-            totalPaginas={totalPaginas}
-          />
+          <PaginacionLogs {...propsPaginacion} />
         </>
       )}
     </div>
+  );
+}
+
+function anuncioEstado(total: number, hayFiltro: boolean): string {
+  if (total === 0) return hayFiltro ? "Ningún registro con los filtros seleccionados." : "Sin registros.";
+  const cantidad = `${total} ${total === 1 ? "registro" : "registros"}`;
+  return `${cantidad}${hayFiltro ? " con los filtros" : ""}, del más reciente al más antiguo.`;
+}
+
+function SinRegistros({ hayFiltro }: { hayFiltro: boolean }) {
+  return (
+    <section className="mt-5 rounded-2xl border border-dashed border-gob-accent bg-white px-6 py-12 text-center">
+      <p className="text-sm font-semibold text-gob-tertiary">No hay registros para mostrar</p>
+      <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-gob-gray-a">
+        {hayFiltro
+          ? "No hay registros con los filtros seleccionados. Ajusta el período o el tipo para ampliar la búsqueda."
+          : "Los registros aparecerán aquí cuando el sistema genere actividad."}
+      </p>
+    </section>
   );
 }
 

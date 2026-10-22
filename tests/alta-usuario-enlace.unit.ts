@@ -230,8 +230,15 @@ async function probarFalloDeEnvioInvalidaToken() {
   assert.equal(resultado.estado, "ENVIO_FALLIDO");
   assert.equal(invalidado, tokenId);
   if (resultado.estado === "ENVIO_FALLIDO") {
-    assert.ok(resultado.diagnostico.includes("[correo]"));
-    assert.ok(!resultado.diagnostico.includes(usuarioBase.email));
+    // RF-44: el error original vuelve al llamador para el registro de fallas de correo (visible
+    // solo para ADMIN); el token nunca viaja en el resultado.
+    assert.ok(resultado.errorEnvio instanceof Error);
+    assert.equal((resultado.errorEnvio as Error & { code?: string }).code, "EAUTH");
+    assert.deepEqual(resultado.destinatario, {
+      nombreCompleto: `${usuarioBase.nombres} ${usuarioBase.apellidos}`,
+      email: usuarioBase.email,
+    });
+    assert.ok(!JSON.stringify(resultado).includes("token-claro"));
   }
 }
 

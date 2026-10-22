@@ -31,6 +31,11 @@ export type OpcionesEnlaceContrasena = {
   contexto: ContextoEnlace;
 };
 
+// Quién habría recibido el enlace. Solo vuelve en los desenlaces SIN_CONFIGURACION y ENVIO_FALLIDO,
+// para el registro de fallas de correo (RF-44, visible solo para ADMIN); nunca sale en una
+// respuesta HTTP.
+export type DestinatarioEnlace = { nombreCompleto: string; email: string };
+
 export interface EnviadorCorreoRecuperacion {
   // `false` cuando el relay SMTP no está configurado. Es el único punto donde el caso de uso
   // pregunta por la disponibilidad del correo, sin saber nada de SMTP.

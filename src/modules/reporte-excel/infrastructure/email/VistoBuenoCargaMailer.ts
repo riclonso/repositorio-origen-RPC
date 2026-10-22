@@ -1,7 +1,6 @@
-import { env, configSmtp } from "@/infrastructure/config/env";
+import { configSmtp } from "@/infrastructure/config/env";
 import { correoDisponible, enviarCorreo } from "@/infrastructure/email/SmtpMailer";
-import { CODIGO_PERFIL_REVISOR_REPOSITORIO } from "@/modules/perfiles/domain/entities/Perfil";
-import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
+import { obtenerDestinatariosEquipoRevisor } from "@/modules/usuarios/infrastructure/destinatarios/obtenerDestinatariosEquipoRevisor";
 import type {
   DatosCorreoConfirmacionVistoBueno,
   EnviadorConfirmacionVistoBueno,
@@ -20,6 +19,11 @@ const CABECERAS = {
 
 function primerNombre(nombres: string): string {
   return nombres.trim().split(/\s+/)[0] ?? "";
+}
+
+function saludoPersonal(nombres: string): string {
+  const nombre = primerNombre(nombres);
+  return nombre.length > 0 ? `Hola ${nombre},` : "Hola,";
 }
 
 function escaparHtml(valor: string): string {
@@ -90,34 +94,23 @@ export const vistoBuenoCargaMailer: EnviadorConfirmacionVistoBueno = {
       throw new Error("El envío de correo no está configurado");
     }
 
-    const nombre = primerNombre(datos.notificador.nombres);
-    const saludo = nombre.length > 0 ? `Hola ${nombre},` : "Hola,";
     const enlace = `${configSmtp.urlBase}/notificador`;
 
-    await enviarACorreo(datos.notificador.email, saludo, enlace, datos);
+    await enviarACorreo(datos.notificador.email, saludoPersonal(datos.notificador.nombres), enlace, datos);
   },
 
-  async enviarConfirmacionRevisores(datos) {
+  // A quién se envía lo decide la regla única de `modules/usuarios/` (RF-44).
+  resolverDestinatariosRevisores: obtenerDestinatariosEquipoRevisor,
+
+  async enviarConfirmacionRevisor(destinatario, datos) {
     if (!configSmtp) {
       throw new Error("El envío de correo no está configurado");
     }
 
     const enlace = `${configSmtp.urlBase}/revisor`;
+    // El buzón compartido no es una persona: se saluda al equipo.
+    const saludo = destinatario.tipo === "BUZON_COMPARTIDO" ? "Hola Equipo Revisor," : saludoPersonal(destinatario.nombres);
 
-    // Si el buzón compartido está configurado, un solo correo a esa dirección. Si no, un correo
-    // INDIVIDUAL por cada revisor activo (nunca todos en el mismo To/CC: expondría el email de un
-    // revisor a otro).
-    if (env.BUZON_COMPARTIDO_REVISOR_EMAIL) {
-      await enviarACorreo(env.BUZON_COMPARTIDO_REVISOR_EMAIL, "Hola Equipo Revisor,", enlace, datos);
-      return;
-    }
-
-    const revisores = await prismaUsuarioRepository.listarActivosPorPerfil(CODIGO_PERFIL_REVISOR_REPOSITORIO);
-
-    for (const revisor of revisores) {
-      const nombre = primerNombre(revisor.nombres);
-      const saludo = nombre.length > 0 ? `Hola ${nombre},` : "Hola,";
-      await enviarACorreo(revisor.email, saludo, enlace, datos);
-    }
+    await enviarACorreo(destinatario.email, saludo, enlace, datos);
   },
 };

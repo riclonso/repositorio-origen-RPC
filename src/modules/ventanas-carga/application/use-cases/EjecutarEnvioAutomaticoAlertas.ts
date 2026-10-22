@@ -1,7 +1,7 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { AlertaNotificacionRepository } from "@/modules/ventanas-carga/domain/repositories/AlertaNotificacionRepository";
 import type { NuevaAlertaNotificacion } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
-import type { EnviadorCorreoAlerta } from "@/modules/ventanas-carga/application/ports";
+import type { EnviadorCorreoAlerta, FalloEnvioAlerta } from "@/modules/ventanas-carga/application/ports";
 import { calcularDiasRestantes, esDiaDeEnvioAutomatico } from "@/modules/ventanas-carga/domain/entities/VentanaCarga";
 import { resolverPlantillaAlerta, sanitizarMensajeResueltoHtml } from "@/modules/ventanas-carga/domain/entities/PlantillaAlerta";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
@@ -10,7 +10,7 @@ import { describirFalloEnvio } from "@/shared/utils/describirFalloEnvio";
 const MAXIMO_INTENTOS_ENVIO_AUTOMATICO = 3;
 const ESPERA_ENTRE_INTENTOS_MS = 2_000;
 
-type ResultadoEnvio = { resultado: "EXITO" } | { resultado: "ERROR"; detalleError: string };
+type ResultadoEnvio = { resultado: "EXITO" } | { resultado: "ERROR"; detalleError: string; error: unknown };
 
 // Reintenta hasta `MAXIMO_INTENTOS_ENVIO_AUTOMATICO` veces, con espera fija entre intentos. Solo
 // se persiste el resultado FINAL (una fila por destinatario, nunca una por intento).
@@ -29,7 +29,7 @@ async function enviarConReintento(enviar: () => Promise<void>): Promise<Resultad
     }
   }
 
-  return { resultado: "ERROR", detalleError: describirFalloEnvio(ultimoError) };
+  return { resultado: "ERROR", detalleError: describirFalloEnvio(ultimoError), error: ultimoError };
 }
 
 function asuntoAlerta(formatoExcelNombre: string, anio: number): string {
@@ -48,10 +48,23 @@ export type DependenciasEnvioAutomaticoAlertas = {
   enviadorCorreo: EnviadorCorreoAlerta;
 };
 
+// Ventana a la que hoy le correspondía alerta y no se pudo enviar por falta de SMTP.
+export type VentanaAlertaSinCorreo = {
+  ventanaCargaId: string;
+  formatoExcelNombre: string;
+  anio: number;
+  cantidadPendientes: number;
+};
+
 export type ResultadoCicloAutomaticoAlertas = {
   ventanasProcesadas: number;
   enviosExitosos: number;
   enviosConError: number;
+  // RF-44: para que el scheduler registre cada falla en `fallas-correo.txt` (este caso de uso no
+  // conoce el logger). Un fallo por destinatario (tras agotar los reintentos), y una entrada por
+  // ventana cuando el correo no está configurado (sin crear filas ni lote).
+  fallos: FalloEnvioAlerta[];
+  ventanasSinConfiguracion: VentanaAlertaSinCorreo[];
 };
 
 // RF-17: ciclo diario del scheduler. Recorre las ventanas abiertas y publicadas con alertas
@@ -70,6 +83,8 @@ export async function ejecutarEnvioAutomaticoAlertas(
 
   let enviosExitosos = 0;
   let enviosConError = 0;
+  const fallos: FalloEnvioAlerta[] = [];
+  const ventanasSinConfiguracion: VentanaAlertaSinCorreo[] = [];
 
   for (const ventana of ventanasConAlertaHoy) {
     const [pendientes, yaEnviados] = await Promise.all([
@@ -79,6 +94,18 @@ export async function ejecutarEnvioAutomaticoAlertas(
 
     const pendientesSinEnvioHoy = pendientes.filter((pendiente) => !yaEnviados.has(pendiente.id));
     if (pendientesSinEnvioHoy.length === 0) continue;
+
+    // Sin SMTP no hay a quién reintentar: se informa la ventana y se sigue con las demás (antes
+    // `construirUrlEnlaceSistema()` lanzaba y cortaba el ciclo completo).
+    if (!dependencias.enviadorCorreo.disponible()) {
+      ventanasSinConfiguracion.push({
+        ventanaCargaId: ventana.id,
+        formatoExcelNombre: ventana.formatoExcelNombre,
+        anio: ventana.anio,
+        cantidadPendientes: pendientesSinEnvioHoy.length,
+      });
+      continue;
+    }
 
     const loteId = crypto.randomUUID();
     const diasRestantes = calcularDiasRestantes(ventana.fechaVencimiento, ahora);
@@ -112,6 +139,14 @@ export async function ejecutarEnvioAutomaticoAlertas(
         enviosExitosos++;
       } else {
         enviosConError++;
+        fallos.push({
+          ventanaCargaId: ventana.id,
+          formatoExcelNombre: ventana.formatoExcelNombre,
+          anio: ventana.anio,
+          loteId,
+          destinatario: pendiente,
+          error: resultadoEnvio.error,
+        });
       }
 
       filas.push({
@@ -131,5 +166,11 @@ export async function ejecutarEnvioAutomaticoAlertas(
     await dependencias.repositorioAlertas.crearLote(filas);
   }
 
-  return { ventanasProcesadas: ventanasConAlertaHoy.length, enviosExitosos, enviosConError };
+  return {
+    ventanasProcesadas: ventanasConAlertaHoy.length,
+    enviosExitosos,
+    enviosConError,
+    fallos,
+    ventanasSinConfiguracion,
+  };
 }

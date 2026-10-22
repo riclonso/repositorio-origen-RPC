@@ -1,13 +1,24 @@
 import type { VentanaCargaRepository } from "@/modules/ventanas-carga/domain/repositories/VentanaCargaRepository";
 import type { AlertaNotificacionRepository } from "@/modules/ventanas-carga/domain/repositories/AlertaNotificacionRepository";
-import type { EnviadorCorreoAlerta } from "@/modules/ventanas-carga/application/ports";
+import type { EnviadorCorreoAlerta, FalloEnvioAlerta } from "@/modules/ventanas-carga/application/ports";
+import type { NotificadorPendiente } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
 import { MARCADOR_ENLACE_SISTEMA, sanitizarMensajeResueltoHtml } from "@/modules/ventanas-carga/domain/entities/PlantillaAlerta";
 import { describirFalloEnvio } from "@/shared/utils/describirFalloEnvio";
 
 export type ResultadoEnviarAlertaIndividualVentana =
-  | { ok: true; loteId: string; resultado: "EXITO" | "ERROR" }
+  // `fallo` (RF-44): presente solo si el envío falló, para que el Route Handler lo registre en
+  // `fallas-correo.txt`. Nunca sale en la respuesta HTTP.
+  | { ok: true; loteId: string; resultado: "EXITO" | "ERROR"; fallo: FalloEnvioAlerta | null }
   | { ok: false; motivo: "VENTANA_NO_ENCONTRADA" }
-  | { ok: false; motivo: "DESTINATARIO_NO_PENDIENTE" };
+  | { ok: false; motivo: "DESTINATARIO_NO_PENDIENTE" }
+  // RF-44: el destinatario sigue pendiente, pero el correo no está configurado. No se crea lote.
+  | {
+      ok: false;
+      motivo: "SIN_CONFIGURACION";
+      formatoExcelNombre: string;
+      anio: number;
+      destinatario: NotificadorPendiente;
+    };
 
 function asuntoAlerta(formatoExcelNombre: string, anio: number): string {
   return `Recordatorio: reporta tu archivo de ${formatoExcelNombre} (${anio})`;
@@ -46,6 +57,16 @@ export async function enviarAlertaIndividualVentana(
     return { ok: false, motivo: "DESTINATARIO_NO_PENDIENTE" };
   }
 
+  if (!dependencias.enviadorCorreo.disponible()) {
+    return {
+      ok: false,
+      motivo: "SIN_CONFIGURACION",
+      formatoExcelNombre: ventana.formatoExcelNombre,
+      anio: ventana.anio,
+      destinatario,
+    };
+  }
+
   const urlEnlaceSistema = dependencias.enviadorCorreo.construirUrlEnlaceSistema();
   const mensajeConEnlaceResuelto = mensajeHtml.replaceAll(MARCADOR_ENLACE_SISTEMA, urlEnlaceSistema);
   const mensajeSanitizado = sanitizarMensajeResueltoHtml(mensajeConEnlaceResuelto, urlEnlaceSistema);
@@ -54,6 +75,7 @@ export async function enviarAlertaIndividualVentana(
 
   let resultado: "EXITO" | "ERROR" = "EXITO";
   let detalleError: string | null = null;
+  let fallo: FalloEnvioAlerta | null = null;
 
   try {
     await dependencias.enviadorCorreo.enviar({
@@ -64,6 +86,14 @@ export async function enviarAlertaIndividualVentana(
   } catch (error) {
     resultado = "ERROR";
     detalleError = describirFalloEnvio(error);
+    fallo = {
+      ventanaCargaId: id,
+      formatoExcelNombre: ventana.formatoExcelNombre,
+      anio: ventana.anio,
+      loteId,
+      destinatario,
+      error,
+    };
   }
 
   await dependencias.repositorioAlertas.crearLote([
@@ -81,5 +111,5 @@ export async function enviarAlertaIndividualVentana(
     },
   ]);
 
-  return { ok: true, loteId, resultado };
+  return { ok: true, loteId, resultado, fallo };
 }

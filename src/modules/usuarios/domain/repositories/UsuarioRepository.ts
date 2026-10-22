@@ -32,10 +32,13 @@ export interface UsuarioRepository {
   // Cuenta administradores activos por CÓDIGO de perfil, no por el nombre visible.
   contarAdminsActivos(): Promise<number>;
   // Todos los usuarios activos de un perfil dado (por CÓDIGO), una sola consulta, sin N+1. Lo usa
-  // el correo de confirmación de carga aprobada (buzón compartido del equipo revisor) cuando
+  // la regla de destinatarios del equipo revisor (`obtenerDestinatariosEquipoRevisor`) cuando
   // `BUZON_COMPARTIDO_REVISOR_EMAIL` no está configurada: el correo va INDIVIDUAL a cada uno,
-  // nunca todos en el mismo To/CC.
-  listarActivosPorPerfil(perfilCodigo: string): Promise<Pick<Usuario, "id" | "nombres" | "email">[]>;
+  // nunca todos en el mismo To/CC. `apellidos` y `rut` solo alimentan el registro de fallas de
+  // correo (RF-44).
+  listarActivosPorPerfil(
+    perfilCodigo: string,
+  ): Promise<Pick<Usuario, "id" | "nombres" | "apellidos" | "rut" | "email">[]>;
   crear(datos: DatosNuevoUsuario): Promise<Usuario>;
   actualizar(id: string, datos: DatosEdicionUsuario): Promise<Usuario>;
   cambiarEstado(id: string, activo: boolean): Promise<Usuario>;

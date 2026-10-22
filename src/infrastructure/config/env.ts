@@ -35,7 +35,12 @@ const schema = z
     DATABASE_URL: z.string().min(1, "DATABASE_URL no está definida"),
     AUTH_SECRET: z.string().min(32, "AUTH_SECRET debe tener al menos 32 caracteres"),
     TRUST_PROXY: booleanoSchema.optional(),
-    APP_URL: z.url("APP_URL debe ser una URL absoluta válida").optional(),
+    // Solo http/https: `z.url()` sin protocolo acepta "localhost:3613" (esquema "localhost"), y un
+    // enlace así no sería un enlace clicable en el correo ni lo reconocería el saneo de enlaces del
+    // registro de fallas de correo (RF-44).
+    APP_URL: z
+      .url({ protocol: /^https?$/, error: "APP_URL debe ser una URL absoluta http o https válida" })
+      .optional(),
     SMTP_HOST: z.string().min(1, "SMTP_HOST no puede estar vacía").optional(),
     SMTP_PORT: puertoSmtpSchema,
     SMTP_SECURE: booleanoSchema.optional(),

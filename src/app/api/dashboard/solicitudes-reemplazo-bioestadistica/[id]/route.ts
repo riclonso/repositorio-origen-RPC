@@ -1,4 +1,6 @@
 import { NextResponse, after } from "next/server";
+import { ejecutarAvisoCorreo } from "@/infrastructure/email/ejecutarAvisoCorreo";
+import { destinatarioUsuario } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
 import { revisarSolicitudReemplazoBioestadistica } from "@/modules/bioestadistica/application/use-cases/RevisarSolicitudReemplazoBioestadistica";
 import {
@@ -30,29 +32,41 @@ function respuestaNoEncontrada(): NextResponse {
 }
 
 // Correo de resultado, diferido: la decisión ya quedó guardada y nunca se revierte si el envío falla.
-async function notificarResultado(solicitud: SolicitudReemplazoBioestadistica): Promise<void> {
-  try {
-    const destinatario = await prismaUsuarioRepository.obtenerPorId(solicitud.solicitadoPorId);
-    if (!destinatario || !solicitudReemplazoBioestadisticaMailer.disponible()) return;
+// RF-44: cada falla (sin SMTP, preparación o envío) queda en `fallas-correo.txt`. Bioestadística no
+// pertenece a una ventana de carga: el registro va sin ventana.
+function notificarResultado(solicitud: SolicitudReemplazoBioestadistica): Promise<void> {
+  return ejecutarAvisoCorreo({
+    tipoAviso: "RESULTADO_SOLICITUD_REEMPLAZO_BIOESTADISTICA",
+    referencias: { solicitudReemplazoBioestadisticaId: solicitud.id },
+    destinatarioConocido: {
+      tipo: "USUARIO",
+      usuarioId: solicitud.solicitadoPorId,
+      nombre: solicitud.solicitadoPorNombre,
+      rut: solicitud.solicitadoPorRut,
+    },
+    disponible: () => solicitudReemplazoBioestadisticaMailer.disponible(),
+    preparar: async () => {
+      const [destinatario, resumenes] = await Promise.all([
+        prismaUsuarioRepository.obtenerPorId(solicitud.solicitadoPorId),
+        prismaVentanaCargaRepository.listarDiasVigenciaPorAnio([solicitud.anio]),
+      ]);
+      if (!destinatario) return null;
 
-    const resumenes = await prismaVentanaCargaRepository.listarDiasVigenciaPorAnio([solicitud.anio]);
-    const resumenAnio = resumenes.find((resumen) => resumen.anio === solicitud.anio) ?? null;
-
-    await solicitudReemplazoBioestadisticaMailer.enviarResultadoRevision({
-      destinatario: { nombres: destinatario.nombres, email: destinatario.email },
-      tipoArchivo: solicitud.tipoArchivo,
-      anio: solicitud.anio,
-      nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
-      estado: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
-      comentarioRevision: solicitud.comentarioRevision,
-      venceEl: fechaVencimientoSolicitudBioestadistica(solicitud, resumenAnio),
-    });
-  } catch (error) {
-    logger.error("Error al enviar el correo de resultado de una solicitud de reemplazo de Bioestadística", {
-      solicitudReemplazoBioestadisticaId: solicitud.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+      const resumenAnio = resumenes.find((resumen) => resumen.anio === solicitud.anio) ?? null;
+      return { destinatario, venceEl: fechaVencimientoSolicitudBioestadistica(solicitud, resumenAnio) };
+    },
+    destinatarioDe: ({ destinatario }) => destinatarioUsuario(destinatario),
+    enviar: ({ destinatario, venceEl }) =>
+      solicitudReemplazoBioestadisticaMailer.enviarResultadoRevision({
+        destinatario: { nombres: destinatario.nombres, email: destinatario.email },
+        tipoArchivo: solicitud.tipoArchivo,
+        anio: solicitud.anio,
+        nombreArchivoOriginal: solicitud.nombreArchivoOriginal,
+        estado: solicitud.estado === "APROBADA" ? "APROBADA" : "RECHAZADA",
+        comentarioRevision: solicitud.comentarioRevision,
+        venceEl,
+      }),
+  });
 }
 
 // RF-37: ADMIN o REVISOR_REPOSITORIO aprueban o rechazan una solicitud de reemplazo de

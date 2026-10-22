@@ -12,7 +12,9 @@ import type { AlertaNotificacionRepository } from "@/modules/ventanas-carga/doma
 import type { EnviadorCorreoAlerta } from "@/modules/ventanas-carga/application/ports";
 import { nombreCompleto } from "@/modules/usuarios/domain/entities/Usuario";
 
-export type NotificadorPendienteConMensaje = NotificadorPendiente & {
+// Sin `rut` (RF-44): solo alimenta el registro de fallas de correo en el servidor; esta vista viaja
+// a un Client Component y no lo necesita.
+export type NotificadorPendienteConMensaje = Omit<NotificadorPendiente, "rut"> & {
   // Mensaje ya resuelto (placeholders + enlace reales) y sanitizado, precargado en el modal de
   // envío individual (`ModalEnviarAlertaIndividual`). El operador puede seguir editándolo antes
   // de confirmar; el servidor lo vuelve a sanitizar en `EnviarAlertaIndividualVentana`.
@@ -89,7 +91,14 @@ export async function obtenerVistaAlertasVentana(
       urlEnlaceSistema,
     );
 
-    return { ...pendiente, mensajePrevio: sanitizarMensajeResueltoHtml(mensajeResuelto, urlEnlaceSistema) };
+    // Proyección explícita: un campo nuevo de `NotificadorPendiente` no llega al cliente por descuido.
+    return {
+      id: pendiente.id,
+      nombres: pendiente.nombres,
+      apellidos: pendiente.apellidos,
+      email: pendiente.email,
+      mensajePrevio: sanitizarMensajeResueltoHtml(mensajeResuelto, urlEnlaceSistema),
+    };
   });
 
   const loteIds = [...lotesAutomaticos.filas, ...lotesManuales.filas].map((lote) => lote.loteId);

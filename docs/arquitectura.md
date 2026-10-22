@@ -104,10 +104,11 @@ src/
 │   │                         email/, auditoria/). Lee las ventanas vía la INTERFAZ `VentanaCargaRepository`
 │   ├── mensajeria/         — mensajes revisor ↔ notificador sobre cargas (RF-31). entities/
 │   │                         MensajeCarga.ts, repositories/MensajeCargaRepository.ts, ports.ts
-│   │                         (EnviadorAvisoMensajeNuevo), use-cases/ (EnviarMensajeRevisor,
+│   │                         (EnviadorAvisoMensajeNuevo, EnviadorAvisoMensajeRevisores), use-cases/ (EnviarMensajeRevisor,
 │   │                         ResponderMensajeNotificador, ListarConversacionesVentana,
 │   │                         ObtenerHiloVentana, MarcarMensajesLeidos,
-│   │                         ObtenerResumenMensajesPorVentana, AvisarMensajeNuevo),
+│   │                         ObtenerResumenMensajesPorVentana, AvisarMensajeNuevo,
+│   │                         AvisarMensajeNuevoRevisores),
 │   │                         PrismaMensajeCargaRepository.ts, email/AvisoMensajeMailer.ts,
 │   │                         auditoria/auditarMensajeCarga.ts, schemas/ (mensaje.schema.ts,
 │   │                         vistas-mensajeria.ts: DTOs compartidos por API y componentes). Lee la
@@ -2286,6 +2287,63 @@ registra un fallo en `logger.error`: el mensaje ya está guardado y el 201 no de
 Anti-ráfaga: se envía solo si, antes de este mensaje, el notificador no tenía mensajes del revisor sin
 leer **en esa misma ventana** (un mensaje olvidado en otra ventana no bloquea los avisos nuevos). El
 correo nunca lleva el contenido.
+
+**Sentido inverso (notificador → equipo revisor, 2026-10-22).** `ResponderMensajeNotificador` cuenta,
+tras el INSERT, las respuestas del notificador aún no leídas por el equipo revisor en ese mismo hilo
+(`contarNoLeidosAnteriores` con `ladoAutor: NOTIFICADOR`) y devuelve `eraPrimerNoLeido` (nunca sale en
+la respuesta HTTP). Si es la primera de la tanda, `programarAvisoMensajeRevisores`
+(`app/api/notificador/ventanas-carga/_lib/http.ts`) invoca con `after()` a `AvisarMensajeNuevoRevisores`,
+contra el puerto separado `EnviadorAvisoMensajeRevisores` (no se amplió `EnviadorAvisoMensajeNuevo`).
+La regla de destinatarios del equipo revisor es única (RF-44): función pura
+`elegirDestinatariosEquipoRevisor` en `modules/usuarios/domain/entities/DestinatarioEquipoRevisor.ts` y
+adaptador `modules/usuarios/infrastructure/destinatarios/obtenerDestinatariosEquipoRevisor.ts`, que usan
+tanto este aviso como la confirmación de visto bueno: solo `BUZON_COMPARTIDO_REVISOR_EMAIL` si está
+configurada, si no un correo individual a cada REVISOR_REPOSITORIO activo, nunca en el mismo To/CC. El
+caso de uso envía uno a uno con captura por destinatario (un fallo no corta a los demás) y devuelve los
+fallidos con su destinatario y error, que el handler registra en `logs/fallas-correo.txt` (RF-44).
+Si falla el conteo anti-ráfaga después de guardar el mensaje (en ambos sentidos), el caso de uso
+devuelve `conteoFallido: true` con `eraPrimerNoLeido: false`: el POST responde 201 igual, no se avisa y
+el fallo se registra como etapa `PREPARACION`; un fallo de `crear()` sigue siendo 500. El correo lleva nombre del notificador, establecimiento, formato y año, con enlace
+a `/revisor`; nunca contenido, longitud, RUT, email del notificador ni nombre de archivo.
+
+## Registro de fallas de envío de correo (RF-44)
+
+**Un log dedicado, solo archivo.** `logs/fallas-correo.txt`, instancia Winston propia
+(`loggerFallasCorreo`) con rotación nativa: `maxsize` 5 MB, `maxFiles` 5, `tailable` (el activo es
+siempre `fallas-correo.txt`, el más antiguo `fallas-correo4.txt`). Por decisión del usuario no hay
+tabla en la BD, igual que auditoría y accesos: el archivo no sobrevive a un redespliegue sin volumen
+persistente para `logs/`. El visor lee los cinco archivos como uno.
+
+**Un único punto de registro.** `registrarFallaCorreo()` (`infrastructure/logging/fallasCorreo.ts`,
+Node-only) nunca lanza y es el único que conoce el enrutamiento por etapa: `ENVIO` → solo
+`fallas-correo.txt`; `PREPARACION` → además `logger.error`; `SIN_CONFIGURACION` → solo
+`fallas-correo.txt`, en todos los avisos. Se invoca solo desde Route Handlers, `after()` y el scheduler;
+los casos de uso devuelven el fallo (`errorEnvio`, `fallos`, `fallidos`, `errorConteoAviso`). El catálogo
+puro (`TipoAvisoCorreo`, `ETIQUETA_TIPO_AVISO`, etapas, constantes de rotación) vive aparte en
+`catalogoFallasCorreo.ts` para que el filtro cliente no arrastre `node:fs`. Avisos de un destinatario
+pasan por `infrastructure/email/ejecutarAvisoCorreo.ts`, que separa las tres etapas.
+
+**De dónde sale el correo fallido.** `SmtpMailer.enviarCorreo()` adjunta al error `{ para, asunto,
+texto }` como propiedad no enumerable bajo un símbolo (`infrastructure/email/correoFallido.ts`): no
+aparece en `JSON.stringify` ni en Winston, el error original conserva su `code`, y ningún mailer tuvo
+que cambiar. El HTML nunca se adjunta.
+
+**Qué se guarda y qué no.** Por decisión explícita del usuario (visible solo para ADMIN): emisor
+(`SMTP_FROM`), destinatario con nombre, RUT y correo, ventana si aplica, el mensaje SMTP completo y el
+asunto/cuerpo en texto plano. Defensas fijas: `reemplazarEnlaces()` cambia toda URL y todo `token=` por
+`[enlace]` (cuerpo y mensaje), y `APP_URL` solo acepta `http(s)`, para que un token de contraseña nunca
+llegue al log. En `PREPARACION` de los enlaces de contraseña se registra solo nombre y `code` del error,
+nunca el mensaje (puede arrastrar parámetros de Prisma, regla de RF-10). Nunca contraseñas, hashes ni
+contenido del chat.
+
+**Alertas de ventana.** La fila `ERROR` de `alerta_notificacion_ventana` se mantiene como historial de
+la ventana; además cada fallo se registra en este log (`registrarFallasAlerta.ts`). Sin SMTP, el ciclo
+automático informa cada ventana y sigue, y el envío manual responde 503 `SIN_CONFIGURACION` (audita
+`SIN_EFECTO`).
+
+**Visor.** Pestaña «Fallas de envío correo» en `/dashboard/logs` (Server Component, protegido por el
+proxy), filtro por fecha y por tipo de aviso (`aviso`, validado contra el catálogo), y un `<dialog>`
+«Ver correo» con asunto y cuerpo en texto plano, sin `dangerouslySetInnerHTML`.
 
 ### UI: refresco sin tiempo real, y la carrera "cerrar antes de marcar leído"
 

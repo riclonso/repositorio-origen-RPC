@@ -6,10 +6,15 @@ import { prismaAlertaNotificacionRepository } from "@/modules/ventanas-carga/inf
 import { alertaVentanaMailer } from "@/modules/ventanas-carga/infrastructure/email/AlertaVentanaMailer";
 import { auditarVentanaCarga } from "@/modules/ventanas-carga/infrastructure/auditoria/auditarVentanaCarga";
 import {
+  registrarAlertaSinConfiguracion,
+  registrarFallosEnvioAlerta,
+} from "@/modules/ventanas-carga/infrastructure/email/registrarFallasAlerta";
+import {
   MENSAJE_ERROR_INTERNO,
   MENSAJE_NO_ENCONTRADO,
   exigirAdminORevisor,
   idVentanaCargaSchema,
+  respuestaCorreoSinConfigurar,
   respuestaError,
   respuestaSinAcceso,
   respuestaSinPendientes,
@@ -47,6 +52,20 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
     });
 
     if (!resultado.ok) {
+      if (resultado.motivo === "SIN_CONFIGURACION") {
+        registrarAlertaSinConfiguracion(
+          { ventanaCargaId: idValido.data, formatoExcelNombre: resultado.formatoExcelNombre, anio: resultado.anio },
+          "MANUAL_MASIVA",
+        );
+        auditarVentanaCarga(acceso.sesion, request, {
+          accion: "VENTANA_CARGA_ALERTA_MASIVA_ENVIADA",
+          resultado: "SIN_EFECTO",
+          motivo: "SIN_CONFIGURACION",
+          ventanaCargaId: idValido.data,
+        });
+        return respuestaCorreoSinConfigurar();
+      }
+
       if (resultado.motivo === "SIN_PENDIENTES") {
         auditarVentanaCarga(acceso.sesion, request, {
           accion: "VENTANA_CARGA_ALERTA_MASIVA_ENVIADA",
@@ -65,6 +84,8 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
       });
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
     }
+
+    registrarFallosEnvioAlerta(resultado.fallos, "MANUAL_MASIVA");
 
     const cantidadExitos = resultado.resultados.filter((fila) => fila.resultado === "EXITO").length;
     const cantidadErrores = resultado.resultados.length - cantidadExitos;

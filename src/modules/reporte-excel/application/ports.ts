@@ -3,6 +3,7 @@ import type {
   ErrorCargaArchivo,
   ResultadoValidacionArchivo,
 } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
+import type { DestinatarioEquipoRevisor } from "@/modules/usuarios/domain/entities/DestinatarioEquipoRevisor";
 
 // Interfaces técnicas del módulo. `application/` nunca importa `exceljs`, `node:fs` ni SMTP
 // directamente: solo depende de estos puertos. Las implementaciones viven en `infrastructure/`.
@@ -122,9 +123,14 @@ export type DatosCorreoConfirmacionVistoBueno = {
 export interface EnviadorConfirmacionVistoBueno {
   disponible(): boolean;
   enviarConfirmacionNotificador(datos: DatosCorreoConfirmacionVistoBueno): Promise<void>;
-  // Buzón compartido si `BUZON_COMPARTIDO_REVISOR_EMAIL` está configurada, o un correo INDIVIDUAL
-  // por cada revisor activo si no (nunca todos en el mismo To/CC): la resolución de a quién enviar
-  // vive en la implementación de infraestructura, que es la única que conoce la variable de
-  // entorno y el repositorio de usuarios.
-  enviarConfirmacionRevisores(datos: Omit<DatosCorreoConfirmacionVistoBueno, "notificador">): Promise<void>;
+  // Buzón compartido si `BUZON_COMPARTIDO_REVISOR_EMAIL` está configurada, o un destinatario por
+  // cada revisor activo si no. La regla única vive en `modules/usuarios/` (RF-44); la
+  // implementación delega en ella.
+  resolverDestinatariosRevisores(): Promise<DestinatarioEquipoRevisor[]>;
+  // Un correo a UN solo destinatario (nunca todos en el mismo To/CC). Quien llama recorre los
+  // destinatarios y captura por destinatario: un fallo no corta a los demás.
+  enviarConfirmacionRevisor(
+    destinatario: DestinatarioEquipoRevisor,
+    datos: Omit<DatosCorreoConfirmacionVistoBueno, "notificador">,
+  ): Promise<void>;
 }

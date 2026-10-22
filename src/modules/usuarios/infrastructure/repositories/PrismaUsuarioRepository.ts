@@ -404,7 +404,7 @@ export const prismaUsuarioRepository: UsuarioRepository = {
   async listarActivosPorPerfil(perfilCodigo) {
     return prisma.usuario.findMany({
       where: { perfilCodigo, activo: true },
-      select: { id: true, nombres: true, email: true },
+      select: { id: true, nombres: true, apellidos: true, rut: true, email: true },
       orderBy: { apellidos: "asc" },
     });
   },

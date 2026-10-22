@@ -1,6 +1,20 @@
 // Puertos técnicos del módulo `ventanas-carga`, mismo criterio que `modules/auth/application/ports.ts`:
 // interfaces que `application/` conoce, implementadas por `infrastructure/`.
 
+import type { NotificadorPendiente } from "@/modules/ventanas-carga/domain/entities/AlertaNotificacion";
+
+// RF-44: envío de alerta que falló, devuelto por los casos de uso para que quien los invoca (Route
+// Handler o scheduler) lo registre en `fallas-correo.txt`. La fila ERROR de
+// `alerta_notificacion_ventana` se sigue escribiendo igual (con el diagnóstico saneado).
+export type FalloEnvioAlerta = {
+  ventanaCargaId: string;
+  formatoExcelNombre: string;
+  anio: number;
+  loteId: string;
+  destinatario: NotificadorPendiente;
+  error: unknown;
+};
+
 export type ParametrosCorreoAlerta = {
   destinatarioEmail: string;
   asunto: string;

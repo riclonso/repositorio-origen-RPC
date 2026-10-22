@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { TipoAvisoCorreo } from "@/infrastructure/logging/catalogoFallasCorreo";
 import { TAMANOS_PAGINA, type TamanoPagina, type TipoLog } from "@/infrastructure/logging/leerLogs";
 import { construirRutaLogs } from "./ruta-logs";
 
@@ -6,6 +7,7 @@ type PaginacionLogsProps = {
   tipo: TipoLog;
   desde?: string;
   hasta?: string;
+  tipoAviso?: TipoAvisoCorreo;
   tamano: TamanoPagina;
   pagina: number;
   total: number;
@@ -21,6 +23,7 @@ export function PaginacionLogs({
   tipo,
   desde,
   hasta,
+  tipoAviso,
   tamano,
   pagina,
   total,
@@ -47,7 +50,7 @@ export function PaginacionLogs({
             return (
               <Link
                 key={opcion}
-                href={construirRutaLogs({ tipo, desde, hasta, tamano: opcion, pagina: 1 })}
+                href={construirRutaLogs({ tipo, desde, hasta, tipoAviso, tamano: opcion, pagina: 1 })}
                 aria-current={seleccionado ? "true" : undefined}
                 className={`rounded-md px-2 py-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gob-primary ${
                   seleccionado
@@ -66,7 +69,7 @@ export function PaginacionLogs({
         <nav aria-label="Paginación" className="flex items-center gap-1">
           {hayAnterior ? (
             <Link
-              href={construirRutaLogs({ tipo, desde, hasta, tamano, pagina: pagina - 1 })}
+              href={construirRutaLogs({ tipo, desde, hasta, tipoAviso, tamano, pagina: pagina - 1 })}
               className={CLASES_NAV}
             >
               Anterior
@@ -83,7 +86,7 @@ export function PaginacionLogs({
 
           {haySiguiente ? (
             <Link
-              href={construirRutaLogs({ tipo, desde, hasta, tamano, pagina: pagina + 1 })}
+              href={construirRutaLogs({ tipo, desde, hasta, tipoAviso, tamano, pagina: pagina + 1 })}
               className={CLASES_NAV}
             >
               Siguiente

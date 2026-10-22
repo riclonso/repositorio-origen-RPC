@@ -1,4 +1,6 @@
 import { NextResponse, after } from "next/server";
+import { ejecutarAvisoCorreo } from "@/infrastructure/email/ejecutarAvisoCorreo";
+import { destinatarioUsuario, ventanaFallaCorreo } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
 import { rechazarCarga } from "@/modules/reporte-excel/application/use-cases/RechazarCarga";
 import { prismaCargaArchivoRepository } from "@/modules/reporte-excel/infrastructure/repositories/PrismaCargaArchivoRepository";
@@ -84,28 +86,27 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
 
     // El correo se DIFIERE con after(): el rechazo ya quedó guardado y no depende de que el relay
     // SMTP esté configurado ni de que el envío tenga éxito.
-    after(async () => {
-      try {
-        const destinatario = await prismaUsuarioRepository.obtenerPorId(carga.usuarioId);
-
-        if (!destinatario || !rechazoCargaMailer.disponible()) {
-          return;
-        }
-
-        await rechazoCargaMailer.enviarRechazo({
-          destinatario: { nombres: destinatario.nombres, email: destinatario.email },
-          formatoExcelNombre: carga.formatoExcelNombre,
-          anio: carga.anio,
-          nombreArchivoOriginal: carga.nombreArchivoOriginal,
-          motivo: datos.data.motivo,
-        });
-      } catch (error) {
-        logger.error("Error al enviar el correo de rechazo de una carga de archivo", {
-          cargaArchivoId: carga.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    });
+    // RF-44: cada falla (sin SMTP, preparación o envío) queda en `fallas-correo.txt`.
+    const motivoRechazo = datos.data.motivo;
+    after(() =>
+      ejecutarAvisoCorreo({
+        tipoAviso: "RECHAZO_CARGA",
+        ventana: ventanaFallaCorreo(carga),
+        referencias: { cargaArchivoId: carga.id },
+        destinatarioConocido: destinatarioUsuario({ id: carga.usuarioId, rut: carga.usuarioRut }),
+        disponible: () => rechazoCargaMailer.disponible(),
+        preparar: () => prismaUsuarioRepository.obtenerPorId(carga.usuarioId),
+        destinatarioDe: (destinatario) => destinatarioUsuario(destinatario),
+        enviar: (destinatario) =>
+          rechazoCargaMailer.enviarRechazo({
+            destinatario: { nombres: destinatario.nombres, email: destinatario.email },
+            formatoExcelNombre: carga.formatoExcelNombre,
+            anio: carga.anio,
+            nombreArchivoOriginal: carga.nombreArchivoOriginal,
+            motivo: motivoRechazo,
+          }),
+      }),
+    );
 
     return NextResponse.json({ carga: aCargaArchivoDTO(carga) });
   } catch (error) {

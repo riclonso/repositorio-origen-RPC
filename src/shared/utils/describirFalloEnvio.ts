@@ -1,12 +1,12 @@
 // Los errores de un relay SMTP suelen citar la dirección de destino en su respuesta, y esa
-// dirección no puede terminar en `errores.txt` ni en `alerta_notificacion_ventana.detalleError`.
-// Se conservan los campos estructurados, que son los que permiten diagnosticar, y del texto se
-// borra cualquier cosa con forma de correo.
+// dirección no puede terminar en `alerta_notificacion_ventana.detalleError` (lo ven ADMIN y
+// REVISOR_REPOSITORIO en el historial de envíos). Se conservan los campos estructurados, que son
+// los que permiten diagnosticar, y del texto se borra cualquier cosa con forma de correo.
 //
-// Vivía como función privada de `modules/auth/application/use-cases/RequestPasswordReset.ts`
-// (RF-10); se centraliza aquí porque ahora también la usa `modules/ventanas-carga/application/`
-// (envío automático y manual de alertas) y `application/` de un módulo no debe importar un
-// caso de uso de otro módulo.
+// Hoy la usan solo los casos de uso de alertas de `modules/ventanas-carga/application/` (envío
+// automático, masivo e individual) para esa columna. Desde RF-44 el camino del enlace de
+// contraseña ya no la usa (su falla va completa a `fallas-correo.txt`, visible solo para ADMIN) y
+// se eliminó la copia duplicada que vivía en `modules/auth/application/`.
 export function describirFalloEnvio(error: unknown): string {
   if (!(error instanceof Error)) {
     return "error desconocido";

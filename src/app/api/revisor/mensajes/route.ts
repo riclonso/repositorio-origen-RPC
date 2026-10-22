@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       return resultado.motivo === "NO_PENDIENTE" ? respuestaCargaNoPendiente() : respuestaCargaNoEncontrada();
     }
 
-    const { mensaje, carga, eraPrimerNoLeido } = resultado;
+    const { mensaje, carga } = resultado;
 
     auditarMensajeCarga(acceso.sesion, request, {
       resultado: "EXITO",
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       usuarioObjetivoRut: carga.usuarioRut,
     });
 
-    programarAvisoMensajeNuevo(carga, eraPrimerNoLeido);
+    programarAvisoMensajeNuevo(resultado);
 
     return NextResponse.json({ mensaje: aMensajeVista(mensaje, acceso.sesion.sub) }, { status: 201 });
   } catch (error) {

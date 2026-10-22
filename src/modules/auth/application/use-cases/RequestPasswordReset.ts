@@ -8,10 +8,10 @@ import {
 import type { UserRepository } from "@/modules/auth/domain/repositories/UserRepository";
 import type { PasswordResetTokenRepository } from "@/modules/auth/domain/repositories/PasswordResetTokenRepository";
 import type {
+  DestinatarioEnlace,
   EnviadorCorreoRecuperacion,
   GeneradorTokenRecuperacion,
 } from "@/modules/auth/application/ports";
-import { describirFalloEnvio } from "@/modules/auth/application/describirFalloEnvio";
 
 export type ResultadoSolicitudRecuperacion =
   | { enlace: "ENVIADO"; usuarioId: string; usuarioRut: string }
@@ -23,12 +23,14 @@ export type ResultadoSolicitudRecuperacion =
       usuarioId: string;
       usuarioRut: string;
       tokenId: string;
-      // Diagnóstico del relay, ya saneado: sin él, un fallo de envío quedaba registrado como
-      // "algo falló" y no había forma de distinguir un relay caído de una credencial vencida
-      // o de un remitente no autorizado.
-      diagnostico: string;
+      // RF-44: el error original del relay y el destinatario, para el registro de fallas de correo
+      // (visible solo para ADMIN): permite distinguir un relay caído de una credencial vencida o de
+      // un remitente no autorizado. El token nunca viaja aquí: el correo adjunto al error se
+      // registra con todo enlace reemplazado por "[enlace]".
+      errorEnvio: unknown;
+      destinatario: DestinatarioEnlace;
     }
-  | { enlace: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string };
+  | { enlace: "SIN_CONFIGURACION"; usuarioId: string; usuarioRut: string; destinatario: DestinatarioEnlace };
 
 export type DependenciasSolicitudRecuperacion = {
   repositorioUsuarios: UserRepository;
@@ -75,8 +77,13 @@ export async function requestPasswordReset(
   // `logger.error` de quien llama pueda decir a qué cuenta se le negó el servicio. Un correo
   // tecleado que no corresponde a ninguna cuenta se resuelve como SIN_CUENTA y no ensucia
   // `errores.txt` con ruido de sondeos. Sigue sin crearse token ni enviarse nada.
+  const destinatario: DestinatarioEnlace = {
+    nombreCompleto: `${usuario.nombres} ${usuario.apellidos}`.trim(),
+    email: usuario.email,
+  };
+
   if (!dependencias.enviadorCorreo.disponible()) {
-    return { enlace: "SIN_CONFIGURACION", usuarioId: usuario.id, usuarioRut: usuario.rut };
+    return { enlace: "SIN_CONFIGURACION", usuarioId: usuario.id, usuarioRut: usuario.rut, destinatario };
   }
 
   const ahora = new Date();
@@ -120,7 +127,8 @@ export async function requestPasswordReset(
       usuarioId: usuario.id,
       usuarioRut: usuario.rut,
       tokenId: tokenCreado.id,
-      diagnostico: describirFalloEnvio(error),
+      errorEnvio: error,
+      destinatario,
     };
   }
 

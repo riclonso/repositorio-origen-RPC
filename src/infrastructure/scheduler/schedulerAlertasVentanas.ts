@@ -5,6 +5,10 @@ import { ejecutarEnvioAutomaticoAlertas } from "@/modules/ventanas-carga/applica
 import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaVentanaCargaRepository";
 import { prismaAlertaNotificacionRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaAlertaNotificacionRepository";
 import { alertaVentanaMailer } from "@/modules/ventanas-carga/infrastructure/email/AlertaVentanaMailer";
+import {
+  registrarAlertaSinConfiguracion,
+  registrarFallosEnvioAlerta,
+} from "@/modules/ventanas-carga/infrastructure/email/registrarFallasAlerta";
 
 // Exactamente el patrón de `prisma.ts`/`SmtpMailer.ts`: UNA tarea programada por proceso, más una
 // copia en `globalThis` solo en desarrollo, para sobrevivir al Fast Refresh sin registrar una
@@ -21,15 +25,24 @@ export function iniciarSchedulerAlertasVentanas(): void {
         repositorioVentanas: prismaVentanaCargaRepository,
         repositorioAlertas: prismaAlertaNotificacionRepository,
         enviadorCorreo: alertaVentanaMailer,
-      }).catch((error) => {
-        // Solo un fallo del CICLO COMPLETO (no de un envío puntual, que ya queda registrado como
-        // fila ERROR en `alerta_notificacion_ventana`) llega hasta aquí: algo como un error de
-        // BD. Los envíos automáticos no se auditan en `logs/auditoria.txt` (la tabla ya es su
-        // registro estructurado); esto es lo único que va a `logs/errores.txt`.
-        logger.error("Error en el ciclo automático de alertas de ventanas de carga", {
-          mensaje: error instanceof Error ? error.message : String(error),
+      })
+        .then((resultado) => {
+          // RF-44: cada envío fallido (tras los reintentos) y cada ventana sin SMTP configurado
+          // quedan además en `fallas-correo.txt`.
+          registrarFallosEnvioAlerta(resultado.fallos, "AUTOMATICA");
+          for (const ventana of resultado.ventanasSinConfiguracion) {
+            registrarAlertaSinConfiguracion(ventana, "AUTOMATICA");
+          }
+        })
+        .catch((error) => {
+          // Solo un fallo del CICLO COMPLETO (no de un envío puntual, que ya queda registrado como
+          // fila ERROR en `alerta_notificacion_ventana`) llega hasta aquí: algo como un error de
+          // BD. Los envíos automáticos no se auditan en `logs/auditoria.txt` (la tabla ya es su
+          // registro estructurado); esto es lo único que va a `logs/errores.txt`.
+          logger.error("Error en el ciclo automático de alertas de ventanas de carga", {
+            mensaje: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
     },
     { timezone: "America/Santiago" },
   );

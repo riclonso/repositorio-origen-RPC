@@ -13,15 +13,19 @@ import {
   respuestaRecursoNoEncontrado,
   respuestaSinConversacion,
 } from "@/app/api/_lib/mensajeria";
-import { logger } from "@/infrastructure/logging/logger";
+import {
+  destinatarioUsuario,
+  registrarFallaCorreo,
+  ventanaFallaCorreo,
+} from "@/infrastructure/logging/fallasCorreo";
 import {
   avisarMensajeNuevo,
   type DestinatarioAvisoMensaje,
 } from "@/modules/mensajeria/application/use-cases/AvisarMensajeNuevo";
+import type { ResultadoEnviarMensajeRevisor } from "@/modules/mensajeria/application/use-cases/EnviarMensajeRevisor";
 import type { ConversacionVentanaResumen } from "@/modules/mensajeria/domain/entities/MensajeCarga";
 import { avisoMensajeMailer } from "@/modules/mensajeria/infrastructure/email/AvisoMensajeMailer";
 import type { ConversacionVista } from "@/modules/mensajeria/schemas/vistas-mensajeria";
-import type { CargaArchivo } from "@/modules/reporte-excel/domain/entities/CargaArchivo";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 
 // RF-31: helpers de `/api/revisor/**`. Reexporta el guard genérico y los helpers compartidos de
@@ -63,29 +67,73 @@ export function respuestaCargaNoPendiente(): NextResponse {
   );
 }
 
-// Adaptador de infraestructura para el caso de uso: solo los tres datos que necesita el aviso.
+// Adaptador de infraestructura para el caso de uso: los datos que necesita el aviso, más apellidos
+// y RUT para el registro de fallas de correo (RF-44).
 async function buscarDestinatarioAviso(usuarioId: string): Promise<DestinatarioAvisoMensaje | null> {
   const usuario = await prismaUsuarioRepository.obtenerPorId(usuarioId);
-  return usuario ? { nombres: usuario.nombres, email: usuario.email, activo: usuario.activo } : null;
+  return usuario
+    ? {
+        nombres: usuario.nombres,
+        apellidos: usuario.apellidos,
+        rut: usuario.rut,
+        email: usuario.email,
+        activo: usuario.activo,
+      }
+    : null;
 }
+
+// Lo que el Route Handler recibe de `enviarMensajeRevisor*` cuando el mensaje quedó guardado.
+type MensajeRevisorGuardado = Extract<ResultadoEnviarMensajeRevisor, { ok: true }>;
 
 // El correo al notificador se DIFIERE con `after()`: el mensaje ya quedó guardado y el 201 no
 // depende del SMTP. Anti-ráfaga por ventana: solo se programa si, antes de este mensaje, el
 // notificador no tenía mensajes del equipo revisor sin leer en esa ventana (`eraPrimerNoLeido`).
 // Las demás reglas (correo no disponible, cuenta inexistente o inactiva) viven en
-// `avisarMensajeNuevo`; un fallo del envío solo se registra.
-export function programarAvisoMensajeNuevo(carga: CargaArchivo, eraPrimerNoLeido: boolean): void {
-  if (!eraPrimerNoLeido) return;
+// `avisarMensajeNuevo`. RF-44: toda falla del camino del aviso (conteo anti-ráfaga, SMTP sin
+// configurar, preparación o envío) solo se registra en `fallas-correo.txt`; nunca llega al usuario.
+export function programarAvisoMensajeNuevo(guardado: MensajeRevisorGuardado): void {
+  const { mensaje, carga } = guardado;
+  const contexto = {
+    tipoAviso: "AVISO_MENSAJE_NOTIFICADOR" as const,
+    ventana: ventanaFallaCorreo(carga),
+    referencias: { cargaArchivoId: carga.id, mensajeCargaId: mensaje.id },
+  };
+  const destinatarioConocido = destinatarioUsuario({ id: carga.usuarioId, rut: carga.usuarioRut });
+
+  if (guardado.conteoFallido) {
+    registrarFallaCorreo({
+      ...contexto,
+      etapa: "PREPARACION",
+      destinatario: destinatarioConocido,
+      error: guardado.errorConteoAviso,
+    });
+    return;
+  }
+
+  if (!guardado.eraPrimerNoLeido) return;
+
+  if (!avisoMensajeMailer.disponible()) {
+    registrarFallaCorreo({ ...contexto, etapa: "SIN_CONFIGURACION", destinatario: destinatarioConocido });
+    return;
+  }
 
   after(() =>
     avisarMensajeNuevo(
       { notificadorId: carga.usuarioId, formatoExcelNombre: carga.formatoExcelNombre, anio: carga.anio },
       { enviador: avisoMensajeMailer, buscarDestinatario: buscarDestinatarioAviso },
-    ).catch((error: unknown) => {
-      logger.error("Error al enviar el correo de aviso de un mensaje nuevo sobre una carga", {
-        cargaArchivoId: carga.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }),
+    )
+      .then((resultado) => {
+        if (resultado.estado !== "FALLIDO") return;
+
+        registrarFallaCorreo({
+          ...contexto,
+          etapa: "ENVIO",
+          destinatario: destinatarioUsuario({ id: carga.usuarioId, ...resultado.destinatario }),
+          error: resultado.error,
+        });
+      })
+      .catch((error: unknown) => {
+        registrarFallaCorreo({ ...contexto, etapa: "PREPARACION", destinatario: destinatarioConocido, error });
+      }),
   );
 }

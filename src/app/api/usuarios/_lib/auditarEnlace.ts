@@ -1,5 +1,8 @@
-import { variablesSmtpFaltantes } from "@/infrastructure/config/env";
-import { logger } from "@/infrastructure/logging/logger";
+import {
+  destinatarioUsuario,
+  registrarFallaCorreo,
+  type DestinatarioFallaCorreo,
+} from "@/infrastructure/logging/fallasCorreo";
 import type { MotivoAuditoria } from "@/infrastructure/logging/auditoria";
 import { auditarUsuario } from "@/modules/usuarios/infrastructure/auditoria/auditarUsuario";
 import type { SesionPayload } from "@/modules/auth/infrastructure/auth/JwtService";
@@ -13,10 +16,23 @@ export type DisparadorEnlace = Extract<
   "CREACION" | "REESTABLECIMIENTO" | "REENVIO"
 >;
 
+function destinatarioDeEnlace(
+  resultado: Extract<ResultadoEmitirEnlaceContrasena, { estado: "SIN_CONFIGURACION" | "ENVIO_FALLIDO" }>,
+): DestinatarioFallaCorreo {
+  return destinatarioUsuario({
+    id: resultado.usuarioId,
+    nombres: resultado.destinatario.nombreCompleto,
+    rut: resultado.usuarioRut,
+    email: resultado.destinatario.email,
+  });
+}
+
 // Traduce el desenlace del caso de uso a un evento de auditoría. Espeja al `auditarDesenlace` de
 // RF-10, pero para el actor con sesión del mantenedor. Los fallos técnicos (relay sin configurar
-// o envío caído) además se registran en `errores.txt`: no enterarse de que el correo no sale es
-// el riesgo asumido al declarar opcional el grupo SMTP. Nunca se registra el token ni el correo.
+// o envío caído) además se registran en `fallas-correo.txt` (RF-44): no enterarse de que el correo
+// no sale es el riesgo asumido al declarar opcional el grupo SMTP. Nunca se registra el token.
+// `disparador` también alimenta ese registro (en ENVIO_FALLIDO el caller lo deriva igual que en
+// éxito).
 export function auditarDesenlaceEnlace(
   sesion: SesionPayload,
   peticion: Request,
@@ -68,11 +84,12 @@ export function auditarDesenlaceEnlace(
   }
 
   if (resultado.estado === "SIN_CONFIGURACION") {
-    logger.error("Emisión de enlace de contraseña con el envío de correo sin configurar", {
-      usuarioId: resultado.usuarioId,
-      variablesFaltantes: variablesSmtpFaltantes(),
-      impacto:
-        "La persona no puede fijar su contraseña hasta que se configure el relay SMTP; el administrador puede reenviar el enlace una vez configurado.",
+    // RF-44: la falla va a `fallas-correo.txt` (con las variables faltantes, solo nombres).
+    registrarFallaCorreo({
+      tipoAviso: "ENLACE_CONTRASENA_ADMIN",
+      etapa: "SIN_CONFIGURACION",
+      destinatario: destinatarioDeEnlace(resultado),
+      referencias: { disparador },
     });
     auditarUsuario(sesion, peticion, {
       accion: "ENLACE_CONTRASENA_ENVIADO",
@@ -84,11 +101,13 @@ export function auditarDesenlaceEnlace(
     return;
   }
 
-  // ENVIO_FALLIDO: se registra el id de la fila y del usuario, nunca el token ni la dirección.
-  logger.error("Error al enviar el enlace de contraseña", {
-    tokenId: resultado.tokenId,
-    usuarioId: resultado.usuarioId,
-    diagnostico: resultado.diagnostico,
+  // ENVIO_FALLIDO (RF-44): el id de la FILA del token, nunca el token; el cuerpo queda sin enlaces.
+  registrarFallaCorreo({
+    tipoAviso: "ENLACE_CONTRASENA_ADMIN",
+    etapa: "ENVIO",
+    destinatario: destinatarioDeEnlace(resultado),
+    referencias: { tokenId: resultado.tokenId, disparador },
+    error: resultado.errorEnvio,
   });
   auditarUsuario(sesion, peticion, {
     accion: "ENLACE_CONTRASENA_ENVIADO",

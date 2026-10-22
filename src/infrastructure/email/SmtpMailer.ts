@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { configSmtp } from "@/infrastructure/config/env";
+import { adjuntarCorreoFallido } from "@/infrastructure/email/correoFallido";
 
 // Infraestructura transversal: sabe de SMTP y de nodemailer, y nada de contraseñas ni de
 // recuperación. Cuando otro módulo (por ejemplo el de reporte Excel/CSV) necesite notificar,
@@ -62,19 +63,30 @@ export function correoDisponible(): boolean {
   return configSmtp !== null;
 }
 
-// Lanza si el envío falla; quien llama decide qué hacer con el error. Nunca devuelve el
-// contenido del mensaje ni la respuesta cruda del servidor.
+// Lanza si el envío falla; quien llama decide qué hacer con el error. No devuelve nada en éxito.
+// El error lanzado es el del relay (su `message` puede citar la respuesta cruda del servidor y la
+// dirección de destino) y lleva adjunto, no enumerable, el destinatario, el asunto y el texto plano
+// que se intentó enviar. Por decisión del usuario (RF-44) ambos se registran en
+// `logs/fallas-correo.txt`, visible solo para ADMIN, con todo enlace y `token=` ocultos (ver
+// `correoFallido.ts` y `infrastructure/logging/fallasCorreo.ts`). Nunca deben llegar a una
+// respuesta HTTP.
 export async function enviarCorreo(correo: CorreoSaliente): Promise<void> {
+  const intento = { para: correo.para, asunto: correo.asunto, texto: correo.texto };
+
   if (!transporteSmtp || !configSmtp) {
-    throw new Error("El envío de correo no está configurado");
+    throw adjuntarCorreoFallido(new Error("El envío de correo no está configurado"), intento);
   }
 
-  await transporteSmtp.sendMail({
-    from: configSmtp.remitente,
-    to: correo.para,
-    subject: correo.asunto,
-    text: correo.texto,
-    html: correo.html,
-    ...(correo.cabeceras ? { headers: correo.cabeceras } : {}),
-  });
+  try {
+    await transporteSmtp.sendMail({
+      from: configSmtp.remitente,
+      to: correo.para,
+      subject: correo.asunto,
+      text: correo.texto,
+      html: correo.html,
+      ...(correo.cabeceras ? { headers: correo.cabeceras } : {}),
+    });
+  } catch (error) {
+    throw adjuntarCorreoFallido(error, intento);
+  }
 }

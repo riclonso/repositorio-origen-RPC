@@ -371,7 +371,7 @@ export const prismaVentanaCargaRepository: VentanaCargaRepository = {
         formatosAsignados: { some: { formatoExcelId: ventana.formatoExcelId } },
         cargasArchivo: { none: { ventanaCargaId, estado: "APROBADA" } },
       },
-      select: { id: true, nombres: true, apellidos: true, email: true },
+      select: { id: true, nombres: true, apellidos: true, rut: true, email: true },
       orderBy: { apellidos: "asc" },
     });
 

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
+import { registrarFallaCorreo } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
-import { emitirEnlaceContrasena } from "@/modules/auth/application/use-cases/EmitirEnlaceContrasena";
+import {
+  emitirEnlaceContrasena,
+  type ResultadoEmitirEnlaceContrasena,
+} from "@/modules/auth/application/use-cases/EmitirEnlaceContrasena";
 import { prismaUserRepository } from "@/modules/auth/infrastructure/repositories/PrismaUserRepository";
 import { prismaPasswordResetTokenRepository } from "@/modules/auth/infrastructure/repositories/PrismaPasswordResetTokenRepository";
 import { tokenService } from "@/modules/auth/infrastructure/tokens/TokenService";
@@ -39,16 +43,31 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
     return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
   }
 
+  let resultado: ResultadoEmitirEnlaceContrasena;
+
   try {
-    const resultado = await emitirEnlaceContrasena(idValido.data, acceso.sesion.perfil, {
+    resultado = await emitirEnlaceContrasena(idValido.data, acceso.sesion.perfil, {
       repositorioUsuarios: prismaUserRepository,
       repositorioTokens: prismaPasswordResetTokenRepository,
       generadorToken: tokenService,
       enviadorCorreo: enlaceContrasenaMailer,
     });
+  } catch (error) {
+    // RF-44: falla técnica antes de enviar (BD al buscar la cuenta o emitir el token).
+    // `registrarFallaCorreo` la deja en `fallas-correo.txt` y además en `errores.txt` (para este
+    // aviso, solo nombre y código del error: nunca el mensaje, que puede arrastrar parámetros).
+    registrarFallaCorreo({
+      tipoAviso: "ENLACE_CONTRASENA_ADMIN",
+      etapa: "PREPARACION",
+      destinatario: { tipo: "USUARIO", usuarioId: idValido.data },
+      error,
+    });
+    return respuestaError(MENSAJE_ERROR_INTERNO, 500);
+  }
 
+  try {
     const disparador =
-      resultado.estado === "ENVIADO" && resultado.tuvoContrasenaPrevia
+      (resultado.estado === "ENVIADO" || resultado.estado === "ENVIO_FALLIDO") && resultado.tuvoContrasenaPrevia
         ? "REESTABLECIMIENTO"
         : "REENVIO";
 
@@ -82,7 +101,9 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    logger.error("Error al emitir un enlace de contraseña desde el mantenedor", {
+    // Un fallo de la auditoría (o de armar la respuesta) no es una falla de correo: solo a
+    // `errores.txt`, con el nombre del error y sin el mensaje, como antes de RF-44.
+    logger.error("Error al auditar o responder la emisión de un enlace de contraseña desde el mantenedor", {
       usuarioId: idValido.data,
       tipo: error instanceof Error ? error.name : "ErrorDesconocido",
     });

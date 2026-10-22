@@ -71,7 +71,7 @@ export async function POST(request: Request, contexto: ContextoMensajes) {
       return resultado.motivo === "SIN_CONVERSACION" ? respuestaSinConversacion() : respuestaRecursoNoEncontrado();
     }
 
-    const { mensaje, carga, eraPrimerNoLeido } = resultado;
+    const { mensaje, carga } = resultado;
 
     auditarMensajeCarga(acceso.sesion, request, {
       resultado: "EXITO",
@@ -82,7 +82,7 @@ export async function POST(request: Request, contexto: ContextoMensajes) {
       usuarioObjetivoRut: carga.usuarioRut,
     });
 
-    programarAvisoMensajeNuevo(carga, eraPrimerNoLeido);
+    programarAvisoMensajeNuevo(resultado);
 
     return NextResponse.json({ mensaje: aMensajeVista(mensaje, acceso.sesion.sub) }, { status: 201 });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { variablesSmtpFaltantes } from "@/infrastructure/config/env";
+import { destinatarioUsuario, registrarFallaCorreo } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
 import { solicitarRecuperacionSchema } from "@/modules/auth/schemas/recuperacion.schema";
 import { requestPasswordReset } from "@/modules/auth/application/use-cases/RequestPasswordReset";
@@ -57,15 +57,19 @@ function auditarDesenlace(
   }
 
   if (resultado.enlace === "SIN_CONFIGURACION") {
-    // Se registra además como error: desplegar sin relay y no enterarse es el riesgo asumido al
-    // declarar opcionales las variables SMTP. El log lleva la cuenta afectada (contar
-    // `usuarioId` distintos da cuántas personas quedaron sin autoservicio) y qué variables hay
-    // que definir para arreglarlo. Nunca lleva la dirección tecleada.
-    logger.error("Solicitud de recuperación con el envío de correo sin configurar", {
-      usuarioId: resultado.usuarioId,
-      variablesFaltantes: variablesSmtpFaltantes(),
-      impacto:
-        "La cuenta no puede recuperar su contraseña por autoservicio hasta que se configure el relay SMTP; entretanto debe restablecerla un administrador desde el mantenedor.",
+    // RF-44: se registra en `fallas-correo.txt`: desplegar sin relay y no enterarse es el riesgo
+    // asumido al declarar opcionales las variables SMTP. La entrada lleva la cuenta afectada y qué
+    // variables hay que definir (solo nombres). Nunca la dirección tecleada: el destinatario sale
+    // de la cuenta encontrada.
+    registrarFallaCorreo({
+      tipoAviso: "ENLACE_RECUPERACION",
+      etapa: "SIN_CONFIGURACION",
+      destinatario: destinatarioUsuario({
+        id: resultado.usuarioId,
+        nombres: resultado.destinatario.nombreCompleto,
+        rut: resultado.usuarioRut,
+        email: resultado.destinatario.email,
+      }),
     });
     auditarRecuperacion(contexto, {
       accion: "RECUPERACION_SOLICITADA",
@@ -78,11 +82,18 @@ function auditarDesenlace(
   }
 
   if (resultado.enlace === "ENVIO_FALLIDO") {
-    // Se registran el id de la fila y el del usuario, nunca el token ni la dirección de destino.
-    logger.error("Error al enviar el correo de recuperación", {
-      tokenId: resultado.tokenId,
-      usuarioId: resultado.usuarioId,
-      diagnostico: resultado.diagnostico,
+    // RF-44: el id de la FILA del token, nunca el token; el cuerpo del correo queda sin enlaces.
+    registrarFallaCorreo({
+      tipoAviso: "ENLACE_RECUPERACION",
+      etapa: "ENVIO",
+      destinatario: destinatarioUsuario({
+        id: resultado.usuarioId,
+        nombres: resultado.destinatario.nombreCompleto,
+        rut: resultado.usuarioRut,
+        email: resultado.destinatario.email,
+      }),
+      referencias: { tokenId: resultado.tokenId },
+      error: resultado.errorEnvio,
     });
     auditarRecuperacion(contexto, {
       accion: "RECUPERACION_SOLICITADA",

@@ -14,6 +14,7 @@ import {
   Checks,
   Circle,
   DownloadSimple,
+  EnvelopeSimple,
   Eye,
   EyeSlash,
   FileText,
@@ -139,3 +140,5 @@ export const IconoCerrarGrande = crearIcono(X, 24);
 // Indicador flotante de conversación en una tarjeta: los tres puntos se entienden mejor a tamaño
 // grande que el glifo de texto usado por los botones convencionales de mensajería.
 export const IconoConversacion = crearIcono(ChatCircleDots, TAMANO_CAMPO);
+// RF-44: "Ver correo" en el registro de fallas de envío de correo (`/dashboard/logs`).
+export const IconoCorreo = crearIcono(EnvelopeSimple, TAMANO_ACCION);

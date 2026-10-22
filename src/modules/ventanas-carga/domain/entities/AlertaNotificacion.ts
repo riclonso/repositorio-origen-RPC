@@ -11,6 +11,8 @@ export type NotificadorPendiente = {
   id: string;
   nombres: string;
   apellidos: string;
+  // RF-44: solo para el registro de fallas de envío de correo; el correo no lo lleva.
+  rut: string;
   email: string;
 };
 

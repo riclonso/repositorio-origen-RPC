@@ -1,8 +1,12 @@
 import { NextResponse, after } from "next/server";
+import { destinatarioUsuario, registrarFallaCorreo } from "@/infrastructure/logging/fallasCorreo";
 import { logger } from "@/infrastructure/logging/logger";
 import { listarUsuarios } from "@/modules/usuarios/application/use-cases/ListarUsuarios";
 import { crearUsuario } from "@/modules/usuarios/application/use-cases/CrearUsuario";
-import { emitirEnlaceContrasena } from "@/modules/auth/application/use-cases/EmitirEnlaceContrasena";
+import {
+  emitirEnlaceContrasena,
+  type ResultadoEmitirEnlaceContrasena,
+} from "@/modules/auth/application/use-cases/EmitirEnlaceContrasena";
 import { prismaUsuarioRepository } from "@/modules/usuarios/infrastructure/repositories/PrismaUsuarioRepository";
 import { prismaPerfilRepository } from "@/modules/perfiles/infrastructure/repositories/PrismaPerfilRepository";
 import { prismaFormatoExcelRepository } from "@/modules/formatos-excel/infrastructure/repositories/PrismaFormatoExcelRepository";
@@ -159,18 +163,35 @@ export async function POST(request: Request) {
     // mantenedor. El desenlace del envío se audita como ENLACE_CONTRASENA_ENVIADO / CREACION.
     const sesion = acceso.sesion;
     const usuarioCreadoId = resultado.usuario.id;
+    const destinatarioCreado = destinatarioUsuario(resultado.usuario);
     after(async () => {
+      let enlace: ResultadoEmitirEnlaceContrasena;
+
       try {
-        const enlace = await emitirEnlaceContrasena(usuarioCreadoId, sesion.perfil, {
+        enlace = await emitirEnlaceContrasena(usuarioCreadoId, sesion.perfil, {
           repositorioUsuarios: prismaUserRepository,
           repositorioTokens: prismaPasswordResetTokenRepository,
           generadorToken: tokenService,
           enviadorCorreo: enlaceContrasenaMailer,
         });
+      } catch (error) {
+        // RF-44: falla técnica antes de enviar (BD al emitir el token, etc.). `registrarFallaCorreo`
+        // la deja en `fallas-correo.txt` y además en `errores.txt` (solo nombre y código del error).
+        registrarFallaCorreo({
+          tipoAviso: "ENLACE_CONTRASENA_ADMIN",
+          etapa: "PREPARACION",
+          destinatario: destinatarioCreado,
+          referencias: { disparador: "CREACION" },
+          error,
+        });
+        return;
+      }
 
+      try {
         auditarDesenlaceEnlace(sesion, request, enlace, "CREACION");
       } catch (error) {
-        logger.error("Error al emitir el enlace de activación de un usuario recién creado", {
+        // Un fallo de la auditoría no es una falla de correo: solo a `errores.txt`.
+        logger.error("Error al auditar el enlace de activación de un usuario recién creado", {
           usuarioId: usuarioCreadoId,
           tipo: error instanceof Error ? error.name : "ErrorDesconocido",
         });

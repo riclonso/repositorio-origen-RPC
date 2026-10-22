@@ -222,7 +222,11 @@ lado contrario; del lado revisor es compartida por todos los revisores). Puntos 
   (`shared/hooks/useRefrescoTrasLecturas.ts`).
 * **Contenido en texto plano, nunca en logs ni correo.** Sin `dangerouslySetInnerHTML`. La auditoría
   (`MENSAJE_CARGA_ENVIADO`) y el aviso por correo al notificador (`AvisarMensajeNuevo`, vía `after()`,
-  uno por tanda de no leídos POR VENTANA) no llevan el contenido ni su longitud.
+  uno por tanda de no leídos POR VENTANA) no llevan el contenido ni su longitud. El sentido inverso
+  (`AvisarMensajeNuevoRevisores`, al responder el notificador) sigue la misma regla de tanda por hilo y
+  va al buzón `BUZON_COMPARTIDO_REVISOR_EMAIL` si está configurado, o individual a cada revisor activo;
+  esa regla es única para todo el sistema (`modules/usuarios/.../obtenerDestinatariosEquipoRevisor.ts`).
+  Si el conteo anti-ráfaga falla tras guardar, el POST sigue en 201 (`conteoFallido`), nunca 500.
 * **Conteos sin N+1**: `groupBy` sobre `mensaje_carga` usando los índices
   `[ventanaCargaId, ladoAutor, leidoEn]` y `[notificadorId, ventanaCargaId, creadoEn]`.
 
@@ -319,7 +323,7 @@ Notar: el login es por **RUT**, no por email, aunque email/rut/username son todo
 
 ### Logging
 
-El sistema contempla **tres logs separados**, ambos en formato JSON, bajo `logs/` (carpeta no
+El sistema contempla **cuatro logs separados** (más `upload.txt`), todos en formato JSON, bajo `logs/` (carpeta no
 versionada). No mezclar sus responsabilidades: un intento de login fallido es un evento de acceso,
 no un error del sistema.
 
@@ -392,7 +396,18 @@ tener auditoría. No se auditan lecturas ni los 400 de validación.
 **Nunca registrar contraseñas, tokens ni hashes**, ni siquiera su longitud. Para los enlaces se
 registra el disparador (`CREACION`, `REESTABLECIMIENTO` o `REENVIO`) y el desenlace, nunca el secreto.
 
-#### Reglas comunes a los tres logs
+#### 4. Log de fallas de envío de correo — `logs/fallas-correo.txt` (RF-44)
+
+Todo correo que no se pudo enviar, de cualquier punto del sistema, se registra con
+`registrarFallaCorreo()` (`infrastructure/logging/fallasCorreo.ts`), **nunca** con `logger` directo.
+Es el único que decide el destino por etapa: `ENVIO` solo aquí, `PREPARACION` aquí y en `errores.txt`,
+`SIN_CONFIGURACION` solo aquí. Rotación nativa de Winston (5 MB × 5). Guarda destinatario (nombre, RUT,
+correo), mensaje SMTP completo y asunto/cuerpo en texto plano por decisión del usuario (solo ADMIN),
+pero **toda URL y todo `token=` se reemplazan por `[enlace]`**, y en los enlaces de contraseña un fallo
+técnico registra solo nombre y código del error. Un aviso por correo nuevo debe registrar sus fallas
+aquí con un `TipoAvisoCorreo` nuevo en `catalogoFallasCorreo.ts`.
+
+#### Reglas comunes a los logs
 
 `infrastructure/logging/logger.ts` crea una instancia de Winston **independiente por archivo**, cada
 una con su propio transporte, de modo que un evento no puede terminar escrito en el log equivocado. El
@@ -402,7 +417,7 @@ sistema operativo del servidor. `logs/` está en `.gitignore`: estos archivos co
 funcionarios y no deben versionarse.
 
 **Estado:** `logs/errores.txt`, `logs/auditoria.txt` y `logs/accesos.txt` (RF-07, versión mínima) están
-implementados. Los tres se consultan en `/dashboard/logs`, una pestaña por archivo.
+implementados, y desde RF-44 `logs/fallas-correo.txt`. Los cuatro se consultan en `/dashboard/logs`, una pestaña por archivo.
 
 ### Base de datos
 

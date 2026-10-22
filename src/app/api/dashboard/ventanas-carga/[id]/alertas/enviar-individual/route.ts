@@ -5,6 +5,10 @@ import { prismaVentanaCargaRepository } from "@/modules/ventanas-carga/infrastru
 import { prismaAlertaNotificacionRepository } from "@/modules/ventanas-carga/infrastructure/repositories/PrismaAlertaNotificacionRepository";
 import { alertaVentanaMailer } from "@/modules/ventanas-carga/infrastructure/email/AlertaVentanaMailer";
 import { auditarVentanaCarga } from "@/modules/ventanas-carga/infrastructure/auditoria/auditarVentanaCarga";
+import {
+  registrarAlertaSinConfiguracion,
+  registrarFallosEnvioAlerta,
+} from "@/modules/ventanas-carga/infrastructure/email/registrarFallasAlerta";
 import { enviarAlertaIndividualSchema } from "@/modules/ventanas-carga/schemas/ventana-carga.schema";
 import {
   MENSAJE_DATOS_INVALIDOS,
@@ -12,6 +16,7 @@ import {
   MENSAJE_NO_ENCONTRADO,
   exigirAdminORevisor,
   idVentanaCargaSchema,
+  respuestaCorreoSinConfigurar,
   respuestaDestinatarioNoPendiente,
   respuestaError,
   respuestaSinAcceso,
@@ -65,6 +70,22 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
     );
 
     if (!resultado.ok) {
+      if (resultado.motivo === "SIN_CONFIGURACION") {
+        registrarAlertaSinConfiguracion(
+          { ventanaCargaId: idValido.data, formatoExcelNombre: resultado.formatoExcelNombre, anio: resultado.anio },
+          "MANUAL_INDIVIDUAL",
+          resultado.destinatario,
+        );
+        auditarVentanaCarga(acceso.sesion, request, {
+          accion: "VENTANA_CARGA_ALERTA_INDIVIDUAL_ENVIADA",
+          resultado: "SIN_EFECTO",
+          motivo: "SIN_CONFIGURACION",
+          ventanaCargaId: idValido.data,
+          destinatarioId: datos.data.usuarioId,
+        });
+        return respuestaCorreoSinConfigurar();
+      }
+
       if (resultado.motivo === "DESTINATARIO_NO_PENDIENTE") {
         auditarVentanaCarga(acceso.sesion, request, {
           accion: "VENTANA_CARGA_ALERTA_INDIVIDUAL_ENVIADA",
@@ -84,6 +105,10 @@ export async function POST(request: Request, contexto: { params: Promise<{ id: s
         destinatarioId: datos.data.usuarioId,
       });
       return respuestaError(MENSAJE_NO_ENCONTRADO, 404, { codigo: "NO_ENCONTRADO" });
+    }
+
+    if (resultado.fallo) {
+      registrarFallosEnvioAlerta([resultado.fallo], "MANUAL_INDIVIDUAL");
     }
 
     auditarVentanaCarga(acceso.sesion, request, {
