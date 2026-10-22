@@ -534,7 +534,7 @@ SQL con parámetros. El cupo por cuenta debe seguir siendo transaccional.
 
 ### RF-13
 Las cuentas nuevas nacen con `contrasenaHash = NULL` y no pueden iniciar sesión hasta que se les fije
-una contraseña. Al **crear** nunca se pide contraseña: se envía un enlace ADMIN de 8 horas para que la
+una contraseña. Al **crear** nunca se pide contraseña: se envía un enlace ADMIN de 24 horas para que la
 persona la cree. Mantener separados el cupo AUTOSERVICIO y el camino ADMIN, y conservar el alta aunque
 falle el envío SMTP.
 

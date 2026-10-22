@@ -75,7 +75,7 @@ posterior (la numeración RF de ambas ramas se solapaba, por eso aquí se listan
 
 * **Alta de usuarios sin contraseña + activación por enlace**, COMBINADA con la asignación de formatos
   Excel a los notificadores (decisión de la fusión): al crear, la cuenta nace con `contrasenaHash = NULL`
-  (pendiente), se le envía un enlace de un solo uso (8 h) para fijar su contraseña, y —si es
+  (pendiente), se le envía un enlace de un solo uso (24 h desde 2026-10-22; antes 8 h) para fijar su contraseña, y —si es
   NOTIFICADOR_RPC— se le asignan sus formatos. El envío se difiere con `after()`: el alta no falla si el
   correo no sale, y el admin puede reenviar el enlace.
 * **Dos vías para la contraseña desde el mantenedor**: enviar un enlace por correo, o que el admin la

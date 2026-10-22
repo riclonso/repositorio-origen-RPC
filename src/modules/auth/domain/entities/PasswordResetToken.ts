@@ -24,11 +24,11 @@ export type ContextoEnlace = "activacion" | "recuperacion";
 // Dos vigencias, según quién pide el enlace:
 //  - AUTOSERVICIO (formulario público "¿olvidó su contraseña?"): 2 horas. Un secreto que queda
 //    escrito en un buzón se acota lo más posible.
-//  - ADMIN (creación / restablecimiento / reenvío desde el mantenedor): 8 horas. Un enlace de
-//    activación que emite el administrador suele coordinarse con la persona (que quizá aún no
-//    tiene la casilla a mano), así que se le da margen de una jornada.
+//  - ADMIN (creación / restablecimiento / reenvío desde el mantenedor, por ADMIN o REVISOR): 24
+//    horas. Un enlace de activación que emite el administrador suele coordinarse con la persona
+//    (que quizá aún no tiene la casilla a mano), así que se le da margen de un día completo.
 export const HORAS_VIGENCIA_TOKEN_AUTOSERVICIO = 2;
-export const HORAS_VIGENCIA_TOKEN_ADMIN = 8;
+export const HORAS_VIGENCIA_TOKEN_ADMIN = 24;
 
 // Cupo por cuenta: es el límite que de verdad protege una casilla del bombardeo, porque acota
 // cuántos correos se le pueden mandar a una persona sin importar desde cuántas IPs se pida.

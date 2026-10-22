@@ -180,7 +180,7 @@ async function probarEnlaceDeActivacion() {
 
   assert.equal(resultado.estado, "ENVIADO");
   assert.equal(contextoCorreo, "activacion");
-  assert.equal(horasEmitidas, 8);
+  assert.equal(horasEmitidas, 24);
 }
 
 async function probarFalloDeEnvioInvalidaToken() {
@@ -246,7 +246,7 @@ async function main() {
   await probarAltaSinContrasena();
   await probarEnlaceDeActivacion();
   await probarFalloDeEnvioInvalidaToken();
-  console.log("OK: alta pendiente, enlace de 8 horas y manejo de fallo SMTP");
+  console.log("OK: alta pendiente, enlace de 24 horas y manejo de fallo SMTP");
 }
 
 main().catch((error) => {

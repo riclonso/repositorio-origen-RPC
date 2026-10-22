@@ -15,7 +15,7 @@ import { esPerfilAdministrador } from "@/modules/perfiles/domain/entities/Perfil
 
 // Emite un enlace de contraseña iniciado por el ADMINISTRADOR: al crear una cuenta, al
 // restablecer la contraseña de un tercero o al reenviar un enlace de activación. Los tres son la
-// MISMA operación (emitir un enlace admin de 8 horas); el disparador concreto vive en la
+// MISMA operación (emitir un enlace admin de 24 horas); el disparador concreto vive en la
 // auditoría, no aquí.
 //
 // A diferencia del autoservicio (`RequestPasswordReset`), este caso de uso NO es un oráculo ni
